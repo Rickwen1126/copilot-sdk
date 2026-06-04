@@ -1,7 +1,7 @@
 # Codex Runtime Adapter Refactor Plan
 
 Created: 2026-06-03 17:02
-Last Updated: 2026-06-03 22:19
+Last Updated: 2026-06-04 20:28
 Status: Active
 
 ## Goal
@@ -186,6 +186,46 @@ Evidence level:
 - L2 for public/internal API shape.
 - L3 for runtime transcript/error observability.
 
+## Phase 3.5: Production Capability Spike Gate
+
+Purpose: answer Codex app-server capability unknowns before Phase 4 facade slimming.
+
+This phase is blocking before Phase 4 because the facade shape should not encode guesses about Codex thread close, thread resume, native-tool suppression, dynamic tool update, or subscription-auth inheritance. If a capability is unsupported, the production design may need a different fallback than a straightforward facade cleanup.
+
+Source:
+
+- Production readiness inventory: [../production-readiness@2026-06-04-1953.md](../production-readiness@2026-06-04-1953.md)
+- Capability spike artifact: [../artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json](../artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json)
+
+Capability questions and results:
+
+- A1: No `thread/end` / `thread/close`; use `thread/unsubscribe` for listener detach and `thread/archive` for persisted-thread cleanup.
+- A4: Supported with condition. Non-ephemeral Codex threads can resume by id across app-server restart after a turn has persisted a rollout file.
+- B1/C1: Partial. Codex exposes sandbox, permission profiles, config, and `dynamicTools`; it does not expose SDK-shaped `available_tools` / `excluded_tools`. Phase 4 must implement the locked lane and then benchmark native-tool suppression.
+- B2: Unsupported. `dynamicTools` is supported on `thread/start`, not `thread/resume`; incompatible tool-set resume must recreate/fork or reject.
+- D2: Basic-supported. Isolated `CODEX_HOME` inherits login enough for app-server startup and `account/read`; token refresh remains Phase 6 production validation.
+
+Actions:
+
+- Run minimal protocol probes against `codex app-server` with transcript capture.
+- Preserve raw request/response or missing-method evidence for every question.
+- Classify each capability as `supported`, `unsupported`, or `unknown-blocked`.
+- Summarize the conclusion in a repo artifact and update the production readiness inventory.
+- If all P0 capability questions are supported or safely mitigable, convert their conclusions into implementation todo placement.
+- If any P0 capability is unsupported and changes safety or correctness, stop before Phase 4 and discuss the fallback design.
+
+Exit criteria:
+
+- Every capability question above has durable transcript evidence or explicit missing-evidence proof. **Met by the artifact above.**
+- `docs/todo.md` reflects the post-spike implementation queue. **Met by the P0 production readiness queue.**
+- Phase 4 starts only after the user reviews the spike conclusion or the spike finds no blocking design issue. **No blocking design issue found; B2 is unsupported but has a safe fallback path.**
+
+Evidence level:
+
+- L2 for protocol method/parameter support.
+- L3 for transcript/log proof and auth inheritance state.
+- L4 for restart/resume continuity.
+
 ## Phase 4: Adapter Facade Slimming
 
 Purpose: make `CodexCopilotAdapterServer` a true facade/orchestrator, not a knowledge warehouse.
@@ -203,9 +243,17 @@ Rules:
 - Slim the facade one workflow brick at a time.
 - Keep temporary delegations explicit and removable while mapper/gateway/session bricks are being inserted.
 - Follow the global per-brick loop for session create, resume, send, get messages, destroy, permission, and tool-call workflow bricks.
+- Do not begin Phase 4 until Phase 3.5 has classified the Codex app-server capability questions that affect session lifecycle, native-tool suppression, and dynamic-tool refresh.
 - Facade methods should hide decisions, not just forward one-to-one.
 - Callers should not choose raw protocol branches manually.
 - Chatpilot app semantics must remain outside the adapter.
+
+Production-readiness work assigned here after Phase 3.5:
+
+- Session lifecycle: A1, A2, A3, A4, A5, B2, B3. Phase 3.5 constraints: non-ephemeral persisted sessions for resumable production threads; `unsubscribe` / `archive` for lifecycle; recreate/fork/reject for incompatible tool-set resume.
+- Tool result behavior: B4.
+- Sandbox/native-tool safety: B1 and C1 through sandbox / permission profile / config controls, followed by native-tool suppression benchmark.
+- Operational setup docs that unblock validation: D1.
 
 Exit criteria:
 
@@ -213,6 +261,7 @@ Exit criteria:
 - Each facade workflow brick can be inserted without breaking Phase 1 functional no-regression checks.
 - A reader can identify facade, mapper, gateway, and session workflow responsibilities separately.
 - Existing conformance still passes.
+- Any production-readiness P0/P1 issue assigned to Phase 4 is either closed with evidence or explicitly moved to a later phase with user-reviewed rationale.
 
 Evidence level:
 
@@ -257,6 +306,12 @@ Evidence level:
 - L3 for command/file/tool side effects.
 - L4 for resume, session reuse, multi-turn, and cross-backend parity.
 
+Production-readiness work assigned here:
+
+- Multi-session concurrent acceptance: A6.
+- Full Chatpilot tool schema round-trip coverage: B5.
+- Tool-call compliance benchmark and backend comparison evidence: C2.
+
 ## Phase 6: Conditional Strategy / Policy Extraction
 
 Purpose: introduce variation handlers only where the code proves a real variation axis.
@@ -285,6 +340,7 @@ Exit criteria:
 - Each Strategy/Policy brick can be inserted without breaking Phase 1 functional no-regression checks.
 - Every Strategy/Policy has at least two meaningful variants or a documented near-term conformance need.
 - No pattern exists only to make the code look architectural.
+- Production-readiness policy work is closed or explicitly deferred: B6, B7, C3, C4, D2, D3.
 
 Evidence level:
 

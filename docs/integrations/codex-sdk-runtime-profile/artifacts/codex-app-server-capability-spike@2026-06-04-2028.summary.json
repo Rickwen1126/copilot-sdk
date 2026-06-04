@@ -1,0 +1,80 @@
+{
+  "createdAt": "2026-06-04 20:28",
+  "status": "phase-3.5-initial-spike-complete",
+  "purpose": "Classify Codex app-server production-readiness questions before Phase 4 adapter hardening.",
+  "commands": [
+    {
+      "kind": "protocol-no-turn-regression",
+      "command": "npx tsx examples/codex-app-server-capability-spike.ts",
+      "result": "passed; confirmed no-turn resume/archive cannot prove persisted-rollout behavior because no rollout file exists"
+    },
+    {
+      "kind": "persisted-rollout-live-turn",
+      "command": "CODEX_CAPABILITY_SPIKE_RUN_LIVE_TURN=1 CODEX_CAPABILITY_SPIKE_OUT=/tmp/codex-app-server-capability-spike-20260604-live.json npx tsx examples/codex-app-server-capability-spike.ts",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "repo": "/Users/rickwen/code/copilot-sdk",
+    "nodePackage": "nodejs",
+    "codexVersion": "codex-cli 0.137.0",
+    "upstreamCodexClone": "/private/tmp/openai-codex-capability-spike-20260604",
+    "upstreamCodexCommit": "16d02ec",
+    "generatedProtocolSchema": "/private/tmp/codex-app-server-capability-spike-20260604-2016/json-schema",
+    "generatedProtocolTypes": "/private/tmp/codex-app-server-capability-spike-20260604-2016/ts",
+    "rawLiveArtifact": "/tmp/codex-app-server-capability-spike-20260604-live.json"
+  },
+  "liveTurnEvidence": {
+    "threadId": "019e929a-7f57-7980-b000-7be3e99e4afc",
+    "turnId": "019e929a-804c-7012-9316-4ae39940631a",
+    "prompt": "Reply with exactly CODEX_CAPABILITY_SPIKE_OK. Do not run tools.",
+    "assistantFinalText": "CODEX_CAPABILITY_SPIKE_OK",
+    "turnCompleted": true,
+    "rolloutPathExistedBeforeRestart": true,
+    "sameProcessResumeOk": true,
+    "restartResumeOk": true,
+    "threadReadAfterRestartContainedTurn": true,
+    "unsubscribeBeforeRestartOk": true,
+    "archiveAfterRestartOk": true
+  },
+  "capabilityConclusions": {
+    "A1_closeLifecycle": {
+      "status": "partial-supported",
+      "conclusion": "There is no thread/end or thread/close request. Use thread/unsubscribe for listener detach and thread/archive for persisted-thread cleanup after a rollout exists.",
+      "phaseImpact": "Phase 4 should implement explicit adapter lifecycle with unsubscribe/archive, not invented close semantics."
+    },
+    "A4_restartContinuity": {
+      "status": "supported-with-condition",
+      "conclusion": "Codex can resume a non-ephemeral thread by id across app-server restart after at least one turn has persisted a rollout file.",
+      "phaseImpact": "Phase 4 should stop using ephemeral threads for production sessions that require resume, or explicitly choose adapter-owned replay."
+    },
+    "B1_C1_nativeToolsAndSandbox": {
+      "status": "partial-supported",
+      "conclusion": "Codex does not expose SDK-shaped available_tools/excluded_tools fields. It exposes sandbox, permission profiles, config, and dynamicTools on thread/start.",
+      "phaseImpact": "Phase 4 should implement a locked Chatpilot lane through sandbox/permission profile/config and then benchmark native-tool suppression behavior."
+    },
+    "B2_dynamicToolRefreshOnResume": {
+      "status": "unsupported",
+      "conclusion": "Upstream ThreadStartParams supports dynamic_tools, but ThreadResumeParams does not. A live resume request carrying dynamicTools succeeds, which should be treated as unknown-field tolerance or ignore behavior, not tool refresh support.",
+      "phaseImpact": "Phase 4 must not model SDK session.resume tool-set changes as Codex dynamicTools hot-update. Recreate/fork a Codex thread or reject incompatible resume."
+    },
+    "D2_isolatedAuthHome": {
+      "status": "basic-supported",
+      "conclusion": "A copied isolated CODEX_HOME can start app-server and account/read succeeds.",
+      "phaseImpact": "Phase 6 can keep isolated runtime home as viable, but token refresh and 401 recovery still need longer production-like validation."
+    }
+  },
+  "todoReplan": {
+    "moveIntoPhase4": [
+      "A1 lifecycle detach/archive",
+      "A4 non-ephemeral persisted-session resume",
+      "B1/C1 sandbox and native-tool suppression benchmark",
+      "B2 incompatible tool-set resume policy"
+    ],
+    "keepLater": [
+      "D2 token refresh and isolated auth longevity",
+      "B6/B7/C3/C4 policy/model cleanup"
+    ],
+    "openDiscussion": []
+  }
+}

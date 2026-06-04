@@ -1,10 +1,33 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-04 17:10
+Last Updated: 2026-06-04 20:28
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Codex Adapter Production Capability Spike Gate @2026-06-04-2028
+
+Section source:
+
+- Production readiness inventory: [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md)
+- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md), Phase 3.5
+- Evidence artifact: [codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json)
+- Audit: [.audit/AUDIT-codex-adapter-production-capability-spike-v1@2026-06-04-2028.md](../.audit/AUDIT-codex-adapter-production-capability-spike-v1@2026-06-04-2028.md)
+- Probe script: [nodejs/examples/codex-app-server-capability-spike.ts](../nodejs/examples/codex-app-server-capability-spike.ts)
+- Raw live transcript artifact: `/tmp/codex-app-server-capability-spike-20260604-live.json`
+- Source: user request to put spike-only production unknowns before Phase 4 and re-plan implementation from evidence
+
+- [x] Classified Codex app-server lifecycle capability before Phase 4.
+  Completion evidence: no `thread/end` / `thread/close` request exists; `thread/unsubscribe` succeeds for listener detach; `thread/archive` succeeds for persisted-thread cleanup after a live turn writes a rollout.
+- [x] Proved restart continuity with durable transcript evidence.
+  Completion evidence: live turn `019e929a-804c-7012-9316-4ae39940631a` persisted rollout for thread `019e929a-7f57-7980-b000-7be3e99e4afc`; same-process `thread/resume`, restart `thread/resume`, and restart `thread/read` all returned the completed user/agent turn.
+- [x] Classified dynamic tool refresh on resume as unsupported.
+  Completion evidence: upstream `ThreadStartParams` has `dynamic_tools`, `ThreadResumeParams` does not; a live resume request carrying `dynamicTools` succeeds but must be treated as unknown-field tolerance / ignored-field behavior, not tool refresh support.
+- [x] Classified native-tool suppression and sandbox control as Phase 4 partial support.
+  Completion evidence: Codex exposes sandbox, permission profiles, config, and `dynamicTools`, but not SDK-shaped `available_tools` / `excluded_tools`; Phase 4 must implement locked Chatpilot lane controls and benchmark native-tool suppression.
+- [x] Confirmed basic isolated `CODEX_HOME` auth inheritance.
+  Completion evidence: copied isolated home starts app-server and `account/read` succeeds; token refresh / 401 recovery remains a later production-like validation.
 
 ## Completed: Runtime Adapter Refactor Phase 3 @2026-06-04-1710
 

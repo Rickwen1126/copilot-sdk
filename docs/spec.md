@@ -1,7 +1,7 @@
 # Copilot SDK Canonical Spec
 
 Created: 2026-05-16
-Last Updated: 2026-06-01 14:05
+Last Updated: 2026-06-04 20:28
 Status: Active
 
 ## Purpose
@@ -22,12 +22,15 @@ This repo provides the Copilot SDK and the surrounding docs, examples, tests, an
 - Downstream Chatpilot acceptance is covered by [nodejs/examples/chatpilot-runtime-acceptance.ts](../nodejs/examples/chatpilot-runtime-acceptance.ts). It runs isolated Chatpilot `/cli/chat` new-session and run-session flows against both `Copilot SDK + Copilot CLI` and `Copilot SDK + Codex adapter + Codex app-server`, then verifies SDK-visible logs, tool intent, session reuse, adapter transcript, and SQLite memory side effects.
 - Current conformance artifacts are indexed in [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md).
 - Deferred and unsupported runtime capabilities are recorded in [docs/integrations/codex-sdk-runtime-profile/unsupported-capabilities.md](./integrations/codex-sdk-runtime-profile/unsupported-capabilities.md).
+- Production readiness gaps for running the Chatpilot live runtime on the Codex backend are tracked in [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md). Phase 3.5 capability spike is complete and summarized in [codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json); Phase 4 implementation now starts from those lifecycle, resume, tool-refresh, sandbox, and auth constraints.
 
 ## Canonical Entrypoints
 
 - Active todo: [docs/todo.md](./todo.md)
 - Completed todo archive: [docs/todo-finished.md](./todo-finished.md)
 - Runtime backend guide: [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md)
+- Production readiness gate: [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md)
+- Production capability spike evidence: [docs/integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json)
 - Session continuity: [.progress/progress.md](../.progress/progress.md)
 
 ## Architecture Diagram

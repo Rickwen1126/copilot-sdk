@@ -1,0 +1,66 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "02 - Module Overview: Codex Adapter Knowledge Boundaries",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 這條 tour 其實是在看什麼\n\n這條 tour 是在看 Codex adapter 目前哪裡把 protocol knowledge 放對了，哪裡開始出現 temporal decomposition 的味道：流程被切成 receive / parse / map / emit，但 Codex wire shape、Copilot SDK contract、session lifecycle、approval policy 仍然散在多個位置。\n\n如果先記不住細節，先抓住每個 step 只是在回答一個問題：**這段 code 到底在隱藏哪種知識，還是只是按時間順序把事情拆開？**\n\n## 錨定已知\n\n可以把它想成 HTTP server 的 request pipeline。壞切法是每個 middleware 都自己 parse URL、headers、body、auth token；好切法是入口把 HTTP wire format 轉成穩定 request model，後面只處理內部語言。這裡的 Codex adapter 也是一樣：Codex app-server protocol 應該只在 Codex-facing boundary 被理解一次。\n\n## 這條路徑在解決什麼問題\n\n我們要把 Codex app-server 接成 Copilot SDK 可以使用的 runtime backend。這件事本質上不是簡單 proxy，而是 protocol adapter：一邊是 Copilot SDK JSON-RPC session/tool/permission contract，另一邊是 Codex app-server thread/turn/item/requestApproval/tool/call contract。\n\n## 這條路徑展示什麼 mental model\n\n這條 tour 要建立的 mental model 是：**模組切分不是照事件流動時間切，而是照 knowledge ownership 切。** 入口可以很懂 Codex，但 Codex 知識不能一路流到 presenter、harness、session facade。出口可以很懂 Copilot SDK，但 SDK contract 也不該回滲到 Codex reader。\n\n## 為什麼值得讀\n\n這是接下來 cleanup 的判準：不是看到大檔案就拆，也不是看到 if/else 就抽象，而是看同一份 design decision 是否被多處理解。若 protocol 改動需要改四個地方，就是 information leakage；若只改 reader/presenter 和對應測試，boundary 就開始成立。"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 298,
+      "endLine": 504,
+      "ref": "a3e273c9df5ab89c559262edb2de02fe42114cad",
+      "title": "Pure Mapper Cluster — 最適合先抽出的 knowledge pocket",
+      "description": "## Insight\n\n**機制：** 這一段集中處理 command approval、file approval、dynamic tool descriptor、tool result 等 shape translation。它其實已經是 mapper 層，只是目前還住在同一個巨大 adapter 檔案裡。\n\n**故障模式：** 如果 Codex approval response shape 或 Copilot permission request shape 改了，現在會直接改到主 adapter 檔，容易順手碰到 session orchestration 或 socket handling。這會讓 mapper knowledge 和 runtime state knowledge 混在一起。\n\n**設計取捨：** 抽成 `codexMapper` / `permissionMapper` 的好處是 protocol shape 改動可被 characterization tests 鎖住；代價是要先定義清楚 mapper 只能做 translation，不可以開始查 session、不可以送 RPC、不可以寫 transcript。\n\n## 白話解析\n\n這段在整條鏈上扮演翻譯字典。它其實就是在把 Codex 的 approval/tool 格式翻成 SDK 聽得懂的格式，再把 SDK 的結果翻回 Codex。你會在 command approval、file approval、custom tool call 的行為裡看到它的效果；壞掉時通常不是 server 起不來，而是 permission kind、tool result success/error、decision 值對不上。\n\n## Code Detail\n\n**這段在幹嘛：** `mapCodexCommandApprovalToPermissionRequest`、`mapCodexFileChangeApprovalToPermissionRequest`、`dynamicToolsFromDescriptors`、`mapSdkToolResultToCodexDynamicToolResponse` 都是純資料轉換。\n\n**為什麼這樣寫：**\n- 好處：目前函式多數是 pure function，抽離成本低。\n- 好處：這些 function 已經有明確 input/output，可以先補 mapper-level tests。\n- 好處：先抽 mapper 不會改 runtime behavior，是低風險 cleanup 起點。\n- 壞處：有些函式仍依賴 Codex/Copilot 命名細節，抽出去時要避免只換檔名不換 boundary。\n- 壞處：如果沒有 normalized internal model，mapper 可能變成另一個 protocol 雜包。\n\n**思考問題：**\n1. 哪些函式可以完全不需要 `this` 就測？\n2. `permissionResult -> Codex decision` 是否應該和 `Codex request -> permissionRequest` 放同一個 module？\n3. mapper 的 public API 應該暴露 Codex wire type，還是先暴露 normalized adapter type？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 616,
+      "endLine": 799,
+      "ref": "a3e273c9df5ab89c559262edb2de02fe42114cad",
+      "title": "CodexAppServerClient — 這裡比較像真的 Gateway",
+      "description": "## Insight\n\n**機制：** `CodexAppServerClient` owning child process、JSON-RPC id、pending request、Codex transcript、request/notification routing。這是清楚的 runtime IO gateway：外部只需要 `request`、`notify`、`respond`、`onRequest`、`onNotification`。\n\n**故障模式：** 如果把 Codex event interpretation 放進這層，gateway 會從 transport owner 變成 protocol brain，後面就很難測。反過來，如果更上層也直接碰 child process / stdin / stdout，IO boundary 就破了。\n\n**設計取捨：** 目前這層深度不錯：它隱藏 spawn、initialize、pending timeout、transcript。代價是它仍回傳 raw JSON-RPC payload，所以上層必須懂 Codex method names。這是下一層 reader/normalizer 應該補的空位。\n\n## 白話解析\n\n這段在整條鏈上扮演 Codex app-server 的插座。它其實就是在負責把線接好、把 request 丟出去、把 response 或 callback 收回來。你會在啟動 Codex、initialize 失敗、request timeout、app-server stderr log 這些地方看到它的效果。\n\n## Code Detail\n\n**這段在幹嘛：** `start()` spawn `codex app-server`，stdout 每行 JSON parse 後分成 request / notification / response；`request()` 管 id 與 timeout；`respond()` 回 Codex callback。\n\n**為什麼這樣寫：**\n- 好處：transport complexity 被集中，其他層不用知道 stdin/stdout framing。\n- 好處：transcript 在 gateway 產生，有利於 conformance evidence。\n- 好處：request timeout 在同一層處理，避免每個 caller 自己包 timeout。\n- 壞處：上層仍需要自己判斷 `item/tool/call`、`turn/completed` 等 Codex method。\n- 壞處：JSON parse fallback 保留 raw line，有 debug 彈性，但 typed boundary 較弱。\n\n**思考問題：**\n1. 這層是否應該知道 `thread/start` 是什麼？目前答案是不用。\n2. 如果未來 Codex app-server 改 framing，哪一層應該改？\n3. `summary()` 回 raw transcripts 是 evidence surface 還是 leakage surface？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 801,
+      "endLine": 958,
+      "ref": "a3e273c9df5ab89c559262edb2de02fe42114cad",
+      "title": "Adapter Server Facade — 現在同時背太多角色",
+      "description": "## Insight\n\n**機制：** `CodexCopilotAdapterServer` 同時管理 SDK TCP server、SDK request handlers、Codex client lifecycle、session maps、thread maps、transcripts、file snapshots、pending dynamic tool calls、runtime options。這是可工作的 facade，但它不只是 facade，也承擔了 orchestration、state store、protocol adapter、event presenter。\n\n**故障模式：** 新增一個 SDK method 或 Codex event 時，很容易直接往這個 class 裡塞，最後所有變化都往同一個類別集中。這不是 temporal decomposition 的四段式問題，而是另一種 shallow facade：入口名字很好，但內部把所有知識都吞了。\n\n**設計取捨：** 短期 spike 這樣很好，因為能快速證明 replaceability。長期 cleanup 應該保留這個 facade 作為 public boundary，但把純 mapper、Codex event reader、Copilot event presenter、session registry 拆到更深的 module。\n\n## 白話解析\n\n這段在整條鏈上扮演 adapter 的總門面。它其實就是在讓 Copilot SDK 以為自己接到一個 CLI server，但背後轉去 Codex app-server。你會在 `clientOptions()`、`session.create`、`session.send`、`permission.request`、tool call 全部看到它的效果；問題是現在太多細節都在這個門面裡。\n\n## Code Detail\n\n**這段在幹嘛：** constructor 建立 default runtime options；`start()` 啟動 Codex 並註冊 Codex callbacks；`bindSocket()` 建立 SDK-facing JSON-RPC handlers。\n\n**為什麼這樣寫：**\n- 好處：public API 非常簡單，外部只要 new server、start、拿 clientOptions。\n- 好處：spike 階段所有 flow 在一處可追，debug 快。\n- 好處：transcript 與 connection lifecycle 目前容易收集。\n- 壞處：facade 邊界太胖，容易變成 god object。\n- 壞處：SDK method registration 和 business behavior 綁在一起，未來 method 多了會膨脹。\n\n**思考問題：**\n1. `CodexCopilotAdapterServer` 最後應該留下哪些 public responsibilities？\n2. 哪些 private fields 其實代表另一個 module 還沒長出來？\n3. 如果要新增 Gemini CLI backend，這個 class 哪些地方不該被複製？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 1393,
+      "endLine": 1571,
+      "ref": "a3e273c9df5ab89c559262edb2de02fe42114cad",
+      "title": "Codex Callback Handling — Temporal Decomposition 風險最高的地方",
+      "description": "## Insight\n\n**機制：** `handleCodexNotification` 和 `handleCodexRequest` 是目前最明顯的 protocol decision hub。它們同時判斷 Codex method、抽 thread/session、處理 file-change snapshot、轉成 SDK event、轉成 permission request、處理缺 session/connection fallback。\n\n**故障模式：** 如果 Codex 把 `item/completed`、`turn/completed`、`item/tool/call` 或 approval method shape 改掉，這裡會直接改。但因為這裡還混著 session lookup、SDK notification、permission request、error fallback，改 protocol 時容易碰到不該碰的 orchestration。這就是 information leakage 的高風險區。\n\n**設計取捨：** 可以先不追求漂亮 framework，而是切出兩個很實際的 boundary：`readCodexRuntimeEvent(notification/request)` 只懂 Codex；`presentSdkEvent(runtimeEvent)` 只懂 Copilot SDK。主 server 只負責拿 session/connection 和 dispatch。\n\n## 白話解析\n\n這段在整條鏈上扮演 Codex callback 的轉運站。它其實就是在看 Codex 丟回來的是完成訊息、turn 結束、approval request，還是 tool call，然後決定要通知 SDK 或回覆 Codex。你會在 assistant message 沒出現、session idle 沒送、permission request 沒觸發、tool call 卡住時看到它的故障。\n\n## Code Detail\n\n**這段在幹嘛：** notification path 處理 `item/completed` 和 `turn/completed`；request path 處理 command approval、file approval、dynamic tool call，並把 permission flow 轉給 SDK connection。\n\n**為什麼這樣寫：**\n- 好處：目前所有 Codex callback 行為集中，spike 時很容易觀察。\n- 好處：early-return fallback 清楚處理缺 thread/session/connection 的情境。\n- 好處：permission request transcript 有完整 evidence。\n- 壞處：Codex method string、session state、SDK method string 同時出現在同一段。\n- 壞處：新增 Codex callback type 時，這段會變成更大的 if/else hub。\n\n**思考問題：**\n1. `notification.method === \"item/completed\"` 這個知識應該只有哪個 module 知道？\n2. `permission.request` 這個 SDK contract 是否應該出現在 Codex request reader 裡？\n3. 如果 `turn/completed` 多一種 status，現在改動會不會順手碰到 SDK event emit？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 1574,
+      "endLine": 1695,
+      "ref": "a3e273c9df5ab89c559262edb2de02fe42114cad",
+      "title": "Dynamic Tool Flow — v2/v3 已經露出 Strategy 軸，但還沒隔離",
+      "description": "## Insight\n\n**機制：** dynamic tool call 目前依 `protocolVersion` 分成 v3 event-based pending tool call 和 v2 direct `tool.call` request。這是真正的 variation axis，不是空泛 Strategy。但它還嵌在 adapter server class 裡。\n\n**故障模式：** 如果 SDK protocol v4 或另一個 runtime backend 出現，這段容易繼續加 `if protocolVersion === ...`。到那時候它就會從清楚分支變成策略大雜包。\n\n**設計取捨：** 現在不必急著抽 Strategy framework；比較務實的是先讓 tool-call protocol bridge 成為獨立 module。等真的有第三種行為時，再把 v2/v3 變成 policy/strategy map。\n\n## 白話解析\n\n這段在整條鏈上扮演 custom tool 的橋。它其實就是在決定 Codex 要呼叫 SDK tool 時，是走 v3 的 pending event，還是 v2 的直接 request。你會在 `session.tools.handlePendingToolCall`、`external_tool.requested`、`tool.call` 這幾個行為裡看到差異。\n\n## Code Detail\n\n**這段在幹嘛：** 先檢查 tool name 和 session descriptor；v3 建 pending map 並 emit `external_tool.requested`；v2 直接向 SDK connection 發 `tool.call`，再把結果轉回 Codex dynamic tool response。\n\n**為什麼這樣寫：**\n- 好處：目前 v2/v3 行為都能被支援，且分支很直接。\n- 好處：v3 pending flow 接近 Copilot SDK 的現行 tool-call behavior。\n- 好處：v2 direct request 保留舊 protocol compatibility。\n- 壞處：protocol variation 和 session orchestration 混在同一個 class。\n- 壞處：`params.tool`、`params.callId`、`params.arguments` 這些 Codex field 直接散在 server method 裡。\n\n**思考問題：**\n1. v2/v3 差異是 Strategy，還是 mapper 內部細節？\n2. pending tool call map 應該屬於 session registry、tool bridge，還是 server facade？\n3. 如果 Codex tool call field 改名，理想上要改幾個地方？"
+    },
+    {
+      "file": "nodejs/examples/copilot-codex-adapter-spike.ts",
+      "line": 322,
+      "endLine": 629,
+      "ref": "a3e273c9df5ab89c559262edb2de02fe42114cad",
+      "title": "Spike Harness Normalization — 測試也在複製 protocol knowledge",
+      "description": "## Insight\n\n**機制：** spike harness 需要把 Copilot CLI baseline 和 Codex adapter run 都轉成 comparable ledger，所以它有 `describeShape`、`extractMethod`、`extractSessionId`、`directionEndpoints`、`normalizeTranscript`。這些是必要的 conformance evidence，但目前和 scenario runner、tool fixtures、approval probes 放在同一個大檔案。\n\n**故障模式：** 測試檔如果自己懂太多 raw transcript shape，production adapter 改 boundary 時，測試可能跟著壞；更糟的是測試 normalization 可能和 production normalization 分岔，造成測的是另一套理解。\n\n**設計取捨：** conformance harness 需要保留豐富 log/dataflow checks，但要拆成 `ledgerNormalizer`、`scenarioRunner`、`assertionBuilder`、`fixtures`。這不是為了漂亮，而是避免測試本身成為第二個 adapter。\n\n## 白話解析\n\n這段在整條鏈上扮演黑盒觀察員。它其實就是在把兩邊 runtime 的 log 翻成同一種 ledger，好比較 dataflow 是否一致。你會在 conformance report、traceParity、dataAssertion、intentAssertion 這些結果裡看到它的效果。\n\n## Code Detail\n\n**這段在幹嘛：** 將 raw transcript entry 轉成 normalized ledger entry，推斷 source/target/direction/method/sessionId/requestId，並 sanitize payload。\n\n**為什麼這樣寫：**\n- 好處：測試不是只看 exit code，而是驗證 trace、data、intent。\n- 好處：sanitize/shape 比對避免把敏感完整 payload 寫進報告。\n- 好處：同時支援 baseline Copilot CLI 與 Codex adapter。\n- 壞處：extractor 很多，已經有獨立 module 的形狀。\n- 壞處：測試 normalization 若和 adapter normalization 不共享概念，會造成雙重 truth。\n\n**思考問題：**\n1. conformance ledger 是 production model，還是 test-only observation model？\n2. 哪些 extractor 應該保留在 harness，哪些應該回到 adapter shared test utilities？\n3. 測試要驗 raw protocol detail，還是驗 normalized behavior？"
+    },
+    {
+      "file": "nodejs/examples/copilot-codex-adapter-spike.ts",
+      "line": 1104,
+      "endLine": 1217,
+      "ref": "a3e273c9df5ab89c559262edb2de02fe42114cad",
+      "title": "Conformance Checks — 這是 cleanup 後應該保留的安全網",
+      "description": "## Insight\n\n**機制：** `buildCoreNewSessionCheck` 把 baseline Copilot CLI 與 Codex adapter 的 trace hops、SDK-visible events、assistant intent 拆開驗。這非常符合我們的測試目標：log dataflow 行為意圖一致，而不是只看能不能跑完。\n\n**故障模式：** 如果 cleanup 只改結構但沒有保留這類 characterization checks，就可能把 behavior parity 弄丟。尤其 adapter cleanup 容易產生「測試通過但 log hop 少了」或「message 有出現但 session lifecycle 不一致」的假通過。\n\n**設計取捨：** 這段檢查可以留，但應該從 spike script 提升成 conformance harness module。它不該知道如何啟動每個 backend；它只應該吃 normalized ledger 和 scenario result，輸出 pass/fail evidence。\n\n## 白話解析\n\n這段在整條鏈上扮演驗收官。它其實就是在問：Copilot CLI 原生路徑和 Codex adapter 路徑，有沒有走過對應的 request hop、吐出對應 event、完成同一個使用者意圖。你會在 cleanup 後的 regression 測試裡靠它確認我們沒有只是把 code 拆漂亮而已。\n\n## Code Detail\n\n**這段在幹嘛：** 分別檢查 baseline 與 adapter 是否有 `session.create/session.send/session.destroy`、`thread/start/turn/start` 等 hop，是否有 `session.start/assistant.message/session.idle`，以及 assistant message 是否符合 prompt intent。\n\n**為什麼這樣寫：**\n- 好處：把 trace parity、data assertion、intent assertion 分開，能定位壞在哪一層。\n- 好處：比單純 snapshot 或 stdout 更能防 silent failure。\n- 好處：直接對齊目前 integration goal。\n- 壞處：目前 check builder 和 scenario/global env 綁太近。\n- 壞處：method names 仍以 string literal 散在 test logic 裡，後續可收斂成 constants 或 profile definition。\n\n**思考問題：**\n1. cleanup 第一階段應該先新增哪些 characterization tests 才能放心抽 mapper？\n2. `traceParity` 和 `dataAssertion` 哪個更能抓 protocol adapter 壞掉？\n3. 如果 Codex adapter 不可能 100% 複製 Copilot CLI 某個 hop，report 應該怎麼表達 accepted difference？"
+    }
+  ]
+}

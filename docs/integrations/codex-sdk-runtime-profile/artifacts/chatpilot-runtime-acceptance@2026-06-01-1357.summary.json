@@ -1,0 +1,59 @@
+{
+  "created": "2026-06-01 14:05",
+  "status": "pass",
+  "rawArtifact": "/tmp/chatpilot-codex-phase6-all-20260601-v1.json",
+  "sha256": "4996a19d9618f0429dba7f5f3ad1b091287b837c4e5ffa79c678366d474e20a9",
+  "runId": "b09604f7-e0f4-4c87-8b75-8dccd96e8058",
+  "backends": ["copilot-cli", "codex-adapter"],
+  "reports": [
+    {
+      "backend": "copilot-cli",
+      "status": "pass",
+      "marker": "PHASE6_copilot_cli_9ba683ef",
+      "logEvidence": {
+        "sessionSetupCount": 1,
+        "createdOrResumedCount": 1,
+        "reuseCount": 1,
+        "saveToolCallCount": 1,
+        "saveToolResultCount": 1,
+        "listToolCallCount": 1,
+        "listToolResultCount": 1,
+        "sdkSendCount": 2,
+        "sdkResponseCount": 2
+      },
+      "dbRows": 1
+    },
+    {
+      "backend": "codex-adapter",
+      "status": "pass",
+      "marker": "PHASE6_codex_adapter_faafdee7",
+      "logEvidence": {
+        "sessionSetupCount": 1,
+        "createdOrResumedCount": 1,
+        "reuseCount": 1,
+        "saveToolCallCount": 1,
+        "saveToolResultCount": 1,
+        "listToolCallCount": 1,
+        "listToolResultCount": 1,
+        "sdkSendCount": 2,
+        "sdkResponseCount": 2
+      },
+      "dbRows": 1,
+      "adapterTraceIncludes": ["item/tool/call", "tool.call"]
+    }
+  ],
+  "crossBackendAssertions": [
+    {
+      "name": "both backends pass the same Chatpilot app-level acceptance flow",
+      "status": "pass"
+    },
+    {
+      "name": "both backends persist one or more memo rows for their route",
+      "status": "pass"
+    },
+    {
+      "name": "both backends use the same SDK-visible tool intents",
+      "status": "pass"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "artifact": "refactor-phase2-command-mapper",
+  "generatedAt": "2026-06-03 22:48",
+  "status": "pass",
+  "scope": "Extract command approval request/result translation into pure mapper module and insert it back into the live adapter flow.",
+  "code": {
+    "mapper": "nodejs/src/experimental/codexAdapterMappers.ts",
+    "adapter": "nodejs/src/experimental/codexAdapter.ts",
+    "tests": [
+      "nodejs/test/codex-adapter-mappers.test.ts",
+      "nodejs/test/codex-adapter.test.ts"
+    ]
+  },
+  "localVerification": {
+    "typecheck": "pass",
+    "eslint": "pass",
+    "vitest": {
+      "status": "pass",
+      "files": 2,
+      "tests": 11
+    },
+    "build": "pass"
+  },
+  "selectedProfileConformance": {
+    "sourceOutput": "/tmp/copilot-codex-refactor-phase2-command-mapper-20260603-2244.json",
+    "runId": "8a974fdb-bbab-4715-84de-cf129c8c34ef",
+    "verdict": "pass",
+    "checkStatusCounts": {
+      "pass": 7
+    },
+    "ledgerCounts": {
+      "copilotCli": 387,
+      "codexAdapter": 1704
+    },
+    "failedChecks": []
+  },
+  "chatpilotAcceptance": {
+    "sourceOutput": "/tmp/chatpilot-codex-refactor-phase2-command-mapper-20260603-2248.json",
+    "runId": "8d9d66af-278f-4ca1-8b20-869adb5286c5",
+    "status": "pass",
+    "backendStatus": {
+      "copilot-cli": "pass",
+      "codex-adapter": "pass"
+    },
+    "crossBackendAssertions": [
+      "both backends pass the same Chatpilot app-level acceptance flow",
+      "both backends persist one or more memo rows for their route",
+      "both backends use the same Chatpilot SDK-visible tool intents"
+    ]
+  }
+}

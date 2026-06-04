@@ -1,0 +1,73 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "01 - Sky Eye: Copilot SDK (Node.js) Architecture Overview",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## @github/copilot-sdk 是什麼\n\nGitHub 官方的 TypeScript SDK，讓開發者透過 JSON-RPC 協定以程式化方式控制 GitHub Copilot CLI。目前處於 technical preview 階段。\n\n## 這條路徑在解決什麼問題\n\n開發者想要把 Copilot 的 AI 能力嵌入到自己的應用程式中（IDE 外掛、CLI 工具、自動化腳本），但 Copilot CLI 是獨立的 server process。這個 SDK 解決了：\n\n1. **進程管理**：自動 spawn/connect 到 Copilot CLI server\n2. **通訊協定**：透過 JSON-RPC over stdio/TCP 與 server 溝通\n3. **Session 管理**：建立、恢復、銷毀對話 session\n4. **雙向互動**：支援 tool calling、permission handling、hooks 等複雜交互\n\n## 為什麼值得讀\n\n- 理解 JSON-RPC 在 Node.js 的實戰用法（stdio + TCP 雙模式）\n- 學習 client-server SDK 的經典分層架構：Client（連線管理） → Session（對話狀態） → Types（型別契約）\n- 看到 event-driven architecture 如何在 TypeScript 中實現 type-safe 的事件系統\n- 理解「帶 handler 的 tool 定義」如何讓 server 回呼 client 執行邏輯\n\n## 專案結構\n\n```\nnodejs/src/\n├── index.ts              ← Public API 出口\n├── client.ts             ← CopilotClient（連線 + session 工廠）\n├── session.ts            ← CopilotSession（對話 + 事件分派）\n├── types.ts              ← 所有型別定義\n├── sdkProtocolVersion.ts ← 協定版本號（自動生成）\n└── generated/\n    └── session-events.ts ← SessionEvent union type（從 schema 自動生成）\n```"
+    },
+    {
+      "file": "nodejs/src/index.ts",
+      "line": 11,
+      "ref": "05e3c46c8c23130c9c064dc43d00ec78f7a75eab",
+      "title": "Public API Surface — 只暴露三個核心",
+      "description": "## 這段在幹嘛\n\nSDK 的公開 API 入口。只 export 三個 concrete 的東西：`CopilotClient`、`CopilotSession`、`defineTool`，其餘全是 type-only exports。\n\n## 為什麼這樣寫\n\n**好處：**\n- **最小 API surface**：使用者只需要認識 Client + Session + defineTool 三個東西就能開始用\n- **Type-only exports 不進 runtime bundle**：所有 interface/type 用 `export type` 確保 tree-shaking\n- **單一入口**：`import { CopilotClient } from \"@github/copilot-sdk\"` 就夠了\n\n**壞處：**\n- Session events 的型別（如 `AssistantMessageEvent`）藏在 session.ts re-export，discoverability 不夠直覺\n\n## 思考問題\n1. 為什麼 `defineTool` 需要單獨 export，不直接讓使用者自己組裝 Tool object？\n2. 這麼多 type exports（約 40 個），使用者怎麼知道哪些是常用的？\n3. 如果要新增一個 public class（例如 `CopilotAgent`），需要改哪些地方？"
+    },
+    {
+      "file": "nodejs/src/client.ts",
+      "line": 120,
+      "ref": "05e3c46c8c23130c9c064dc43d00ec78f7a75eab",
+      "title": "CopilotClient — SDK 的中樞控制器",
+      "description": "## 這段在幹嘛\n\n`CopilotClient` 是整個 SDK 的核心類別，職責：\n1. **spawn 或連接** Copilot CLI server（支援 stdio / TCP 兩種傳輸模式）\n2. **管理 JSON-RPC connection**（基於 `vscode-jsonrpc`）\n3. **作為 session factory**：`createSession()` / `resumeSession()`\n4. **路由 server 回呼**：tool calls、permission requests、hooks 全在這裡分派到對應 session\n\n## 為什麼這樣寫\n\n**好處：**\n- **Client 是 connection owner，Session 是 conversation owner**：職責分離清楚\n- **雙模式傳輸**（stdio 預設 / TCP 備選）：stdio 不需要 port，零配置；TCP 支援連接遠端或已存在的 server\n- **autoStart / autoRestart**：lazy initialization + resilience，使用者不用手動管理生命週期\n\n**壞處：**\n- Client 直接持有所有 session 的 tool handler / permission handler 路由邏輯，隨著功能增加會膨脹\n- `sessions: Map<string, CopilotSession>` 沒有上限管控\n\n## 思考問題\n1. 為什麼 Client 要負責 `handleToolCallRequest` 而不是讓 Session 自己處理？（提示：看 JSON-RPC connection 的 ownership）\n2. `autoRestart` 在什麼場景有用？什麼場景反而有害？\n3. 如果要支援第三種傳輸模式（如 WebSocket），需要改哪些地方？"
+    },
+    {
+      "file": "nodejs/src/client.ts",
+      "line": 984,
+      "ref": "05e3c46c8c23130c9c064dc43d00ec78f7a75eab",
+      "title": "Server Spawning — 用 Node.js 啟動 Copilot CLI",
+      "description": "## 這段在幹嘛\n\n`startCLIServer()` 負責 spawn 一個 Copilot CLI 子進程。關鍵流程：\n1. 組裝啟動參數（`--headless`、`--stdio` / `--port`、auth flags）\n2. 判斷是 `.js` 檔案（用 `node` 執行）還是原生 binary（直接執行）\n3. stdio 模式立即 resolve；TCP 模式等待 stdout 輸出 `listening on port XXXX`\n4. 設定 10 秒 timeout 避免 server 啟動卡死\n\n## 為什麼這樣寫\n\n**好處：**\n- **自動偵測 bundled CLI 路徑**：`getBundledCliPath()` 透過 `import.meta.resolve` 找到 `@github/copilot` 套件裡的 `index.js`\n- **環境變數隔離**：主動刪除 `NODE_DEBUG` 避免 debug output 污染 stdout（在 stdio 模式下 stdout 是 JSON-RPC 通道）\n- **auth token 走環境變數**：避免 token 出現在 command line args 被 `ps` 看到\n\n**壞處：**\n- TCP 模式靠 regex 解析 stdout 找 port，如果 CLI 更改輸出格式就壞了\n- 10 秒 hard timeout 不可配置\n\n## 思考問題\n1. 為什麼 stdio 模式是 `[\"pipe\", \"pipe\", \"pipe\"]` 但 TCP 模式是 `[\"ignore\", \"pipe\", \"pipe\"]`？\n2. `getBundledCliPath()` 用了 `import.meta.resolve`，這對 CommonJS 專案有什麼影響？\n3. 如果 CLI server 啟動需要超過 10 秒（例如首次安裝），使用者該怎麼辦？"
+    },
+    {
+      "file": "nodejs/src/client.ts",
+      "line": 1167,
+      "ref": "05e3c46c8c23130c9c064dc43d00ec78f7a75eab",
+      "title": "JSON-RPC Handler 註冊 — 雙向通訊的核心",
+      "description": "## 這段在幹嘛\n\n`attachConnectionHandlers()` 在 JSON-RPC connection 上註冊所有 handler，建立 **雙向通訊**：\n\n- **Notifications（server → client）**：`session.event`、`session.lifecycle`\n- **Requests（server → client，需要 response）**：`tool.call`、`permission.request`、`userInput.request`、`hooks.invoke`\n\n這是整個 SDK 的「神經中樞」——server 要 client 做事（執行 tool、請求權限、觸發 hook），都經過這裡路由。\n\n## 為什麼這樣寫\n\n**好處：**\n- **Notification vs Request 分得清楚**：event 是單向通知（fire-and-forget），tool call 需要 response\n- **統一路由**：所有 server → client 的互動都在一個地方，容易追蹤和 debug\n- **Session 隔離**：每個 request 帶 `sessionId`，Client 只是路由器，實際邏輯委派給對應 Session\n\n**壞處：**\n- handler 越加越多，`attachConnectionHandlers` 會越來越長\n- 每個 handler 的 params 型別都要手動 cast，沒有用 JSON-RPC 的 typed request/response 機制\n\n## 思考問題\n1. `onNotification` 和 `onRequest` 在 JSON-RPC 規格中有什麼差別？為什麼 `session.event` 用 notification？\n2. 如果 server 發了一個 `tool.call` 但 `sessionId` 不存在，現在會怎樣？這安全嗎？\n3. connection `onClose` 時觸發 reconnect，但 reconnect 會呼叫 `stop()` 再 `start()`——這中間 sessions 會怎樣？"
+    },
+    {
+      "file": "nodejs/src/session.ts",
+      "line": 57,
+      "ref": "05e3c46c8c23130c9c064dc43d00ec78f7a75eab",
+      "title": "CopilotSession — 對話狀態與事件分派",
+      "description": "## 這段在幹嘛\n\n`CopilotSession` 代表一個對話 session，職責：\n1. **發送訊息**：`send()` / `sendAndWait()`\n2. **接收事件**：透過 `on()` 訂閱 typed 或 wildcard events\n3. **管理 tool handlers**：tool 定義的 handler 存在 session 上\n4. **權限與 hooks**：permission handler、user input handler、hooks 都掛在 session\n\nSession 不直接持有 connection——它拿到的是 Client 傳入的 `MessageConnection` reference。\n\n## 為什麼這樣寫\n\n**好處：**\n- **Type-safe event system**：`on(\"assistant.message\", handler)` 的 handler 參數自動推導出正確的 event 型別\n- **Unsubscribe pattern**：`on()` 回傳 cleanup function，避免 memory leak\n- **Session 是輕量物件**：不持有 connection 的 ownership，多個 session 共用同一條 connection\n\n**壞處：**\n- `_dispatchEvent`、`_handlePermissionRequest` 等 internal methods 用 `_` prefix 但仍然 public，沒有 TypeScript 的 `#private` 保護\n- session.destroy() 之後 connection reference 沒被清除，理論上還能呼叫 send()\n\n## 思考問題\n1. `sendAndWait()` 內部先 `on()` 再 `send()`，為什麼順序不能反過來？\n2. 如果兩個 session 共用同一個 connection，事件怎麼保證不會串到錯的 session？\n3. `destroy()` 清除了 handlers 但沒有清除 connection，這是 bug 還是 feature？"
+    },
+    {
+      "file": "nodejs/src/types.ts",
+      "line": 144,
+      "ref": "05e3c46c8c23130c9c064dc43d00ec78f7a75eab",
+      "title": "Tool 定義 — Zod + JSON Schema 雙軌支援",
+      "description": "## 這段在幹嘛\n\n`Tool<TArgs>` interface 定義了一個 tool 的結構：name、description、parameters（schema）、handler。關鍵設計是 `parameters` 接受兩種格式：\n\n1. **Zod schema**：帶 `toJSONSchema()` 方法，能自動推導 handler 的參數型別\n2. **Raw JSON Schema**：普通 object，適合從 server 拿到的動態 schema\n\n`defineTool()` helper function 解決了 TypeScript 無法從 Zod schema 自動推導 generic type 的問題。\n\n## 為什麼這樣寫\n\n**好處：**\n- **DX 極佳**：用 Zod 定義 schema 時，handler 的 `args` 參數自動有正確型別，不需要手動標註\n- **漸進式遷移**：已有 JSON Schema 的使用者不需要引入 Zod\n- **Client 端負責轉換**：`toJsonSchema()` 在 `createSession` 時呼叫，server 永遠只看到 JSON Schema\n\n**壞處：**\n- `ZodSchema` interface 是 duck-typed（只看 `toJSONSchema` 方法），如果 Zod 改了方法名就壞了\n- `defineTool` 是必需的語法糖——沒有它，Zod 的 type inference 就不 work\n\n## 思考問題\n1. 為什麼 `parameters` 要同時支援 Zod 和 JSON Schema？只用一種不行嗎？\n2. `isZodSchema()` 用 duck typing 而非 `instanceof`，有什麼取捨？\n3. Tool handler 回傳 `Promise<unknown> | unknown`，為什麼不限制為特定型別？"
+    },
+    {
+      "file": "nodejs/src/types.ts",
+      "line": 450,
+      "ref": "05e3c46c8c23130c9c064dc43d00ec78f7a75eab",
+      "title": "Hooks 系統 — Session 生命週期的攔截器",
+      "description": "## 這段在幹嘛\n\n`SessionHooks` 定義了 6 種生命週期 hook：\n- `onPreToolUse` / `onPostToolUse`：tool 執行前後攔截（可以修改 args / result）\n- `onUserPromptSubmitted`：使用者送出 prompt 時攔截（可以修改 prompt）\n- `onSessionStart` / `onSessionEnd`：session 開始 / 結束時觸發\n- `onErrorOccurred`：錯誤發生時觸發（可以決定 retry / skip / abort）\n\n每個 hook 都有明確的 Input / Output 型別，output 是 optional（不回傳就不修改）。\n\n## 為什麼這樣寫\n\n**好處：**\n- **攔截 + 修改模式**：PreToolUse 可以回傳 `modifiedArgs` 改變 tool 的輸入，PostToolUse 可以改 result\n- **Permission 決策下放**：PreToolUse 可以回傳 `permissionDecision: \"allow\" | \"deny\" | \"ask\"`\n- **型別安全**：每種 hook 有專屬的 input/output 型別，不是一個 `any` 打天下\n\n**壞處：**\n- Hook 執行失敗時靜默返回 undefined（`session.ts:456`），使用者不知道 hook 壞了\n- 只支援單一 handler per hook type，不能串連多個 middleware\n\n## 思考問題\n1. Hooks 和 event handlers（`session.on()`）有什麼根本差異？（提示：one is fire-and-forget, the other expects a return value）\n2. `PreToolUseHookOutput.permissionDecision` 和 `PermissionHandler` 有重疊，設計上怎麼取捨？\n3. 如果要支援 hook 優先序（多個 hook 串連），需要改什麼？"
+    },
+    {
+      "file": "nodejs/src/generated/session-events.ts",
+      "line": 13,
+      "ref": "05e3c46c8c23130c9c064dc43d00ec78f7a75eab",
+      "title": "SessionEvent — 自動生成的 35+ 種事件型別",
+      "description": "## 這段在幹嘛\n\n`SessionEvent` 是一個巨大的 discriminated union type，從 `@github/copilot/session-events.schema.json` 自動生成。涵蓋 35+ 種事件類型：\n\n- **Session 層**：`session.start` / `session.idle` / `session.error` / `session.shutdown` / `session.compaction_*`\n- **User 層**：`user.message`\n- **Assistant 層**：`assistant.message` / `assistant.message_delta` / `assistant.reasoning` / `assistant.usage`\n- **Tool 層**：`tool.execution_start` / `tool.execution_complete` / `tool.execution_progress`\n- **Subagent 層**：`subagent.started` / `subagent.completed` / `subagent.failed`\n- **Hook 層**：`hook.start` / `hook.end`\n\n每個事件都有 `id`、`timestamp`、`parentId`、`ephemeral` 共同欄位。\n\n## 為什麼這樣寫\n\n**好處：**\n- **Schema-first**：型別從 JSON Schema 生成，保證 SDK 和 server 的事件契約一致\n- **Discriminated union**：TypeScript 可以用 `event.type` 做 narrowing，`switch(event.type)` 自動推導 `event.data` 型別\n- **ephemeral 標記**：部分事件（如 `session.idle`、`assistant.message_delta`）是暫時性的，不需要持久化\n\n**壞處：**\n- 自動生成的程式碼很長（579 行），不容易一眼看出有哪些事件\n- 新增事件要改 schema → 跑 codegen → commit，流程比較重\n\n## 思考問題\n1. `ephemeral: true` 的事件和非 ephemeral 的有什麼行為差異？\n2. `parentId` 是用來建立事件之間的因果關係（如 tool.execution_start → tool.execution_complete），這在什麼場景有用？\n3. 如果你要新增一個 `assistant.code_suggestion` 事件，需要走什麼流程？"
+    },
+    {
+      "file": "nodejs/src/sdkProtocolVersion.ts",
+      "line": 11,
+      "ref": "05e3c46c8c23130c9c064dc43d00ec78f7a75eab",
+      "title": "Protocol Version — SDK 與 Server 的相容性守門員",
+      "description": "## 這段在幹嘛\n\n`SDK_PROTOCOL_VERSION = 2` 是一個自動生成的常數，在 `client.ts:727` 的 `verifyProtocolVersion()` 中使用。Client 啟動時會 ping server，比對雙方的 protocol version，不一致就直接拋錯。\n\n## 為什麼這樣寫\n\n**好處：**\n- **Fail fast**：版本不相容時立即報錯，避免使用者在 runtime 遇到詭異的行為\n- **自動生成**：`npm run update:protocol-version` 從上層 `sdk-protocol-version.json` 同步，避免手動維護遺漏\n- **簡單粗暴**：整數版本號，不需要 semver 比對邏輯\n\n**壞處：**\n- 嚴格相等比對意味著任何 protocol 變動都是 breaking change，即使是向後相容的\n- 沒有 version negotiation 機制（例如「server 支援 v1-v3，client 用 v2」）\n\n## 思考問題\n1. 如果 protocol version 改用 semver range 比對（如 `^2.0.0`），架構上需要怎麼改？\n2. 這個版本號在整個 monorepo 中是怎麼同步的？（提示：看根目錄的 `sdk-protocol-version.json`）\n3. 為什麼用整數而不是 semantic versioning？在 SDK-server 的場景中有什麼好處？"
+    }
+  ]
+}

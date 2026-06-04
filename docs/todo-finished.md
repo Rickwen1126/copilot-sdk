@@ -1,0 +1,122 @@
+# Completed Todo Archive
+
+Created: 2026-05-16
+Last Updated: 2026-06-04 09:42
+Status: Archived
+
+This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Runtime Adapter Refactor Phase 2 @2026-06-04-0942
+
+Section source:
+
+- Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
+- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md)
+- Boundary references: [runtime adapter architecture boundary](./reference/runtime-adapter-architecture-boundary.md), [runtime adapter testing evidence](./reference/runtime-adapter-testing-evidence.md), [runtime adapter design patterns](./reference/runtime-adapter-design-patterns.md)
+- Code/Surface: [nodejs/src/experimental/codexAdapterMappers.ts](../nodejs/src/experimental/codexAdapterMappers.ts), [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/test/codex-adapter-mappers.test.ts](../nodejs/test/codex-adapter-mappers.test.ts), [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts)
+- Evidence artifacts: [refactor-phase2-command-mapper@2026-06-03-2248.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase2-command-mapper@2026-06-03-2248.summary.json), [refactor-phase2-file-approval-mapper@2026-06-04-0822.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase2-file-approval-mapper@2026-06-04-0822.summary.json), [refactor-phase2-mapper-layer@2026-06-04-0942.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase2-mapper-layer@2026-06-04-0942.summary.json)
+- Audit: [.audit/AUDIT-codex-adapter-phase2-mapper-layer-v1@2026-06-04-0942.md](../.audit/AUDIT-codex-adapter-phase2-mapper-layer-v1@2026-06-04-0942.md)
+- Review tour: [.tours/audit-codex-adapter-phase2-mapper-layer-20260604-0942.tour](../.tours/audit-codex-adapter-phase2-mapper-layer-20260604-0942.tour)
+- Source: refactor plan Phase 2; user request to preserve spike behavior while extracting minimal clean mapper bricks
+
+- [x] Extracted command approval request/result mapping into a pure adapter-local mapper module.
+  Completion evidence: dedicated tests in [nodejs/test/codex-adapter-mappers.test.ts](../nodejs/test/codex-adapter-mappers.test.ts), inserted into the live adapter flow, and no-regression gates recorded in [refactor-phase2-command-mapper@2026-06-03-2248.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase2-command-mapper@2026-06-03-2248.summary.json).
+- [x] Extracted file-change approval request/result mapping into the same pure mapper module.
+  Completion evidence: dedicated file approval tests, live adapter insertion, selected-profile conformance `runId=4f54f8b5-46bf-484e-a281-55631edf8458`, and Chatpilot acceptance `runId=40cf07a3-9bff-4d6e-aa05-8d4f0027dd6f`.
+- [x] Extracted SDK tool descriptor mapping, SDK tool result mapping, model list conversion, and sandbox request shape conversion.
+  Completion evidence: [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts) now imports these translations from [nodejs/src/experimental/codexAdapterMappers.ts](../nodejs/src/experimental/codexAdapterMappers.ts), and mapper tests fail on contract drift for missing evidence, default shapes, failed tool results, model capabilities, and sandbox aliases.
+- [x] Preserved Phase 1 functional behavior after inserting the completed mapper layer.
+  Completion evidence: local gates passed (`npx tsc --noEmit ...`, `npx eslint ...`, `npx vitest run test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts` with 2 files / 24 tests passing, and `npm run build`), selected-profile conformance `runId=dd467a11-24b7-4241-8ee4-93d19e8eb270`, verdict `pass`, 7/7 checks pass, `copilotCli=421` and `codexAdapter=1674` ledger entries, and Chatpilot acceptance `runId=15ec983d-293e-4142-9a67-fd203e64ffec`, status `pass`.
+- [x] Kept protocol-v2/v3 dynamic tool request normalization out of Phase 2 because it is not currently a pure mapper brick.
+  Completion evidence: the decision is recorded in [refactor-phase2-mapper-layer@2026-06-04-0942.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase2-mapper-layer@2026-06-04-0942.summary.json). Current protocol branching touches session state, pending tool-call lifecycle, SDK connection IO, and transcript emission; extracting it now would create pattern theater. Revisit during Phase 4/6 only if a real variant seam appears.
+
+## Completed: Runtime Adapter Refactor Phase 1 @2026-06-03-2242
+
+Section source:
+
+- Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
+- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md)
+- Boundary fitness: [docs/integrations/codex-sdk-runtime-profile/refactor/boundary-fitness.md](./integrations/codex-sdk-runtime-profile/refactor/boundary-fitness.md)
+- Code/Surface: [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts), [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/src/experimental/codexAdapterServer.ts](../nodejs/src/experimental/codexAdapterServer.ts), [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), [nodejs/examples/chatpilot-runtime-acceptance.ts](../nodejs/examples/chatpilot-runtime-acceptance.ts)
+- Evidence artifacts: [refactor-phase1-selected-profile-conformance@2026-06-03-2239.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase1-selected-profile-conformance@2026-06-03-2239.summary.json), [refactor-phase1-chatpilot-runtime-acceptance@2026-06-03-2231.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase1-chatpilot-runtime-acceptance@2026-06-03-2231.summary.json)
+- Source: refactor plan Phase 1; subagent review finding that characterization and executable boundary fitness must precede extraction
+
+- [x] Added top-down adapter-facing characterization tests without freezing the current mixed module layout.
+  Completion evidence: [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts) now covers root export guard, package export guard, core source import guard, capability flags, deferred profiles, named server boundary, and SDK-facing create/send behavior through a fake Codex gateway seam.
+- [x] Updated boundary fitness status with executable evidence and remaining expected violations.
+  Completion evidence: [docs/integrations/codex-sdk-runtime-profile/refactor/boundary-fitness.md](./integrations/codex-sdk-runtime-profile/refactor/boundary-fitness.md) records all current `passing-now` rules with test/artifact evidence; the remaining `CodexAppServerClient` public gateway export and stale inline harness oracle are explicitly assigned to Phase 3 and Phase 5.
+- [x] Passed local Phase 1 verification gates.
+  Completion evidence: `npx tsc --noEmit ...`, `npx eslint src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts test/codex-adapter.test.ts`, `npx vitest run test/codex-adapter.test.ts` with 7 tests passing, and `npm run build`.
+- [x] Passed broad selected-profile conformance and Chatpilot runtime acceptance after rerunning sandbox-blocked commands outside the sandbox.
+  Completion evidence: selected-profile conformance `runId=34902c4f-117f-4e89-8cf9-590ce9ba3640`, verdict `pass`, 7/7 checks pass, `copilotCli=396` and `codexAdapter=1570` ledger entries; Chatpilot acceptance `runId=3ebf6f98-d69a-489b-8758-d2c42f7b7aef`, status `pass`, both `copilot-cli` and `codex-adapter` pass with cross-backend memo/tool-intent assertions.
+
+## Completed: Codex SDK Runtime Profile Parity @2026-05-16-2334
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Plan: [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md), [docs/integrations/codex-sdk-runtime-profile/plan.md](./integrations/codex-sdk-runtime-profile/plan.md), [.progress/progress.md](../.progress/progress.md)
+- Architecture: [docs/architecture/skyeye.html](./architecture/skyeye.html)
+- Code Map: [docs/architecture/runtime-backend-code-map.md](./architecture/runtime-backend-code-map.md)
+- Conformance: [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md)
+- Unsupported capability notes: [docs/integrations/codex-sdk-runtime-profile/unsupported-capabilities.md](./integrations/codex-sdk-runtime-profile/unsupported-capabilities.md)
+- Code/Surface: [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/src/experimental/codexAdapterServer.ts](../nodejs/src/experimental/codexAdapterServer.ts), [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), [nodejs/examples/chatpilot-runtime-acceptance.ts](../nodejs/examples/chatpilot-runtime-acceptance.ts)
+- Downstream surface: `/Users/rickwen/code/chatpilot/src/chatpilot/sdk/session.py`, `/Users/rickwen/code/chatpilot/tests/unit/test_sdk_session.py`
+- Source: runtime backend replacement milestone
+
+- [x] Phase 1: Locked the target as `SDK Core Profile + Coding Agent Profile`, while explicitly deferring `Interactive Profile`, `Fidelity Profile`, and `Extended CLI Profile`.
+- [x] Phase 2: Built baseline-vs-adapter conformance reporting around normalized ledgers and machine-readable verdicts.
+- [x] Phase 3: Passed selected-profile conformance for core new session, resume continuation, command approval approve/deny, file approval approve/deny, custom tool call, and tool deny/failure.
+  Completion evidence: `/tmp/copilot-codex-all-tool-failure-20260601-v1.json`, summarized in [selected-profile-conformance@2026-06-01.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/selected-profile-conformance@2026-06-01.summary.json).
+- [x] Phase 4: Graduated the spike into reusable adapter module boundary.
+  Completion evidence: `CodexCopilotAdapterServer`, `CodexAppServerClient`, `createCodexCopilotClientOptions`, package subpath `./experimental/codex-adapter`, and `/tmp/copilot-codex-all-module-20260601-v1.json`.
+- [x] Phase 5: Integrated the adapter into the downstream Chatpilot runtime seam without changing app-level routing, execution identity, memory ownership, or tool registration.
+  Completion evidence: `copilot-codex-adapter` server runner, `CHATPILOT_COPILOT_CLI_URL`, `CHATPILOT_RUNTIME_BACKEND=codex-adapter`, protocol-v2 tool handling, direct `SdkClient` smoke, and custom Python SDK tool smoke.
+- [x] Phase 6: Passed real Chatpilot `/cli/chat` new-session and run-session acceptance against both `Copilot SDK + Copilot CLI` and `Copilot SDK + Codex adapter + Codex app-server`.
+  Completion evidence: `/tmp/chatpilot-codex-phase6-all-20260601-v1.json`, summarized in [chatpilot-runtime-acceptance@2026-06-01-1357.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/chatpilot-runtime-acceptance@2026-06-01-1357.summary.json). Both backends persisted SQLite `memory_memos`, invoked `save_memo` / `list_memos`, reused the same Chatpilot SDK session on the second turn, and passed cross-backend assertions.
+- [x] Phase 7: Closed the milestone with canonical spec updates, architecture diagram, code map, conformance artifact index, unsupported capability notes, and todo archive.
+  Completion evidence: [docs/spec.md](./spec.md), [docs/architecture/skyeye.html](./architecture/skyeye.html), [docs/architecture/runtime-backend-code-map.md](./architecture/runtime-backend-code-map.md), [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md), and this archive entry.
+
+## Completed: Canonical Spec Pack Gaps @2026-05-16-2334
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Plan: [.progress/progress.md](../.progress/progress.md)
+- Code/Surface: [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md), [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), [nodejs/examples/chatpilot-runtime-acceptance.ts](../nodejs/examples/chatpilot-runtime-acceptance.ts)
+- Source: migrated from session continuity and live adapter findings
+
+- [x] Created a runtime-backend architecture diagram and linked it from `docs/spec.md`.
+  Completion evidence: [docs/architecture/skyeye.html](./architecture/skyeye.html), visually checked via Chrome headless screenshot `/tmp/copilot-runtime-skyeye-v3.png`.
+- [x] Created a code map for the Codex bridge path and linked it from `docs/spec.md`.
+  Completion evidence: [docs/architecture/runtime-backend-code-map.md](./architecture/runtime-backend-code-map.md).
+- [x] Decided whether the adapter spike stays exploratory or becomes a reusable module.
+  Completion evidence: the Codex bridge is now a reusable experimental Node module at [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), exposed through package subpath `./experimental/codex-adapter`, with capability flags in `CODEX_ADAPTER_CAPABILITIES`.
+
+## Completed: Codex Baseline Replaceability @2026-05-16-2334
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Plan: [.progress/progress.md](../.progress/progress.md)
+- Code/Surface: [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), [nodejs/examples/codex-app-server-smoke.ts](../nodejs/examples/codex-app-server-smoke.ts)
+- Source: live spike proving the baseline session path
+
+- [x] Proved `create -> send -> disconnect -> resume -> getMessages -> second send` works end to end.
+- [x] Proved state survives reconnect and resume with a fresh SDK client.
+- [x] Proved the narrow Codex facade can return `READY` and `READYREADY` on the baseline path.
+- [x] Captured the live baseline as a reusable `RuntimeBackend` reference point.
+
+## Completed: Codex Command Approval Callback @2026-05-16-2334
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Plan: [.progress/progress.md](../.progress/progress.md)
+- Code/Surface: [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), [nodejs/examples/codex-app-server-smoke.ts](../nodejs/examples/codex-app-server-smoke.ts)
+- Source: live command approval probe and adapter bridge validation
+
+- [x] Proved `item/commandExecution/requestApproval` can be mapped through the adapter to SDK `permission.request`.
+- [x] Proved the SDK permission result can be mapped back to Codex `result.decision`.
+- [x] Proved a workspace-outside file write can complete with live approval handling.
+- [x] Proved the output file exists and contains the exact expected contents `hello`.

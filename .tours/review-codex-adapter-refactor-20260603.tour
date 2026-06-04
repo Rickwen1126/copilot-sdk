@@ -1,0 +1,28 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: codex adapter refactor 2026-06-03",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\n🔴 Critical: 0\n🟡 Suggestions: 0\n✅ Good Practices: 3\n\n### Scope\nReviewed the Codex runtime adapter refactor spec, plan, boundary fitness matrix, active/finished todo split, and Phase 1 characterization tests.\n\n### Result\nNo unresolved blocker or major design contradiction remains after the review fixes. The plan is fit to proceed from Phase 2 with the incremental copy-transfer loop and Phase 1 no-regression gate."
+    },
+    {
+      "file": "docs/integrations/codex-sdk-runtime-profile/refactor/plan.md",
+      "line": 25,
+      "title": "✅ Live oracle is explicit",
+      "description": "## Good Practice\nThe plan names the live adapter path and explicitly excludes stale inline harness implementations from being the copy-transfer oracle.\n\n## Rationale\nThis prevents the refactor from accidentally copying old spike residue while still allowing the current working adapter behavior to act as a scaffold."
+    },
+    {
+      "file": "docs/integrations/codex-sdk-runtime-profile/refactor/boundary-fitness.md",
+      "line": 21,
+      "title": "✅ Boundary fitness has executable evidence",
+      "description": "## Good Practice\nThe fitness matrix now ties root export, package export, core import, and conformance rules to concrete tests or durable summary artifacts.\n\n## Rationale\nThis makes the architecture boundary testable instead of merely aspirational."
+    },
+    {
+      "file": "nodejs/test/codex-adapter.test.ts",
+      "line": 235,
+      "title": "✅ Phase 1 avoids freezing messy internals",
+      "description": "## Good Practice\nThe new tests cover SDK-facing behavior and explicit boundary guards while using a fake gateway seam for create/send characterization.\n\n## Rationale\nThis protects behavior before extraction without treating the current mixed facade/gateway class shape as the desired architecture."
+    }
+  ]
+}

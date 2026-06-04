@@ -1,0 +1,52 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: Codex adapter Phase 2 mapper layer 2026-06-04",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\nCritical: 0\nSuggestions: 2\nGood Practices: 4\n\n### Scope\nReviewed Phase 2 mapper extraction: command approval, file approval, SDK tool descriptor mapping, SDK tool result mapping, model mapping, sandbox mapping, adapter insertion points, dedicated mapper tests, and conformance evidence.\n\n### Verdict\nNo blocking issue found. Phase 2 satisfies the refactor plan exit criteria: pure mapper logic moved out of adapter orchestration, dedicated mapper tests exist, live adapter insertion works, and selected-profile plus Chatpilot no-regression gates pass.\n\n### Review Lens\nThe useful mental model is still the customs desk: mapper functions inspect and stamp data shapes, but they do not open sockets, mutate sessions, emit logs, or decide runtime lifecycle."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterMappers.ts",
+      "line": 20,
+      "title": "Good: Tool descriptors became pure shape translation",
+      "description": "## Insight\nMechanism: SDK session-create tool declarations are normalized into adapter-local `ToolDescriptor` objects before Codex sees them as dynamic tools.\n\nFailure mode: if this stayed inside session orchestration, future adapter changes could accidentally mix tool registration with thread startup, making it hard to tell whether a failure came from transport, session state, or shape conversion.\n\nDesign tradeoff: the mapper keeps the shape intentionally plain for now. That is less type-rich, but it avoids inventing abstractions before more runtime backends prove common structure.\n\n## Plain Reading\nThis step is the doorway where app-level tools become Codex dynamic tool definitions. It is just cleaning and naming the payload, not deciding when to start a thread or how to call a tool.\n\n## Code Detail\n`toolDescriptorsFromSessionCreateParams` accepts unknown SDK params and returns a small normalized list. `dynamicToolsFromDescriptors` then filters unusable names and fills default schema/description. The good part is that missing evidence stays visible as `unknown_tool`; the limitation is that result types are still broad `Record<string, unknown>`."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterMappers.ts",
+      "line": 48,
+      "title": "Good: Tool result mapping is now shared by v2 and v3 paths",
+      "description": "## Insight\nMechanism: SDK tool handler output is converted into Codex dynamic tool response shape in one pure function.\n\nFailure mode: without this shared mapper, protocol-v2 direct `tool.call` and protocol-v3 pending tool completion could diverge silently, especially around failure results.\n\nDesign tradeoff: the mapper preserves existing spike behavior rather than fixing every edge case. That is correct for Phase 2 because the max rule is behavior preservation while separating boundaries.\n\n## Plain Reading\nThis step is the return stamp from SDK tool world back to Codex. Whether the result came from a direct v2 request or a pending v3 tool completion, Codex receives one consistent response shape.\n\n## Code Detail\n`mapSdkToolResultToCodexDynamicToolResponse` maps string errors to `success:false`, strings to text success, object `resultType` values such as `denied` to failure, and scalar/null results to serialized text. It performs no IO and does not know about sessions."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterMappers.ts",
+      "line": 89,
+      "title": "Good: Model and sandbox conversions left orchestration",
+      "description": "## Insight\nMechanism: Codex model metadata and SDK-facing sandbox aliases are normalized in mapper functions before adapter methods build thread/turn requests.\n\nFailure mode: model capability drift or sandbox alias drift would otherwise hide inside `handleModelsList`, `handleSessionCreate`, and `handleSessionSend`, where it is harder to test without runtime IO.\n\nDesign tradeoff: these are still narrow adapter-local mappings, not a general model registry or policy framework. That keeps Phase 2 small and avoids premature framework design.\n\n## Plain Reading\nThis step turns provider-shaped facts into the adapter's stable shape. Models become SDK-visible capability objects; sandbox aliases become the exact Codex strings or policy objects needed by app-server.\n\n## Code Detail\n`mapCodexModels`, `normalizedSandboxMode`, `codexThreadSandboxMode`, and `codexSandboxPolicy` are pure and have dedicated tests for missing evidence, model capabilities, and alias handling."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 17,
+      "title": "Good: Adapter facade delegates translation instead of owning it",
+      "description": "## Insight\nMechanism: `codexAdapter.ts` imports mapper functions and keeps session lifecycle, JSON-RPC, connection handling, and transcript emission in the adapter/server layer.\n\nFailure mode: if mapper logic and gateway logic keep living together, adding Gemini/opencode/Codex variants later will force every backend detail through one hard-to-review file.\n\nDesign tradeoff: the facade is not fully slim yet. That is intentional because Phase 3 and Phase 4 still own gateway and facade decomposition.\n\n## Plain Reading\nThis file is still the traffic controller, but it stopped doing several translation jobs itself. That gives us a cleaner seam without pretending the whole runtime framework is done.\n\n## Code Detail\nThe import block shows the boundary: mapper functions come from `codexAdapterMappers.ts`; adapter-local state types and JSON-RPC lifecycle remain in `codexAdapter.ts`."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 1273,
+      "title": "Suggestion: Keep protocol v2/v3 branching explicit until a real seam appears",
+      "description": "## Problem\nThe Phase 2 plan listed protocol-v2/v3 dynamic tool request normalization only when separable. Current code branches at `protocolVersion === 2`, but the two branches are tied to pending tool-call state, SDK connection IO, transcript emission, and `external_tool.requested` lifecycle events.\n\n## Fix\nDo not extract this in Phase 2. Revisit in Phase 4 facade slimming or Phase 6 Strategy/Policy extraction only if two durable protocol variants need the same explicit seam.\n\n## Rationale\nExtracting this now would make a fake Strategy object: visually cleaner, but less honest about ownership. The current explicit branch is easier to audit while the session workflow is still in the facade."
+    },
+    {
+      "file": "nodejs/test/codex-adapter-mappers.test.ts",
+      "line": 17,
+      "title": "Good: Mapper tests cover point-level contract drift",
+      "description": "## Insight\nMechanism: tests assert the mapper input/output contracts directly, so drift is caught without starting Codex app-server.\n\nFailure mode: if these tests only checked that some output existed, a mapper could invent facts or silently change SDK-visible semantics while still passing smoke tests.\n\nDesign tradeoff: tests are intentionally point-level L2. L3/L4 behavior is covered by selected-profile conformance and Chatpilot acceptance, not by over-mocking the mapper tests.\n\n## Plain Reading\nThese tests are the small ruler for each brick. They do not prove the whole runtime works, but they prove each stamp is the expected shape before the full gate checks the whole route.\n\n## Code Detail\nThe test file covers tool descriptors, dynamic tool result success/failure, model metadata, sandbox aliases, command approval, file approval, and missing evidence paths."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterMappers.ts",
+      "line": 33,
+      "title": "Suggestion: Add named internal result types only after more shapes stabilize",
+      "description": "## Problem\nSeveral mapper outputs still return `Record<string, unknown>`. That is acceptable for copy-transfer refactor, but less self-documenting if this mapper module becomes a long-lived internal API.\n\n## Fix\nDo not block Phase 2. After Phase 3/4 reveal the durable module boundaries, consider naming adapter-local result shapes where repeated usage proves the type would reduce ambiguity.\n\n## Rationale\nThis keeps the project from over-abstracting too early while preserving a concrete watch item for future maintainability."
+    }
+  ]
+}

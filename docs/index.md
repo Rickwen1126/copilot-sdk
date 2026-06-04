@@ -74,3 +74,4 @@ Detailed API reference for each session hook.
 Guides for using the SDK with other platforms and frameworks.
 
 - [Microsoft Agent Framework](./integrations/microsoft-agent-framework.md) — MAF multi-agent workflows
+- [Alternate Runtime Backends](./integrations/runtime-backends.md) — experimental pattern for Codex, Gemini CLI, Opencode, and bridge backends

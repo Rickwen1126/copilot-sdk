@@ -1,0 +1,110 @@
+{
+  "createdAt": "2026-06-04T09:42:00+08:00",
+  "status": "pass",
+  "scope": "Runtime adapter refactor Phase 2 pure mapper layer",
+  "sourcePlan": "docs/integrations/codex-sdk-runtime-profile/refactor/plan.md#phase-2-pure-mapper-layer",
+  "codeSurfaces": [
+    "nodejs/src/experimental/codexAdapterMappers.ts",
+    "nodejs/src/experimental/codexAdapter.ts",
+    "nodejs/test/codex-adapter-mappers.test.ts",
+    "nodejs/test/codex-adapter.test.ts"
+  ],
+  "completedMapperBricks": [
+    "command approval request/result mapping",
+    "file-change approval request/result mapping",
+    "SDK tool descriptor to Codex dynamic tool shape",
+    "SDK tool result to Codex dynamic tool response",
+    "model list shape conversion",
+    "sandbox thread/turn request shape conversion"
+  ],
+  "notExtracted": [
+    {
+      "candidate": "protocol-v2/v3 dynamic tool request normalization",
+      "reason": "Current behavior is coupled to session state, pending tool-call lifecycle, primary SDK connection IO, and transcript emission. Extracting it during Phase 2 would create fake Strategy/Policy objects instead of a pure mapper brick. It remains explicit in the adapter facade and should be revisited in Phase 4/6 only if a real variant seam appears."
+    }
+  ],
+  "localVerification": {
+    "typescript": {
+      "command": "npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts src/experimental/codexAdapterMappers.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "status": "pass"
+    },
+    "eslint": {
+      "command": "npx eslint src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts src/experimental/codexAdapterMappers.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "status": "pass"
+    },
+    "vitest": {
+      "command": "npx vitest run test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "status": "pass",
+      "testFiles": 2,
+      "tests": 24
+    },
+    "build": {
+      "command": "npm run build",
+      "status": "pass"
+    }
+  },
+  "selectedProfileConformance": {
+    "rawArtifact": "/tmp/copilot-codex-refactor-phase2-complete-20260604-0940.json",
+    "runId": "dd467a11-24b7-4241-8ee4-93d19e8eb270",
+    "phase": "all",
+    "verdict": "pass",
+    "checksPassed": 7,
+    "checksTotal": 7,
+    "ledgerCounts": {
+      "copilotCli": 421,
+      "codexAdapter": 1674
+    },
+    "behaviorEvidence": {
+      "assistantMessage": "READY",
+      "resumedAssistantMessage": "READYREADY",
+      "permissionAssertionFailures": {
+        "approval": [],
+        "fileApproval": [],
+        "tool": [],
+        "toolFailure": []
+      },
+      "observedCodexAdapterEventTypes": [
+        "session.start",
+        "user.message",
+        "external_tool.requested",
+        "external_tool.completed",
+        "assistant.message",
+        "session.idle",
+        "session.resume"
+      ]
+    }
+  },
+  "chatpilotRuntimeAcceptance": {
+    "rawArtifact": "/tmp/chatpilot-codex-refactor-phase2-complete-20260604-0945.json",
+    "runId": "15ec983d-293e-4142-9a67-fd203e64ffec",
+    "status": "pass",
+    "backends": [
+      {
+        "backend": "copilot-cli",
+        "status": "pass",
+        "runId": "15ec983d-293e-4142-9a67-fd203e64ffec-copilot-cli",
+        "assertionsPassed": 11
+      },
+      {
+        "backend": "codex-adapter",
+        "status": "pass",
+        "runId": "15ec983d-293e-4142-9a67-fd203e64ffec-codex-adapter",
+        "assertionsPassed": 12
+      }
+    ],
+    "crossBackendAssertions": [
+      {
+        "name": "both backends pass the same Chatpilot app-level acceptance flow",
+        "status": "pass"
+      },
+      {
+        "name": "both backends persist one or more memo rows for their route",
+        "status": "pass"
+      },
+      {
+        "name": "both backends use the same Chatpilot SDK-visible tool intents",
+        "status": "pass"
+      }
+    ]
+  }
+}

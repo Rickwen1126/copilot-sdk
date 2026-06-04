@@ -1,0 +1,30 @@
+{
+  "artifact": "refactor-phase1-selected-profile-conformance",
+  "generatedAt": "2026-06-03 22:39",
+  "sourceOutput": "/tmp/copilot-codex-refactor-phase1-all-20260603-2239.json",
+  "runId": "34902c4f-117f-4e89-8cf9-590ce9ba3640",
+  "phase": "all",
+  "model": "gpt-5.4",
+  "status": "pass",
+  "conformanceVerdict": "pass",
+  "checkStatusCounts": {
+    "pass": 7
+  },
+  "ledgerCounts": {
+    "copilotCli": 396,
+    "codexAdapter": 1570
+  },
+  "adapterReplaceability": {
+    "supportsCreate": true,
+    "supportsResume": true,
+    "preservesHistory": true,
+    "keepsStateAcrossResume": true
+  },
+  "adapterMessages": {
+    "first": "READY",
+    "resumed": "READYREADY",
+    "expectedResumed": "READYREADY"
+  },
+  "protocolFailure": null,
+  "failedChecks": []
+}

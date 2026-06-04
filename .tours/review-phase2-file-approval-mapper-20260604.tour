@@ -1,0 +1,34 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: Phase 2 file approval mapper 2026-06-04",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\n🔴 Critical: 0\n🟡 Suggestions: 1\n✅ Good Practices: 3\n\n### Scope\nReviewed the Phase 2 file approval mapper brick: mapper extraction, adapter insertion point, dedicated tests, and evidence summary.\n\n### Verdict\nNo blocking issue found. The brick preserves behavior, keeps mapper logic pure, and passes the required local and broad no-regression gates."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterMappers.ts",
+      "line": 155,
+      "title": "✅ File approval mapping is pure",
+      "description": "## Good Practice\n`mapCodexFileChangeApprovalToPermissionRequest` translates Codex file-change evidence into an SDK write permission request without runtime IO, session mutation, or logging.\n\n## Rationale\nThis matches the Phase 2 contract: mapper modules translate shapes and keep the adapter facade from owning translation details."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 1348,
+      "title": "✅ Live flow uses the extracted mapper",
+      "description": "## Good Practice\nThe adapter still owns orchestration and permission request delivery, but delegates file approval request and decision mapping to `codexAdapterMappers.ts`.\n\n## Rationale\nThis is the intended temporary bridge: the old live flow remains the scaffold while one behavior brick moves behind a clean seam."
+    },
+    {
+      "file": "nodejs/test/codex-adapter-mappers.test.ts",
+      "line": 93,
+      "title": "✅ Tests cover missing evidence",
+      "description": "## Good Practice\nThe mapper tests cover top-level and nested file changes, normal path extraction, approve/deny decisions, and missing file-change evidence.\n\n## Rationale\nThis follows the testing rule: normalize shape, do not invent facts; missing evidence remains visible rather than becoming a silent success."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterMappers.ts",
+      "line": 155,
+      "title": "🟡 Consider named internal mapper result types later",
+      "description": "## Problem\nThe mapper currently returns `Record<string, unknown>`, which is acceptable for copy-transfer but less self-documenting if the mapper module becomes a stable internal API.\n\n## Fix\nDo not block this brick. Revisit after the remaining mapper bricks are extracted and introduce adapter-local internal types only if repeated shape usage proves they reduce ambiguity.\n\n## Rationale\nAdding types too early can become pattern theater; adding them after two or more mapper shapes stabilize can improve reviewability without over-generalizing."
+    }
+  ]
+}

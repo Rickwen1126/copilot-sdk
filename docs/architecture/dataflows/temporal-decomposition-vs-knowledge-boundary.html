@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Temporal Decomposition vs Knowledge Boundary</title>
+    <style>
+      :root {
+        --paper: #f7f1e6;
+        --ink: #20242d;
+        --muted: #667085;
+        --line: #b9aa92;
+        --bad: #a33b32;
+        --bad-bg: #fff0ed;
+        --good: #216b4b;
+        --good-bg: #eef9f2;
+        --neutral: #2e5f91;
+        --neutral-bg: #eef6ff;
+        --warn: #a45b13;
+        --warn-bg: #fff5e8;
+        --display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        --body: "Avenir Next", "Segoe UI", sans-serif;
+        --mono: "SFMono-Regular", Menlo, Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: var(--body);
+        background:
+          radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.9), transparent 34%),
+          linear-gradient(180deg, #fffaf2 0%, var(--paper) 100%);
+      }
+
+      .page {
+        width: min(1480px, calc(100vw - 48px));
+        margin: 28px auto;
+        padding: 30px;
+        border: 1px solid rgba(117, 90, 48, 0.18);
+        border-radius: 30px;
+        background: rgba(255, 252, 246, 0.88);
+        box-shadow: 0 28px 72px rgba(72, 46, 14, 0.12);
+      }
+
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--warn);
+      }
+
+      h1 {
+        max-width: 980px;
+        margin: 10px 0 10px;
+        font-family: var(--display);
+        font-size: clamp(38px, 5vw, 68px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+      }
+
+      .lede {
+        max-width: 960px;
+        margin: 0 0 26px;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.65;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+
+      .panel {
+        position: relative;
+        min-height: 760px;
+        padding: 22px;
+        border: 2px solid currentColor;
+        border-radius: 28px;
+        overflow: hidden;
+      }
+
+      .panel.bad {
+        color: var(--bad);
+        background: linear-gradient(180deg, rgba(255, 240, 237, 0.74), rgba(255, 255, 255, 0.82));
+      }
+
+      .panel.good {
+        color: var(--good);
+        background: linear-gradient(180deg, rgba(238, 249, 242, 0.78), rgba(255, 255, 255, 0.84));
+      }
+
+      .panel h2 {
+        margin: 0;
+        font-family: var(--display);
+        font-size: 34px;
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+
+      .panel p {
+        max-width: 58ch;
+        margin: 10px 0 20px;
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.55;
+      }
+
+      .flow {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin: 18px 0 22px;
+      }
+
+      .node {
+        min-height: 118px;
+        padding: 16px;
+        border: 2px solid currentColor;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow: 0 16px 30px rgba(49, 35, 15, 0.08);
+      }
+
+      .node h3 {
+        margin: 0 0 8px;
+        font-family: var(--display);
+        font-size: 22px;
+        line-height: 1.08;
+        letter-spacing: -0.02em;
+      }
+
+      .node span {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .node.warn {
+        color: var(--warn);
+        background: var(--warn-bg);
+      }
+
+      .node.neutral {
+        color: var(--neutral);
+        background: var(--neutral-bg);
+      }
+
+      .node.good {
+        color: var(--good);
+        background: var(--good-bg);
+      }
+
+      .arrow-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin: -4px 0 14px;
+        color: var(--line);
+        font-family: var(--mono);
+        font-size: 22px;
+        text-align: center;
+      }
+
+      .knowledge {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin: 18px 0;
+      }
+
+      .knowledge-card {
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(32, 36, 45, 0.12);
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .knowledge-card strong {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--ink);
+      }
+
+      .knowledge-card code {
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .sample {
+        margin-top: 18px;
+        padding: 18px;
+        border-radius: 22px;
+        background: #181b22;
+        color: #f7f1e6;
+        overflow: auto;
+      }
+
+      .sample h3 {
+        margin: 0 0 10px;
+        color: #f7d58b;
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .takeaway {
+        margin-top: 24px;
+        padding: 20px 22px;
+        border-radius: 24px;
+        background: #fff9ec;
+        border: 1px solid rgba(164, 91, 19, 0.24);
+        color: var(--ink);
+      }
+
+      .takeaway strong {
+        color: var(--warn);
+      }
+
+      @media (max-width: 1060px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .panel {
+          min-height: auto;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page {
+          width: calc(100vw - 24px);
+          margin: 12px auto;
+          padding: 18px;
+        }
+
+        .flow,
+        .arrow-row {
+          grid-template-columns: 1fr;
+        }
+
+        .arrow-row {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="eyebrow">Architecture Learning Diagram</div>
+      <h1>Temporal Decomposition vs Knowledge Boundary</h1>
+      <p class="lede">
+        Temporal decomposition feels clean because it follows runtime order.
+        The trap is that every step can end up understanding the same protocol.
+        Knowledge-boundary decomposition asks a different question: which design
+        decision should be hidden here, and who is allowed to know it?
+      </p>
+
+      <section class="grid" aria-label="temporal decomposition comparison">
+        <article class="panel bad">
+          <h2>Bad: split by time</h2>
+          <p>
+            Each box is small, but the Codex wire shape leaks through all of
+            them. A protocol change becomes shotgun surgery.
+          </p>
+
+          <div class="flow">
+            <div class="node warn">
+              <h3>receive</h3>
+              <span>Knows raw Codex event envelope.</span>
+            </div>
+            <div class="node warn">
+              <h3>parse</h3>
+              <span>Knows event names and payload variants.</span>
+            </div>
+            <div class="node warn">
+              <h3>map</h3>
+              <span>Knows Codex fields and Copilot output shape.</span>
+            </div>
+            <div class="node warn">
+              <h3>emit</h3>
+              <span>Still checks protocol-specific tool state.</span>
+            </div>
+          </div>
+          <div class="arrow-row"><span>→</span><span>→</span><span>→</span><span>✕</span></div>
+
+          <div class="knowledge">
+            <div class="knowledge-card">
+              <strong>Repeated knowledge</strong>
+              <code>event.type</code>, <code>payload.toolCall</code>, approval
+              assumptions, and session lifecycle rules show up in many places.
+            </div>
+            <div class="knowledge-card">
+              <strong>Failure smell</strong>
+              A Codex protocol tweak forces edits in receive, parse, map, emit,
+              and tests.
+            </div>
+          </div>
+
+          <div class="sample">
+            <h3>Sample: thin temporal layers</h3>
+            <pre><code>function receiveCodexEvent(raw: unknown) {
+  if (!isCodexEvent(raw)) throw new Error("bad codex event");
+  return parseCodexEvent(raw);
+}
+
+function parseCodexEvent(event: CodexWireEvent) {
+  if (event.type === "tool_call") {
+    return mapToolCall(event.payload.toolCall);
+  }
+  return mapMessage(event.payload);
+}
+
+function mapToolCall(toolCall: CodexWireToolCall) {
+  // Still knows Codex wire fields.
+  return {
+    kind: "copilot_tool_call",
+    name: toolCall.function.name,
+    arguments: toolCall.function.arguments,
+  };
+}</code></pre>
+          </div>
+        </article>
+
+        <article class="panel good">
+          <h2>Good: split by hidden knowledge</h2>
+          <p>
+            Each boundary owns one kind of knowledge. Raw Codex protocol is
+            normalized once; Copilot SDK presentation happens at the edge.
+          </p>
+
+          <div class="flow">
+            <div class="node neutral">
+              <h3>Codex reader</h3>
+              <span>Only place that knows wire protocol.</span>
+            </div>
+            <div class="node good">
+              <h3>Runtime event</h3>
+              <span>Internal stable language.</span>
+            </div>
+            <div class="node neutral">
+              <h3>Copilot presenter</h3>
+              <span>Only place that knows SDK output contract.</span>
+            </div>
+            <div class="node good">
+              <h3>Harness</h3>
+              <span>Checks behavior, not private protocol details.</span>
+            </div>
+          </div>
+          <div class="arrow-row"><span>→</span><span>→</span><span>→</span><span>✓</span></div>
+
+          <div class="knowledge">
+            <div class="knowledge-card">
+              <strong>Contained knowledge</strong>
+              Codex fields live in the reader. Copilot response shape lives in
+              the presenter. Tests assert the normalized behavior.
+            </div>
+            <div class="knowledge-card">
+              <strong>Change behavior</strong>
+              If Codex protocol changes, only reader + reader tests should move.
+            </div>
+          </div>
+
+          <div class="sample">
+            <h3>Sample: knowledge-boundary layers</h3>
+            <pre><code>type RuntimeEvent =
+  | { kind: "assistant_text"; text: string }
+  | { kind: "tool_call"; name: string; inputJson: string };
+
+function readCodexEvent(event: CodexWireEvent): RuntimeEvent {
+  switch (event.type) {
+    case "assistant_message":
+      return { kind: "assistant_text", text: event.payload.text };
+    case "tool_call":
+      return {
+        kind: "tool_call",
+        name: event.payload.toolCall.function.name,
+        inputJson: event.payload.toolCall.function.arguments,
+      };
+  }
+}
+
+function presentToCopilot(event: RuntimeEvent): CopilotSdkEvent {
+  switch (event.kind) {
+    case "assistant_text":
+      return { type: "message", content: event.text };
+    case "tool_call":
+      return {
+        type: "tool_call",
+        name: event.name,
+        arguments: event.inputJson,
+      };
+  }
+}</code></pre>
+          </div>
+        </article>
+      </section>
+
+      <aside class="takeaway">
+        <strong>Reflex question:</strong>
+        when you split a module, do not ask “what happens first?” Ask “which
+        piece of knowledge is allowed to exist here?” If two modules must both
+        understand the same protocol detail, the split is probably temporal,
+        not architectural.
+      </aside>
+    </main>
+  </body>
+</html>

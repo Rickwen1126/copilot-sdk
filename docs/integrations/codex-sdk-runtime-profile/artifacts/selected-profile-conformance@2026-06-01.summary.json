@@ -1,0 +1,74 @@
+{
+  "created": "2026-06-01 14:05",
+  "status": "pass",
+  "targetProfiles": ["SDK Core Profile", "Coding Agent Profile"],
+  "primaryRun": {
+    "rawArtifact": "/tmp/copilot-codex-all-tool-failure-20260601-v1.json",
+    "sha256": "cb4d48b44578408d90f02b95c55f6d1b7c867daf344d41233b5b88a3bc1a21d1",
+    "runId": "996c024c-f828-4a7d-a71e-e2f28de69b8b",
+    "verdict": "pass",
+    "ledgerCounts": {
+      "copilotCli": 417,
+      "codexAdapter": 1621
+    }
+  },
+  "moduleGraduationRun": {
+    "rawArtifact": "/tmp/copilot-codex-all-module-20260601-v1.json",
+    "sha256": "3a390e7f426a65d90bcda12628d8d874549b07144372d29eb693ddefaaeaf698",
+    "runId": "2550ad4d-c4f4-4142-94f4-b67db01de57c",
+    "verdict": "pass",
+    "ledgerCounts": {
+      "copilotCli": 412,
+      "codexAdapter": 1801
+    }
+  },
+  "checks": [
+    {
+      "capability": "core new session",
+      "status": "pass",
+      "copilotCli": "pass",
+      "codexAdapter": "pass"
+    },
+    {
+      "capability": "resume continuation",
+      "status": "pass",
+      "copilotCli": "pass",
+      "codexAdapter": "pass"
+    },
+    {
+      "capability": "command approval approve",
+      "status": "pass",
+      "copilotCli": "pass",
+      "codexAdapter": "pass"
+    },
+    {
+      "capability": "command approval deny",
+      "status": "pass",
+      "copilotCli": "pass",
+      "codexAdapter": "pass"
+    },
+    {
+      "capability": "file approval approve/deny",
+      "status": "pass",
+      "copilotCli": "pass",
+      "codexAdapter": "pass"
+    },
+    {
+      "capability": "custom tool call",
+      "status": "pass",
+      "copilotCli": "pass",
+      "codexAdapter": "pass"
+    },
+    {
+      "capability": "tool deny or failure",
+      "status": "pass",
+      "copilotCli": "pass",
+      "codexAdapter": "pass"
+    }
+  ],
+  "unsupportedProfiles": [
+    "Interactive Profile",
+    "Fidelity Profile",
+    "Extended CLI Profile"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "artifact": "refactor-phase1-chatpilot-runtime-acceptance",
+  "generatedAt": "2026-06-03 22:31",
+  "sourceOutput": "/tmp/chatpilot-codex-refactor-phase1-all.json",
+  "runId": "3ebf6f98-d69a-489b-8758-d2c42f7b7aef",
+  "model": "gpt-5.4",
+  "status": "pass",
+  "backendStatus": {
+    "copilot-cli": "pass",
+    "codex-adapter": "pass"
+  },
+  "crossBackendAssertions": [
+    {
+      "name": "both backends pass the same Chatpilot app-level acceptance flow",
+      "status": "pass",
+      "evidence": "copilot-cli=pass codex-adapter=pass"
+    },
+    {
+      "name": "both backends persist one or more memo rows for their route",
+      "status": "pass",
+      "evidence": "copilot-cli_rows=1 codex-adapter_rows=1"
+    },
+    {
+      "name": "both backends use the same Chatpilot SDK-visible tool intents",
+      "status": "pass",
+      "evidence": "copilot-cli save/list=1/1; codex-adapter save/list=1/1"
+    }
+  ]
+}

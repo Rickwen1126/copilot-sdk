@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codex Adapter Knowledge Boundaries</title>
+    <style>
+      :root {
+        --paper: #f7f1e6;
+        --ink: #20242d;
+        --muted: #667085;
+        --line: #b9aa92;
+        --orange: #a45b13;
+        --orange-bg: #fff5e8;
+        --blue: #245c91;
+        --blue-bg: #eef6ff;
+        --green: #216b4b;
+        --green-bg: #eef9f2;
+        --red: #a33b32;
+        --red-bg: #fff0ed;
+        --gray: #5b6472;
+        --gray-bg: #f2f4f7;
+        --display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+        --body: "Avenir Next", "Segoe UI", sans-serif;
+        --mono: "SFMono-Regular", Menlo, Consolas, monospace;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: var(--body);
+        background:
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.9), transparent 32%),
+          linear-gradient(180deg, #fffaf2 0%, var(--paper) 100%);
+      }
+
+      .page {
+        width: min(1520px, calc(100vw - 48px));
+        margin: 28px auto;
+        padding: 30px;
+        border: 1px solid rgba(117, 90, 48, 0.18);
+        border-radius: 30px;
+        background: rgba(255, 252, 246, 0.9);
+        box-shadow: 0 28px 72px rgba(72, 46, 14, 0.12);
+      }
+
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--orange);
+      }
+
+      h1 {
+        margin: 10px 0 8px;
+        font-family: var(--display);
+        font-size: clamp(38px, 5vw, 68px);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+      }
+
+      .lede {
+        max-width: 980px;
+        margin: 0 0 24px;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.65;
+      }
+
+      .map {
+        position: relative;
+        min-height: 780px;
+        border-radius: 28px;
+        border: 1px solid rgba(117, 90, 48, 0.16);
+        background:
+          linear-gradient(rgba(117, 90, 48, 0.055) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(117, 90, 48, 0.055) 1px, transparent 1px),
+          rgba(255, 255, 255, 0.58);
+        background-size: 32px 32px;
+        overflow: hidden;
+      }
+
+      .group {
+        position: absolute;
+        border: 2px dashed currentColor;
+        border-radius: 26px;
+        padding: 14px;
+      }
+
+      .group-label {
+        position: absolute;
+        top: -15px;
+        left: 18px;
+        padding: 0 8px;
+        background: #fffaf2;
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+      }
+
+      .group.codex { color: var(--blue); background: rgba(238, 246, 255, 0.45); }
+      .group.adapter { color: var(--orange); background: rgba(255, 245, 232, 0.48); }
+      .group.sdk { color: var(--green); background: rgba(238, 249, 242, 0.45); }
+      .group.test { color: var(--gray); background: rgba(242, 244, 247, 0.55); }
+
+      .node {
+        position: absolute;
+        min-height: 112px;
+        padding: 16px;
+        border: 2px solid currentColor;
+        border-radius: 22px;
+        background: white;
+        box-shadow: 0 18px 32px rgba(49, 35, 15, 0.08);
+      }
+
+      .node h2 {
+        margin: 0 0 8px;
+        font-family: var(--display);
+        font-size: 24px;
+        line-height: 1.05;
+        letter-spacing: -0.025em;
+      }
+
+      .node p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.42;
+      }
+
+      .node code {
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .blue { color: var(--blue); background: var(--blue-bg); }
+      .green { color: var(--green); background: var(--green-bg); }
+      .orange { color: var(--orange); background: var(--orange-bg); }
+      .red { color: var(--red); background: var(--red-bg); }
+      .gray { color: var(--gray); background: var(--gray-bg); }
+
+      svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      .arrow {
+        fill: none;
+        stroke: var(--line);
+        stroke-width: 3;
+        marker-end: url(#arrowhead);
+      }
+
+      .leak {
+        stroke: var(--red);
+        stroke-dasharray: 9 7;
+      }
+
+      .label {
+        position: absolute;
+        padding: 7px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid rgba(32, 36, 45, 0.12);
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .takeaway {
+        margin-top: 22px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+
+      .card {
+        padding: 16px 18px;
+        border-radius: 22px;
+        border: 1px solid rgba(32, 36, 45, 0.12);
+        background: rgba(255, 255, 255, 0.74);
+      }
+
+      .card strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+        font-size: 14px;
+      }
+
+      @media (max-width: 980px) {
+        .map {
+          min-height: 1120px;
+        }
+
+        .takeaway {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="eyebrow">Current Codebase Boundary Map</div>
+      <h1>Codex Adapter Knowledge Boundaries</h1>
+      <p class="lede">
+        This map reads the current experimental adapter through the
+        information-hiding lens. Green/blue nodes are healthy boundary
+        candidates. Red nodes are not wrong, but they are where Codex protocol,
+        Copilot SDK contract, session orchestration, and test observation are
+        currently mixed.
+      </p>
+
+      <section class="map" aria-label="Codex adapter module boundaries">
+        <svg viewBox="0 0 1460 780" preserveAspectRatio="none">
+          <defs>
+            <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+              <path d="M0,0 L10,4 L0,8 Z" fill="#b9aa92"></path>
+            </marker>
+          </defs>
+          <path class="arrow" d="M245 244 C332 244 340 244 426 244"></path>
+          <path class="arrow" d="M650 244 C734 244 742 244 826 244"></path>
+          <path class="arrow" d="M1056 244 C1128 244 1136 244 1208 244"></path>
+          <path class="arrow leak" d="M650 380 C790 470 874 486 1038 414"></path>
+          <path class="arrow leak" d="M626 562 C780 590 890 588 1048 562"></path>
+          <path class="arrow" d="M498 526 C500 456 504 416 508 354"></path>
+          <path class="arrow" d="M1250 354 C1250 420 1250 472 1250 526"></path>
+        </svg>
+
+        <div class="group codex" style="left: 28px; top: 82px; width: 270px; height: 610px;">
+          <div class="group-label">Codex app-server side</div>
+        </div>
+        <div class="group adapter" style="left: 380px; top: 82px; width: 735px; height: 610px;">
+          <div class="group-label">Experimental adapter</div>
+        </div>
+        <div class="group sdk" style="left: 1178px; top: 82px; width: 250px; height: 610px;">
+          <div class="group-label">Copilot SDK side</div>
+        </div>
+        <div class="group test" style="left: 378px; top: 496px; width: 1035px; height: 174px;">
+          <div class="group-label">Conformance harness</div>
+        </div>
+
+        <article class="node blue" style="left: 58px; top: 170px; width: 188px;">
+          <h2>Codex app-server</h2>
+          <p><code>thread/start</code>, <code>turn/start</code>, item callbacks, approval requests.</p>
+        </article>
+
+        <article class="node green" style="left: 426px; top: 164px; width: 224px;">
+          <h2>CodexAppServerClient</h2>
+          <p>Healthy gateway: owns process, JSON-RPC ids, pending requests, raw transcript.</p>
+        </article>
+
+        <article class="node red" style="left: 826px; top: 142px; width: 230px;">
+          <h2>CodexCopilotAdapterServer</h2>
+          <p>Facade plus orchestration, state, mapper calls, protocol callback handling.</p>
+        </article>
+
+        <article class="node green" style="left: 1208px; top: 170px; width: 182px;">
+          <h2>Copilot SDK</h2>
+          <p><code>session.*</code>, <code>permission.request</code>, tool flow, lifecycle events.</p>
+        </article>
+
+        <article class="node orange" style="left: 438px; top: 338px; width: 224px;">
+          <h2>Mapper pocket</h2>
+          <p>Approval, file change, dynamic tool result translation. Good first extraction target.</p>
+        </article>
+
+        <article class="node red" style="left: 804px; top: 340px; width: 252px;">
+          <h2>Callback hub</h2>
+          <p><code>item/completed</code>, <code>turn/completed</code>, approval and tool requests all mix here.</p>
+        </article>
+
+        <article class="node gray" style="left: 438px; top: 536px; width: 210px;">
+          <h2>Ledger normalizer</h2>
+          <p>Test-only observer, but currently owns lots of protocol shape inference.</p>
+        </article>
+
+        <article class="node gray" style="left: 1048px; top: 536px; width: 230px;">
+          <h2>Conformance checks</h2>
+          <p>Strong safety net: trace parity + data assertions + intent assertions.</p>
+        </article>
+
+        <div class="label" style="left: 682px; top: 217px;">raw JSON-RPC still reaches server facade</div>
+        <div class="label" style="left: 675px; top: 443px;">leakage hotspot: protocol + session + SDK method</div>
+        <div class="label" style="left: 702px; top: 610px;">test observer should not become adapter #2</div>
+      </section>
+
+      <section class="takeaway">
+        <div class="card">
+          <strong>Keep</strong>
+          <p><code>CodexAppServerClient</code> is already a useful gateway. Preserve the transport boundary.</p>
+        </div>
+        <div class="card">
+          <strong>Extract First</strong>
+          <p>Move pure mapper pockets before inventing larger runtime abstractions.</p>
+        </div>
+        <div class="card">
+          <strong>Watch Closely</strong>
+          <p>The callback hub is where temporal decomposition and information leakage will compound.</p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

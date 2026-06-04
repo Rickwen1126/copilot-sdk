@@ -2,3 +2,11 @@
 # Documentation validation output
 docs/.validation/
 .DS_Store
+
+# Local agent/session workspaces
+.codeviewer/
+.progress/
+
+# Runtime probe scratch files
+nodejs/hello.txt
+nodejs/runtime-internal-probe.txt

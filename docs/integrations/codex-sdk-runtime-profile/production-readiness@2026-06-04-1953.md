@@ -1,7 +1,7 @@
 # Codex Adapter Production Readiness
 
 Created: 2026-06-04 19:53
-Last Updated: 2026-06-04 20:28
+Last Updated: 2026-06-04 21:03
 Status: Active production gate input — Phase 3.5 capability spike complete, Phase 4 re-planned from evidence
 
 ## Purpose
@@ -32,6 +32,37 @@ codex login   # authenticate with the ChatGPT account that holds the Pro plan
 This populates `~/.codex/auth.json`. The adapter's `prepareCodexHome` in `nodejs/src/experimental/codexAppServerGateway.ts:75-95` copies `auth.json`, `config.toml`, `installation_id`, `models_cache.json` into an isolated adapter home, so the spawned `codex app-server` inherits the ChatGPT subscription auth. Without this pre-step, the adapter has no usable credentials.
 
 This pre-step belongs in the production runbook and the development setup doc, not implicit knowledge.
+
+## Runtime Identity Model
+
+Use this model when implementing A1/A4/A5 and when reviewing any future wording about "Codex session" behavior:
+
+```text
+Copilot SDK session
+  -> adapter SessionState
+  -> Codex thread
+  -> Codex turns
+
+Codex app-server process
+  -> owns / loads many Codex threads
+```
+
+Precise meanings:
+
+- **Codex app-server process** — the long-running runtime process spawned by the adapter gateway. It is the "station", not the traveler. One adapter gateway process should normally own one app-server process.
+- **Codex thread** — the durable Codex agent session. In task semantics, this is closest to a Codex CLI session. A thread has its own `threadId`, rollout file, cwd/model/tool context, and turns.
+- **Copilot SDK session** — the app-facing session id seen by Chatpilot / SDK consumers. The adapter maps it to one Codex thread unless a resume/tool-set policy explicitly forks or recreates the thread.
+- **Codex turn** — one user prompt / model run inside a Codex thread. A no-turn thread may have a `threadId` and planned rollout path, but no persisted rollout file yet.
+
+Therefore, the intended production model is **one app-server process, many Codex threads**, not one app-server process per SDK session. The careful wording is: `session.create` must not spawn a new `codex app-server` process per session; it should create or resume a Codex thread under the already-running app-server.
+
+This distinction matters for restart continuity:
+
+- App-server health only proves the station is open.
+- A persisted `(sdkSessionId, codexThreadId, cwd, model, tool fingerprint, runtime home identity)` mapping proves the adapter knows which traveler to load.
+- A successful `thread/resume` or `thread/read` proves the Codex thread was actually loaded from persisted rollout state.
+
+Phase 4 must treat `thread/resume` / `thread/read` as the continuity proof. Merely checking that the app-server process exists is insufficient.
 
 ## Tool Execution Model (Confirmed Invariant)
 

@@ -1,5 +1,6 @@
 {
   "createdAt": "2026-06-04 20:28",
+  "lastUpdated": "2026-06-04 21:03",
   "status": "phase-3.5-initial-spike-complete",
   "purpose": "Classify Codex app-server production-readiness questions before Phase 4 adapter hardening.",
   "commands": [
@@ -36,6 +37,13 @@
     "threadReadAfterRestartContainedTurn": true,
     "unsubscribeBeforeRestartOk": true,
     "archiveAfterRestartOk": true
+  },
+  "runtimeIdentityModel": {
+    "codexAppServerProcess": "Long-running runtime server owned by the adapter gateway. One process can host many Codex threads.",
+    "codexThread": "Durable Codex agent session. In task semantics, this is closest to a Codex CLI session.",
+    "copilotSdkSession": "SDK-facing session id mapped by the adapter to one Codex thread unless resume/tool-set policy explicitly forks or recreates it.",
+    "codexTurn": "One user prompt / model run inside a Codex thread. A no-turn thread may not have a persisted rollout file yet.",
+    "phase4Constraint": "Do not spawn a codex app-server process per SDK session. Ensure the app-server process is available, then prove continuity with persisted mapping plus thread/resume or thread/read for the mapped Codex thread."
   },
   "capabilityConclusions": {
     "A1_closeLifecycle": {

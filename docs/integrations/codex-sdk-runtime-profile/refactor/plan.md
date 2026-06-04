@@ -1,7 +1,7 @@
 # Codex Runtime Adapter Refactor Plan
 
 Created: 2026-06-03 17:02
-Last Updated: 2026-06-04 20:28
+Last Updated: 2026-06-04 21:03
 Status: Active
 
 ## Goal
@@ -244,13 +244,16 @@ Rules:
 - Keep temporary delegations explicit and removable while mapper/gateway/session bricks are being inserted.
 - Follow the global per-brick loop for session create, resume, send, get messages, destroy, permission, and tool-call workflow bricks.
 - Do not begin Phase 4 until Phase 3.5 has classified the Codex app-server capability questions that affect session lifecycle, native-tool suppression, and dynamic-tool refresh.
+- Keep process identity and session identity separate: one adapter gateway normally owns one `codex app-server` process, while many SDK sessions map to many Codex threads under that process.
+- Treat a Codex thread as the task-session unit closest to a Codex CLI session. Do not describe or implement `session.create` as spawning a new app-server process per session.
+- For restart continuity, app-server process health is only a precondition. The proof is persisted adapter mapping plus successful `thread/resume` or `thread/read` for the mapped Codex thread.
 - Facade methods should hide decisions, not just forward one-to-one.
 - Callers should not choose raw protocol branches manually.
 - Chatpilot app semantics must remain outside the adapter.
 
 Production-readiness work assigned here after Phase 3.5:
 
-- Session lifecycle: A1, A2, A3, A4, A5, B2, B3. Phase 3.5 constraints: non-ephemeral persisted sessions for resumable production threads; `unsubscribe` / `archive` for lifecycle; recreate/fork/reject for incompatible tool-set resume.
+- Session lifecycle: A1, A2, A3, A4, A5, B2, B3. Phase 3.5 constraints: non-ephemeral persisted Codex threads for resumable production sessions; one app-server process can host many threads; `unsubscribe` / `archive` for lifecycle; recreate/fork/reject for incompatible tool-set resume.
 - Tool result behavior: B4.
 - Sandbox/native-tool safety: B1 and C1 through sandbox / permission profile / config controls, followed by native-tool suppression benchmark.
 - Operational setup docs that unblock validation: D1.

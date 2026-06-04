@@ -1,7 +1,7 @@
 # Codex Runtime Adapter Boundary Fitness Status
 
 Created: 2026-06-03 22:19
-Last Updated: 2026-06-03 22:41
+Last Updated: 2026-06-04 17:10
 Status: Active
 
 ## Purpose
@@ -20,7 +20,7 @@ It is not a claim that the current spike-graduated code already satisfies the ta
 |---|---|---|---|
 | Root SDK public API does not export Codex adapter internals | passing-now | Executable guard: `keeps root SDK exports free of experimental adapter internals` in [nodejs/test/codex-adapter.test.ts](../../../../nodejs/test/codex-adapter.test.ts). [nodejs/src/index.ts](../../../../nodejs/src/index.ts) exports core SDK types/classes only; experimental adapter is exposed through package subpath, not root SDK API | Keep as regression guard |
 | Package `exports` do not expose internal runtime implementation subpaths | passing-now | Executable guard: `does not publish internal runtime implementation subpaths` in [nodejs/test/codex-adapter.test.ts](../../../../nodejs/test/codex-adapter.test.ts). [nodejs/package.json](../../../../nodejs/package.json) exposes `.` / `./extension` / `./experimental/codex-adapter`; no `./experimental/*/internal` subpath exists | Keep as regression guard |
-| Experimental Codex adapter subpath does not expose raw gateway class | expected-violation | [nodejs/src/experimental/codexAdapter.ts](../../../../nodejs/src/experimental/codexAdapter.ts) currently exports `CodexAppServerClient`, which is gateway detail | Phase 3: move gateway behind adapter-local internal seam and remove public gateway export |
+| Experimental Codex adapter subpath does not expose raw gateway class | passing-now | Executable guard: `keeps experimental adapter subpath free of raw gateway classes` in [nodejs/test/codex-adapter.test.ts](../../../../nodejs/test/codex-adapter.test.ts). [nodejs/src/experimental/codexAdapter.ts](../../../../nodejs/src/experimental/codexAdapter.ts) no longer exports `CodexAppServerClient` or `CodexAppServerGateway`; build-time declaration check confirmed `codexAdapter.d.ts` no longer imports gateway or JSON-RPC types | Keep as regression guard |
 | Experimental Codex adapter subpath does not expose raw JSON-RPC/provider event/error unions | passing-now | Raw `JsonRpc*` shapes are currently internal to [nodejs/src/experimental/codexAdapter.ts](../../../../nodejs/src/experimental/codexAdapter.ts); exported transcript message is `unknown` | Keep as regression guard |
 | App/downstream-facing code does not import Codex runtime implementation mechanics outside allowed adapter modules/examples | passing-now | Executable guard: `keeps core SDK source files from importing experimental Codex adapter internals` in [nodejs/test/codex-adapter.test.ts](../../../../nodejs/test/codex-adapter.test.ts). The scan covers core `src` files and excludes adapter-local experimental implementation code | Keep as regression guard |
 | Conformance artifacts include transcript/dataflow/side-effect evidence, not only process exit or log presence | passing-now | Phase 1 evidence: [refactor-phase1-selected-profile-conformance@2026-06-03-2239.summary.json](../artifacts/refactor-phase1-selected-profile-conformance@2026-06-03-2239.summary.json) and [refactor-phase1-chatpilot-runtime-acceptance@2026-06-03-2231.summary.json](../artifacts/refactor-phase1-chatpilot-runtime-acceptance@2026-06-03-2231.summary.json). Prior milestone index: [conformance-artifacts.md](../conformance-artifacts.md) | Preserve in Phase 1 no-regression gate |

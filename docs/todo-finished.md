@@ -1,10 +1,32 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-04 09:42
+Last Updated: 2026-06-04 17:10
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Runtime Adapter Refactor Phase 3 @2026-06-04-1710
+
+Section source:
+
+- Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
+- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md)
+- Boundary fitness: [docs/integrations/codex-sdk-runtime-profile/refactor/boundary-fitness.md](./integrations/codex-sdk-runtime-profile/refactor/boundary-fitness.md)
+- Code/Surface: [nodejs/src/experimental/codexAppServerGateway.ts](../nodejs/src/experimental/codexAppServerGateway.ts), [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts)
+- Evidence artifact: [refactor-phase3-gateway-boundary@2026-06-04-1710.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase3-gateway-boundary@2026-06-04-1710.summary.json)
+- Audit: [.audit/AUDIT-codex-adapter-phase3-gateway-boundary-v1@2026-06-04-1710.md](../.audit/AUDIT-codex-adapter-phase3-gateway-boundary-v1@2026-06-04-1710.md)
+- Review tour: [.tours/audit-codex-adapter-phase3-gateway-boundary-20260604-1710.tour](../.tours/audit-codex-adapter-phase3-gateway-boundary-20260604-1710.tour)
+- Source: refactor plan Phase 3; `boundary-fitness.md` expected violation for raw gateway class exposure
+
+- [x] Moved Codex app-server process and JSON-RPC client behavior behind an adapter-internal gateway module.
+  Completion evidence: [nodejs/src/experimental/codexAppServerGateway.ts](../nodejs/src/experimental/codexAppServerGateway.ts) now owns process spawn, Codex home preparation, JSON-RPC request/notify/respond, app-server notification/request routing, timeout handling, and gateway transcript capture.
+- [x] Made the adapter facade depend on gateway capability instead of a public concrete app-server class.
+  Completion evidence: [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts) no longer defines or exports `CodexAppServerClient`; `CodexCopilotAdapterServer` creates the internal gateway by default and keeps app-facing constructor options free of gateway injection types.
+- [x] Removed raw gateway class exposure from the experimental adapter public subpath.
+  Completion evidence: `keeps experimental adapter subpath free of raw gateway classes` in [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts), plus build-time declaration check showing `codexAdapter.d.ts` does not expose or import gateway/JSON-RPC types.
+- [x] Preserved runtime transcript/error observability and existing behavior after gateway extraction.
+  Completion evidence: local gates passed (`npx tsc --noEmit ...`, `npx eslint ...`, `npx vitest run test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts` with 2 files / 26 tests passing, and `npm run build`), selected-profile conformance `runId=4d82c62d-19b2-4749-9248-50d31b39c99c`, verdict `pass`, 7/7 checks pass, `copilotCli=396` and `codexAdapter=1473` ledger entries, and Chatpilot acceptance `runId=546a6ab7-5476-46d3-b315-d2caf6dae322`, status `pass`.
 
 ## Completed: Runtime Adapter Refactor Phase 2 @2026-06-04-0942
 

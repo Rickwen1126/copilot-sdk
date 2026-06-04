@@ -1,0 +1,52 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Code Review: Codex adapter Phase 3 gateway boundary 2026-06-04",
+  "steps": [
+    {
+      "title": "Review Summary",
+      "description": "## Review Summary\n\nCritical: 0\nSuggestions: 2\nGood Practices: 4\n\n### Scope\nReviewed Phase 3 runtime IO gateway extraction: internal Codex app-server gateway module, adapter facade dependency direction, public experimental subpath leakage guard, gateway error observability test, selected-profile conformance, and Chatpilot runtime acceptance.\n\n### Verdict\nNo blocking issue found. Phase 3 satisfies the plan exit criteria: raw gateway class exposure is removed from the public adapter subpath, app-server IO lives behind an internal gateway module, adapter behavior remains green, and transcript/dataflow evidence is preserved.\n\n### Mental Model\nPhase 2 built the customs stamp desk. Phase 3 moved the actual border gate hardware into its own room: process startup, JSON-RPC wires, and transcript capture belong to the gateway, not the adapter facade."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAppServerGateway.ts",
+      "line": 1,
+      "title": "Good: Runtime IO moved behind an internal gateway module",
+      "description": "## Insight\nMechanism: the new gateway module owns Codex process startup, isolated `CODEX_HOME`, JSON-RPC parsing, request/notify/respond writes, timeout handling, and transcript capture.\n\nFailure mode: if this stayed in `codexAdapter.ts`, facade changes could accidentally alter process lifecycle or transcript evidence while working on SDK semantics.\n\nDesign tradeoff: the gateway class is still concrete internally. That is fine for Phase 3 because the goal is boundary ownership, not a multi-runtime gateway framework.\n\n## Plain Reading\nThis file is the only room allowed to touch the outside Codex app-server wire. It does not know about SDK sessions, Chatpilot route identity, or tool semantics.\n\n## Code Detail\nThe module defines JSON-RPC shapes, gateway options, process spawn, stdout/stderr line handling, pending request timeout, and summary transcript ownership."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 17,
+      "title": "Good: Adapter imports the gateway but does not export it",
+      "description": "## Insight\nMechanism: `codexAdapter.ts` imports `CodexAppServerGateway` for default construction, while the exported public surface remains `CodexCopilotAdapterServer`, adapter options, capabilities, and helper creation.\n\nFailure mode: if the raw gateway class were exported here, SDK consumers could depend on process/JSON-RPC internals and make future runtime replacement harder.\n\nDesign tradeoff: runtime JS still imports the internal module, but package `exports` does not publish an internal subpath and the generated public declaration no longer exposes gateway types.\n\n## Plain Reading\nThe facade knows there is a gateway behind the wall, but it does not hand that gateway object to SDK consumers.\n\n## Code Detail\nThe adapter file keeps app-facing options and session orchestration while delegating Codex process IO to `CodexAppServerGateway`."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 71,
+      "title": "Good: Constructor no longer leaks injection type",
+      "description": "## Insight\nMechanism: the public `CodexCopilotAdapterServer` constructor accepts only `CodexAdapterOptions`; the gateway capability type is adapter-local and does not appear in `codexAdapter.d.ts`.\n\nFailure mode: exposing a gateway injection parameter in public declarations would still be a boundary leak, even if the concrete class was no longer exported.\n\nDesign tradeoff: tests use private-field replacement for fake gateway injection. That is less elegant, but keeps production public API honest until a real test-only seam is designed.\n\n## Plain Reading\nConsumers can configure the adapter, but they cannot plug directly into the app-server wire through the public constructor.\n\n## Code Detail\n`CodexRuntimeGateway` remains a local implementation type. The build-time declaration check confirmed the public declaration file no longer imports gateway or JSON-RPC types."
+    },
+    {
+      "file": "nodejs/test/codex-adapter.test.ts",
+      "line": 219,
+      "title": "Good: Boundary fitness now has an executable guard",
+      "description": "## Insight\nMechanism: the test suite checks both root SDK exports and the experimental adapter module exports, specifically rejecting `CodexAppServerClient` and `CodexAppServerGateway` from public surfaces.\n\nFailure mode: without this guard, a future cleanup could accidentally re-export an internal gateway class and silently reopen the boundary leak.\n\nDesign tradeoff: the test checks source-module exports and package export keys; generated declaration checks are captured as evidence rather than a permanent test fixture for now.\n\n## Plain Reading\nThis is the customs officer for public API leakage. If a raw gateway class sneaks back into the package surface, the test fails.\n\n## Code Detail\nThe new guard imports `../src/experimental/codexAdapter.js` and asserts the facade exports exist while gateway classes do not."
+    },
+    {
+      "file": "nodejs/test/codex-adapter.test.ts",
+      "line": 312,
+      "title": "Good: Gateway errors remain observable before start",
+      "description": "## Insight\nMechanism: the internal gateway test verifies `request`, `notify`, and `respond` throw `not started` before runtime process startup.\n\nFailure mode: gateway extraction could accidentally turn pre-start misuse into silent no-op, making runtime failures hard to diagnose.\n\nDesign tradeoff: this is a small L2 gateway brick test, not a fake process harness. L3 runtime proof comes from selected-profile conformance and Chatpilot acceptance.\n\n## Plain Reading\nIf the wire is not plugged in yet, the gateway says so loudly. It does not pretend the message was sent.\n\n## Code Detail\nThe test uses `isolateCodexHome:false` with a missing temp path so it can construct the gateway without touching the real Codex home or spawning app-server."
+    },
+    {
+      "file": "nodejs/src/experimental/codexAppServerGateway.ts",
+      "line": 126,
+      "title": "Suggestion: Keep gateway concrete until Phase 6 proves variants",
+      "description": "## Problem\n`CodexAppServerGateway` is currently a concrete class. That is fine for Phase 3, but future Gemini/opencode/runtime variants may need a more explicit gateway factory or policy seam.\n\n## Fix\nDo not add Strategy now. Revisit only when another backend needs the same gateway capability seam and conformance can prove the shared contract.\n\n## Rationale\nThis follows the design-pattern rule: no pattern theater. A concrete gateway is better than an abstract framework with one implementation."
+    },
+    {
+      "file": "nodejs/test/codex-adapter.test.ts",
+      "line": 268,
+      "title": "Suggestion: Replace private-field test injection if a durable test seam appears",
+      "description": "## Problem\nThe characterization test replaces the private `codex` field to inject `FakeCodexGateway`. That keeps public declarations clean, but it is a bit test-hacky.\n\n## Fix\nDo not block Phase 3. If facade slimming creates an adapter-local factory or test harness module, move this injection there.\n\n## Rationale\nThe current tradeoff is intentional: public API cleanliness beats a pretty test-only constructor parameter. Phase 4 may provide a better internal seam."
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+{
+  "createdAt": "2026-06-04T17:10:00+08:00",
+  "status": "pass",
+  "scope": "Runtime adapter refactor Phase 3 runtime IO gateway boundary",
+  "sourcePlan": "docs/integrations/codex-sdk-runtime-profile/refactor/plan.md#phase-3-runtime-io-gateway-boundary",
+  "codeSurfaces": [
+    "nodejs/src/experimental/codexAppServerGateway.ts",
+    "nodejs/src/experimental/codexAdapter.ts",
+    "nodejs/test/codex-adapter.test.ts"
+  ],
+  "completedGatewayBricks": [
+    "moved Codex app-server process and JSON-RPC client into an adapter-internal gateway module",
+    "made adapter facade depend on a small gateway capability shape instead of a concrete public runtime class",
+    "removed raw gateway class exposure from the experimental adapter public subpath",
+    "preserved runtime transcript capture in gateway summary",
+    "kept pre-start gateway errors observable instead of silent success"
+  ],
+  "publicSurfaceEvidence": {
+    "sourceGuard": "nodejs/test/codex-adapter.test.ts",
+    "distDeclaration": "nodejs/dist/experimental/codexAdapter.d.ts",
+    "result": "codexAdapter.d.ts exposes CodexCopilotAdapterServer, CodexAdapterOptions, capabilities, and createCodexCopilotClientOptions only; it does not import or expose CodexAppServerGateway, CodexAppServerClient, or CodexRuntimeGateway."
+  },
+  "localVerification": {
+    "typescript": {
+      "command": "npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts src/experimental/codexAdapterMappers.ts src/experimental/codexAppServerGateway.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "status": "pass"
+    },
+    "eslint": {
+      "command": "npx eslint src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts src/experimental/codexAdapterMappers.ts src/experimental/codexAppServerGateway.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "status": "pass"
+    },
+    "vitest": {
+      "command": "npx vitest run test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "status": "pass",
+      "testFiles": 2,
+      "tests": 26
+    },
+    "build": {
+      "command": "npm run build",
+      "status": "pass"
+    },
+    "distSurfaceCheck": {
+      "command": "rg -n \"CodexAppServer(Client|Gateway)|CodexRuntimeGateway|codexAppServerGateway|JsonRpc\" nodejs/dist/experimental/codexAdapter.d.ts",
+      "status": "pass",
+      "expectedMatches": 0
+    }
+  },
+  "selectedProfileConformance": {
+    "rawArtifact": "/tmp/copilot-codex-refactor-phase3-gateway-20260604-1706.json",
+    "runId": "4d82c62d-19b2-4749-9248-50d31b39c99c",
+    "phase": "all",
+    "verdict": "pass",
+    "checksPassed": 7,
+    "checksTotal": 7,
+    "ledgerCounts": {
+      "copilotCli": 396,
+      "codexAdapter": 1473
+    },
+    "behaviorEvidence": {
+      "assistantMessage": "READY",
+      "resumedAssistantMessage": "READYREADY",
+      "permissionAssertionFailures": {
+        "approval": [],
+        "fileApproval": [],
+        "tool": [],
+        "toolFailure": []
+      },
+      "gatewayTranscriptSample": [
+        {
+          "direction": "adapter->codex",
+          "method": "initialize"
+        },
+        {
+          "direction": "codex->adapter",
+          "method": "response"
+        },
+        {
+          "direction": "adapter->codex",
+          "method": "initialized"
+        },
+        {
+          "direction": "codex->adapter",
+          "method": "remoteControl/status/changed"
+        },
+        {
+          "direction": "adapter->codex",
+          "method": "account/read"
+        },
+        {
+          "direction": "codex->adapter",
+          "method": "response"
+        }
+      ]
+    }
+  },
+  "chatpilotRuntimeAcceptance": {
+    "rawArtifact": "/tmp/chatpilot-codex-refactor-phase3-gateway-20260604-1710.json",
+    "runId": "546a6ab7-5476-46d3-b315-d2caf6dae322",
+    "status": "pass",
+    "backends": [
+      {
+        "backend": "copilot-cli",
+        "status": "pass",
+        "runId": "546a6ab7-5476-46d3-b315-d2caf6dae322-copilot-cli",
+        "assertionsPassed": 11,
+        "assertionsTotal": 11
+      },
+      {
+        "backend": "codex-adapter",
+        "status": "pass",
+        "runId": "546a6ab7-5476-46d3-b315-d2caf6dae322-codex-adapter",
+        "assertionsPassed": 12,
+        "assertionsTotal": 12
+      }
+    ],
+    "crossBackendAssertions": [
+      {
+        "name": "both backends pass the same Chatpilot app-level acceptance flow",
+        "status": "pass"
+      },
+      {
+        "name": "both backends persist one or more memo rows for their route",
+        "status": "pass"
+      },
+      {
+        "name": "both backends use the same Chatpilot SDK-visible tool intents",
+        "status": "pass"
+      }
+    ]
+  }
+}

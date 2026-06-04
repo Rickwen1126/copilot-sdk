@@ -6,6 +6,7 @@ import {
     CODEX_ADAPTER_CAPABILITIES,
     CodexCopilotAdapterServer,
 } from "../src/experimental/codexAdapter.js";
+import { CodexAppServerGateway } from "../src/experimental/codexAppServerGateway.js";
 
 type FakeCodexMessage = {
     method: string;
@@ -221,6 +222,14 @@ describe("Codex adapter experimental boundary", () => {
         expect("CODEX_ADAPTER_CAPABILITIES" in sdk).toBe(false);
     });
 
+    it("keeps experimental adapter subpath free of raw gateway classes", async () => {
+        const adapterModule = await import("../src/experimental/codexAdapter.js");
+        expect("CodexCopilotAdapterServer" in adapterModule).toBe(true);
+        expect("CODEX_ADAPTER_CAPABILITIES" in adapterModule).toBe(true);
+        expect("CodexAppServerClient" in adapterModule).toBe(false);
+        expect("CodexAppServerGateway" in adapterModule).toBe(false);
+    });
+
     it("does not publish internal runtime implementation subpaths", () => {
         const packageJson = readPackageJson();
         const exportsValue = packageJson.exports;
@@ -258,15 +267,11 @@ describe("Codex adapter experimental boundary", () => {
 
     it("characterizes create and send behavior through the SDK-facing adapter seam", async () => {
         const fakeCodex = new FakeCodexGateway();
-        const adapter = new CodexCopilotAdapterServer(
-            {
-                model: "gpt-test",
-                protocolVersion: 3,
-            },
-            // The live adapter still types gateway injection as the concrete runtime client.
-            // Phase 3 replaces this with an internal gateway capability seam.
-            fakeCodex as unknown as ConstructorParameters<typeof CodexCopilotAdapterServer>[1]
-        );
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
         await adapter.start();
         onTestFinished(() => adapter.stop());
 
@@ -318,5 +323,23 @@ describe("Codex adapter experimental boundary", () => {
                 "session.idle",
             ])
         );
+    });
+});
+
+describe("Codex app-server gateway internal boundary", () => {
+    it("keeps pre-start gateway errors observable instead of silently succeeding", () => {
+        const gateway = new CodexAppServerGateway({
+            codexBin: "codex",
+            codexHome: "/tmp/copilot-sdk-missing-codex-home",
+            isolateCodexHome: false,
+        });
+
+        expect(() => gateway.request("model/list")).toThrow(/not started/);
+        expect(() => gateway.notify("initialized", {})).toThrow(/not started/);
+        expect(() => gateway.respond(1, {})).toThrow(/not started/);
+        expect(gateway.summary()).toEqual({
+            codexHome: "/tmp/copilot-sdk-missing-codex-home",
+            transcripts: [],
+        });
     });
 });

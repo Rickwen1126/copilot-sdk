@@ -1,7 +1,7 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-04 20:28
+Last Updated: 2026-06-04 21:10
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
@@ -28,6 +28,8 @@ Section source:
   Completion evidence: Codex exposes sandbox, permission profiles, config, and `dynamicTools`, but not SDK-shaped `available_tools` / `excluded_tools`; Phase 4 must implement locked Chatpilot lane controls and benchmark native-tool suppression.
 - [x] Confirmed basic isolated `CODEX_HOME` auth inheritance.
   Completion evidence: copied isolated home starts app-server and `account/read` succeeds; token refresh / 401 recovery remains a later production-like validation.
+- [x] Clarified the runtime identity model for Phase 4 implementation.
+  Completion evidence: production docs now distinguish `codex app-server` process from Codex thread and Copilot SDK session. One app-server process can host many Codex threads; a Codex thread is the task-session unit closest to a Codex CLI session; app-server health is only a precondition, while `thread/resume` / `thread/read` is the continuity proof.
 
 ## Completed: Runtime Adapter Refactor Phase 3 @2026-06-04-1710
 

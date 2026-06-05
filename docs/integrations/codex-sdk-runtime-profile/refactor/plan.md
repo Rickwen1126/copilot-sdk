@@ -1,7 +1,7 @@
 # Codex Runtime Adapter Refactor Plan
 
 Created: 2026-06-03 17:02
-Last Updated: 2026-06-04 21:03
+Last Updated: 2026-06-05 11:21
 Status: Active
 
 ## Goal
@@ -363,6 +363,7 @@ Actions:
 - Confirm the global per-brick loop was followed for mapper, gateway, facade, harness, and any Strategy/Policy extraction.
 - Confirm new modules have dedicated tests and are covered by composed conformance/E2E evidence.
 - Confirm old duplicated spike paths have been deleted or explicitly archived as non-active reference code.
+- Decide whether the adapter graduates out of `nodejs/src/experimental/` and `./experimental/codex-adapter` after production-readiness proof. If it does, add a stable source/package surface and keep an explicit compatibility/deprecation plan for the experimental subpath.
 - Update code map and canonical docs if code surfaces moved.
 - Archive completed todo with evidence in `docs/todo-finished.md`.
 
@@ -371,6 +372,7 @@ Exit criteria:
 - Refactor evidence satisfies [spec.md](./spec.md).
 - `docs/todo.md` has no stale active items for completed phases.
 - `docs/spec.md` and code map point to the current module surfaces.
+- The experimental-path graduation decision is recorded. If code moves, package exports, tests, docs, and compatibility aliases are updated together.
 
 Evidence level:
 

@@ -119,6 +119,7 @@ export const CODEX_ADAPTER_CAPABILITIES = {
         { id: "session.getMessages", status: "supported" },
         { id: "session.send", status: "supported" },
         { id: "session.destroy", status: "supported" },
+        { id: "session.delete", status: "supported" },
         { id: "command approval", status: "supported" },
         { id: "file approval", status: "supported" },
         { id: "custom tool call", status: "supported" },
@@ -362,6 +363,7 @@ export class CodexCopilotAdapterServer {
         );
         registerHandler("session.send", (params, id) => this.handleSessionSend(params, id));
         registerHandler("session.destroy", (params, id) => this.handleSessionDestroy(params, id));
+        registerHandler("session.delete", (params) => this.handleSessionDelete(params));
         registerHandler("session.tools.handlePendingToolCall", (params) =>
             this.handlePendingToolCall(params)
         );
@@ -548,7 +550,7 @@ export class CodexCopilotAdapterServer {
             approvalPolicy: this.options.approvalPolicy,
             approvalsReviewer: this.options.approvalsReviewer,
             sandbox: codexThreadSandboxMode(this.options.sandboxMode),
-            ephemeral: true,
+            ephemeral: false,
             experimentalRawEvents: false,
             persistExtendedHistory: false,
             ...(baseInstructions ? { baseInstructions } : {}),
@@ -636,6 +638,22 @@ export class CodexCopilotAdapterServer {
         session.model = typeof params.model === "string" ? params.model : session.model;
         session.resumeCount += 1;
         this.threadToSession.set(session.threadId, session.sessionId);
+
+        const resumeResponse = await this.codex.request("thread/resume", {
+            threadId: session.threadId,
+            cwd: session.cwd,
+            approvalPolicy: this.options.approvalPolicy,
+            approvalsReviewer: this.options.approvalsReviewer,
+            sandbox: codexThreadSandboxMode(this.options.sandboxMode),
+            initialTurnsPage: {
+                limit: 50,
+                sortDirection: "desc",
+                itemsView: "summary",
+            },
+        });
+        if (resumeResponse.error) {
+            throw resumeResponse.error;
+        }
 
         const resumeTime = nowIso();
         this.emitLifecycle("session.resumed", session.sessionId, {
@@ -732,19 +750,73 @@ export class CodexCopilotAdapterServer {
         };
     }
 
-    private handleSessionDestroy(params: unknown, connectionId: string) {
+    private async handleSessionDestroy(params: unknown, connectionId: string) {
         const sessionId =
             isRecord(params) && typeof params.sessionId === "string" ? params.sessionId : undefined;
         if (sessionId) {
             const session = this.sessions.get(sessionId);
             if (session) {
                 session.attachedConnectionIds.delete(connectionId);
-                if (session.attachedConnectionIds.size === 0) {
+                if (
+                    session.attachedConnectionIds.size === 0 &&
+                    this.threadToSession.has(session.threadId)
+                ) {
+                    const unsubscribeResponse = await this.codex.request("thread/unsubscribe", {
+                        threadId: session.threadId,
+                    });
+                    if (unsubscribeResponse.error) {
+                        this.transcript.push({
+                            at: nowIso(),
+                            direction: "adapter.session.destroy.unsubscribe.error",
+                            message: {
+                                sessionId,
+                                threadId: session.threadId,
+                                error: unsubscribeResponse.error,
+                            },
+                        });
+                    }
                     this.threadToSession.delete(session.threadId);
                 }
             }
         }
         return { success: true };
+    }
+
+    private async handleSessionDelete(params: unknown) {
+        const sessionId =
+            isRecord(params) && typeof params.sessionId === "string" ? params.sessionId : undefined;
+        if (!sessionId) {
+            return { success: false, error: "session.delete requires sessionId" };
+        }
+
+        const session = this.sessions.get(sessionId);
+        if (!session) {
+            return { success: false, error: `Unknown session: ${sessionId}` };
+        }
+
+        const archiveResponse = await this.codex.request("thread/archive", {
+            threadId: session.threadId,
+        });
+        if (archiveResponse.error) {
+            return { success: false, error: archiveResponse.error.message };
+        }
+
+        this.emitLifecycle("session.deleted", sessionId, {
+            deleteTime: nowIso(),
+        });
+        this.sessions.delete(sessionId);
+        this.threadToSession.delete(session.threadId);
+        this.deletePendingToolCallsForSession(sessionId);
+
+        return { success: true };
+    }
+
+    private deletePendingToolCallsForSession(sessionId: string) {
+        for (const [requestId, pending] of this.pendingDynamicToolCalls.entries()) {
+            if (pending.sessionId === sessionId) {
+                this.pendingDynamicToolCalls.delete(requestId);
+            }
+        }
     }
 
     private handlePendingToolCall(params: unknown) {

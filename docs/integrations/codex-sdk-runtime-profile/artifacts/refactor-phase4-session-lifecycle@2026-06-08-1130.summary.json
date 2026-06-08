@@ -1,0 +1,71 @@
+{
+  "createdAt": "2026-06-08 11:30",
+  "status": "pass",
+  "phase": "refactor-phase4-session-lifecycle",
+  "sourcePlan": "docs/integrations/codex-sdk-runtime-profile/refactor/plan.md",
+  "sourceTodo": "docs/todo.md#p0-codex-adapter-production-readiness-queue-2026-06-04-2016",
+  "codeSurfaces": [
+    "nodejs/src/experimental/codexAdapter.ts",
+    "nodejs/test/codex-adapter.test.ts"
+  ],
+  "implementationSummary": [
+    "session.create now starts non-ephemeral Codex threads so resume has persisted rollout state.",
+    "session.resume now calls Codex thread/resume before reporting SDK resume success.",
+    "session.destroy / SDK disconnect now maps to thread/unsubscribe while preserving SDK session data for resume.",
+    "session.delete now maps to thread/archive and removes adapter session state.",
+    "thread/unsubscribe is guarded as idempotent for repeated SDK destroy/disconnect teardown."
+  ],
+  "selectedProfileConformance": {
+    "artifactPath": "/tmp/copilot-codex-refactor-phase4-lifecycle-3.json",
+    "runId": "954753ec-dcd8-4f58-b293-f209819f74c0",
+    "verdict": "pass",
+    "checks": [
+      "core new session",
+      "resume continuation",
+      "command approval approve",
+      "command approval deny",
+      "file approval approve/deny",
+      "custom tool call",
+      "tool deny or failure"
+    ],
+    "lifecycleEvidence": [
+      "Codex adapter ledger includes non-ephemeral thread/start shape.",
+      "Primary resumed session ledger includes thread/unsubscribe followed by thread/resume for the same Codex thread id.",
+      "SDK-visible resumed flow observed session.resume, user.message, assistant.message, and session.idle.",
+      "Resume assertion proved expectedResumedAssistantMessage=READYREADY and resumedAssistantMessage=READYREADY."
+    ]
+  },
+  "chatpilotAcceptance": {
+    "artifactPath": "/tmp/chatpilot-codex-refactor-phase4-lifecycle.json",
+    "runId": "a599a278-329e-499c-93a3-5396b092c96e",
+    "status": "pass",
+    "crossBackendAssertions": [
+      "copilot-cli=pass codex-adapter=pass",
+      "copilot-cli_rows=1 codex-adapter_rows=1",
+      "copilot-cli save/list=1/1; codex-adapter save/list=1/1"
+    ],
+    "codexAdapterLogEvidence": {
+      "sessionSetupCount": 1,
+      "createdOrResumedCount": 1,
+      "reuseCount": 1,
+      "saveToolCallCount": 1,
+      "saveToolResultCount": 1,
+      "listToolCallCount": 1,
+      "listToolResultCount": 1,
+      "sdkSendCount": 2,
+      "sdkResponseCount": 2
+    }
+  },
+  "verification": [
+    "npx vitest run test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+    "npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts src/experimental/codexAdapterMappers.ts src/experimental/codexAppServerGateway.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+    "npx eslint src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts src/experimental/codexAdapterMappers.ts src/experimental/codexAppServerGateway.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+    "npm run build",
+    "SPIKE_PHASE=all ... npx tsx examples/copilot-codex-adapter-spike.ts",
+    "CHATPILOT_ACCEPTANCE_BACKENDS=all ... npx tsx examples/chatpilot-runtime-acceptance.ts"
+  ],
+  "notes": [
+    "A non-escalated conformance attempt failed before adapter proof because SDK session event persistence could not write ~/.copilot/session-state under sandbox; escalated reruns passed.",
+    "Chatpilot acceptance initially failed because sandbox could not read ~/.cache/uv; escalated rerun passed."
+  ]
+}

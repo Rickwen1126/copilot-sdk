@@ -49,6 +49,17 @@ class FakeCodexGateway {
             };
         }
 
+        if (method === "thread/resume") {
+            return {
+                id: this.requests.length,
+                result: {
+                    thread: {
+                        id: this.threadId,
+                    },
+                },
+            };
+        }
+
         if (method === "turn/start") {
             setTimeout(() => {
                 this.emitNotification("item/completed", {
@@ -189,6 +200,7 @@ describe("Codex adapter experimental boundary", () => {
                 "session.getMessages",
                 "session.send",
                 "session.destroy",
+                "session.delete",
                 "command approval",
                 "file approval",
                 "custom tool call",
@@ -295,6 +307,7 @@ describe("Codex adapter experimental boundary", () => {
             expect.objectContaining({
                 model: "gpt-test",
                 baseInstructions: "You are the adapter characterization test assistant.",
+                ephemeral: false,
             })
         );
 
@@ -323,6 +336,67 @@ describe("Codex adapter experimental boundary", () => {
                 "session.idle",
             ])
         );
+    });
+
+    it("maps SDK disconnect and delete to Codex thread lifecycle operations", async () => {
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        const session = await client.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+        });
+
+        await session.disconnect();
+        await session.disconnect();
+        expect(fakeCodex.requests).toContainEqual({
+            method: "thread/unsubscribe",
+            params: {
+                threadId: "fake-thread-1",
+            },
+        });
+        expect(fakeCodex.requests.filter((entry) => entry.method === "thread/unsubscribe")).toHaveLength(
+            1
+        );
+
+        await client.resumeSession(session.sessionId, {
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+        });
+        expect(fakeCodex.requests).toContainEqual({
+            method: "thread/resume",
+            params: expect.objectContaining({
+                threadId: "fake-thread-1",
+                sandbox: "read-only",
+            }),
+        });
+
+        await client.deleteSession(session.sessionId);
+        expect(fakeCodex.requests).toContainEqual({
+            method: "thread/archive",
+            params: {
+                threadId: "fake-thread-1",
+            },
+        });
+
+        await expect(
+            client.resumeSession(session.sessionId, {
+                model: "gpt-test",
+                onPermissionRequest: approveAll,
+            })
+        ).rejects.toThrow(/Unknown session/);
     });
 });
 

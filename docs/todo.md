@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-05 11:21
+Last Updated: 2026-06-08 11:30
 Status: Active
 
 ## P0: Codex Adapter Production Readiness Queue @2026-06-04-2016
@@ -17,6 +17,8 @@ Section source:
 - [ ] Phase 4 production workflow hardening after Phase 3.5.
   - Assigned issues: A1, A2, A3, A4, A5, B1, B2, B3, B4, C1, D1.
   - Spike constraints: one adapter gateway normally owns one `codex app-server` process; many SDK sessions map to many Codex threads under that process; use non-ephemeral persisted threads for resumable production sessions; app-server health is not resume proof, `thread/resume` or `thread/read` is; use `thread/unsubscribe` / `thread/archive` for lifecycle; do not implement `dynamicTools` hot-update on `session.resume`; map native-tool suppression through sandbox / permission profile / config and benchmark it.
+  - Progress: session lifecycle brick implemented and verified. `session.create` uses non-ephemeral Codex threads, SDK `disconnect()` maps to idempotent `thread/unsubscribe`, SDK `resumeSession()` maps to Codex `thread/resume`, and SDK `deleteSession()` maps to `thread/archive`.
+  - Progress evidence: [refactor-phase4-session-lifecycle@2026-06-08-1130.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase4-session-lifecycle@2026-06-08-1130.summary.json).
   - Completion evidence: session destroy/resume/tool-refresh/sandbox behavior is implemented from spike evidence, direct cleanup items are covered by module/composed tests, `codex login` runbook exists, and Phase 1 no-regression plus Chatpilot acceptance remain green.
 
 - [ ] Phase 5 production proof expansion.

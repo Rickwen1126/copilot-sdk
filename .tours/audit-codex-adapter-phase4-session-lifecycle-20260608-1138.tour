@@ -1,0 +1,50 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "03 - Phase 4 Session Lifecycle: Codex Adapter",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 這條 tour 其實是在看什麼\n\n這條 tour 在看：Copilot SDK 的 session lifecycle，如何被 adapter 翻譯成 Codex app-server 的 thread lifecycle。\n\n如果先記不住細節，先抓住每個 step 只是在回答：「SDK consumer 說 create / disconnect / resume / delete 時，adapter 到底應該對 Codex thread 做什麼？」\n\n## 錨定已知\n\n把 adapter 想成車站海關。SDK session 是旅客手上的票，Codex thread 是實際旅程。`disconnect()` 不是把旅程刪掉，只是旅客暫時離站；`resumeSession()` 是回到同一段旅程；`deleteSession()` 才是把旅程封存。\n\n## 這條路徑在解決什麼問題\n\nPhase 3 spike 版本偏向 adapter 自己在記憶體裡假裝 resume。Phase 4 的 production constraint 要求 resume 不是只看 app-server 還活著，而是 Codex thread 真的能被 `thread/resume` 或 `thread/read` 證明仍可延續。\n\n## Mental model\n\n這個 slice 的 mental model 是：SDK-facing lifecycle 是穩定語義，Codex app-server lifecycle 是 runtime detail。adapter 的責任不是把兩邊 API 名字一對一硬接，而是維持 SDK 語義，同時對 Codex 做正確的 thread 操作。\n\n## 為什麼值得讀\n\n讀完這條 tour，你會知道為什麼 `disconnect` 不能等於 `archive`，為什麼 `resume` 必須真的打到 Codex，還有測試如何把這條語義鏈固定住。"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 110,
+      "endLine": 122,
+      "ref": "0080cdd3cb0ea3689eba05ede0d5c7d11ef07640",
+      "title": "Step 1 - Public Capability Contract Includes Delete",
+      "description": "## Insight\n\n**機制**：adapter 先在 capability flags 宣告 SDK-facing contract。這裡新增 `session.delete`，表示 adapter 不只支援暫時 detach，也支援永久刪除語義。\n\n**故障模式**：如果 code 有 `session.delete` handler 但 capability 沒宣告，上游可能不知道可用；反過來，如果宣告但沒有正確 handler，就會變成假能力。\n\n**設計取捨**：把 `session.destroy` 和 `session.delete` 都列成 supported，代價是 adapter 必須明確區分兩種 lifecycle；好處是 SDK consumer 不需要知道 Codex 的 `unsubscribe` / `archive` 名字。\n\n## 白話解析\n\n這段是在告訴 SDK 使用者：「你可以斷線，也可以刪除，但這兩件事不是同一件事。」它其實就是先把海關窗口掛牌，後面的 handler 才有明確責任。\n\n## Code Detail\n\n這段在 `CODEX_ADAPTER_CAPABILITIES.flags` 中加入 `session.delete`，並維持 selected runtime profile 只宣告目前要對齊的 SDK Core / Coding Agent 能力。\n\n好處：\n- API 表面清楚，測試能直接檢查 supported capability set。\n- 不需要把 Codex runtime 細節暴露給 SDK consumer。\n\n壞處：\n- 一旦宣告 supported，後續 conformance 就必須把 delete 行為補實，不能只靠文件說明。\n\n思考問題：\n- 如果 `session.destroy` 和 `session.delete` 都存在，哪一個應該保留 resume 能力？\n- capability contract 應該描述 SDK 語義，還是 runtime endpoint 名稱？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 547,
+      "endLine": 558,
+      "ref": "0080cdd3cb0ea3689eba05ede0d5c7d11ef07640",
+      "title": "Step 2 - Create Starts A Persisted Codex Thread",
+      "description": "## Insight\n\n**機制**：SDK `createSession()` 被翻成 Codex `thread/start`，而且 `ephemeral: false`。這是 resume 能成立的地基：旅程要先有可保存的 rollout，之後才可能回來續接。\n\n**故障模式**：如果 thread 是 ephemeral，adapter 也許能在同一個 process 內靠記憶體假裝存在，但 Codex 端沒有穩定 persisted thread 可供 production resume proof。\n\n**設計取捨**：non-ephemeral 會留下 runtime state，需要 lifecycle cleanup；但它換來真正可觀察、可 resume、可 audit 的 thread continuity。\n\n## 白話解析\n\n這段是在建立真正會留下紀錄的 Codex 旅程。它其實就是說：「這不是臨時票，這是一段之後可以回來續搭的旅程。」效果會在 resume conformance 裡看到：同一個 thread 可以先 unsubscribe，再 resume，然後繼續第二個 turn。\n\n## Code Detail\n\n`thread/start` 帶入 cwd、model、approval policy、sandbox、base instructions、dynamic tools，並把 `ephemeral` 設為 `false`。`persistExtendedHistory` 仍是 false，代表這個 slice 只處理 Codex thread 持久性，不擴張歷史保存策略。\n\n好處：\n- 對齊 Phase 3.5 spike 結論：resumable production session 需要 non-ephemeral thread。\n- 讓 lifecycle evidence 能從 Codex transcript / ledger 觀察。\n\n壞處：\n- 需要後續處理 archive / retention / cleanup policy。\n- adapter restart mapping 還沒在這段解決，thread persisted 不等於 SDK session mapping persisted。\n\n思考問題：\n- 為什麼 app-server health 不能當作 resume proof？\n- `ephemeral: false` 解決的是 Codex thread continuity，還是 SDK session mapping continuity？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 618,
+      "endLine": 656,
+      "ref": "0080cdd3cb0ea3689eba05ede0d5c7d11ef07640",
+      "title": "Step 3 - Resume Must Reopen The Codex Thread",
+      "description": "## Insight\n\n**機制**：SDK `resumeSession()` 先找到 adapter 內的 SDK session mapping，再對 Codex 發 `thread/resume`。只有 Codex 回應成功後，adapter 才發 SDK-facing `session.resumed` / `session.resume` event。\n\n**故障模式**：如果只把 connectionId 加回 `attachedConnectionIds`，SDK 看起來 resume 成功，但 Codex app-server 可能沒有重新訂閱 thread；下一個 `sendAndWait` 就可能 timeout。\n\n**設計取捨**：resume handler 變得更慢且會受到 Codex error 影響；但這正是 production 想要的，因為失敗要在 resume gate 暴露，而不是在下一個 user turn 才神秘卡住。\n\n## 白話解析\n\n這段是在旅客回站時，真的把 Codex 端那段旅程重新打開。它其實就是在防止「櫃台說你回來了，但列車根本沒有接上」。如果這裡漏掉，使用者會看到 resume 成功，下一句話卻等不到 assistant/idle。\n\n## Code Detail\n\n`handleSessionResume` 更新 attached connection、cwd、model、resumeCount，然後呼叫 `this.codex.request(\"thread/resume\", ...)`。`initialTurnsPage` 要求 Codex 帶回 summary view，讓 app-server 端重新載入 thread context。\n\n好處：\n- 把 resume proof 放在 resume handler 當場。\n- conformance 能觀察到 `thread/resume` request 與 SDK-visible resumed flow。\n\n壞處：\n- 目前仍依賴 `this.sessions.get(sessionId)`，adapter process restart 後 mapping 會不見。\n- 尚未比較 resumed SDK tool descriptors 是否與原 thread 相容。\n\n思考問題：\n- 為什麼 `session.resume` event 應該在 Codex `thread/resume` 成功後才 emit？\n- 如果 `thread/resume` 失敗，SDK consumer 應該看到什麼層級的錯誤？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 753,
+      "endLine": 810,
+      "ref": "0080cdd3cb0ea3689eba05ede0d5c7d11ef07640",
+      "title": "Step 4 - Disconnect Detaches, Delete Archives",
+      "description": "## Insight\n\n**機制**：`session.destroy` / SDK `disconnect()` 只在最後一個 attached connection 離開時送 `thread/unsubscribe`，並保留 adapter session；`session.delete` 則送 `thread/archive`，然後刪掉 adapter session state 與 pending dynamic tool calls。\n\n**故障模式**：如果 disconnect 直接 archive，SDK 的「disconnect 後可 resume」語義會被破壞；如果 delete 只 unsubscribe，已刪 session 還可能被 resume，語義也錯。\n\n**設計取捨**：分成 detach 和 archive 兩條路徑後，狀態機比較複雜；但這是維持 SDK 語義與 Codex runtime lifecycle 同時正確的必要成本。\n\n## 白話解析\n\n這段是在分清楚「暫時離站」和「旅程結束封存」。`disconnect()` 只是退票口暫離，所以還能回來；`deleteSession()` 才是把旅程歸檔，之後不能再用同一張票回來。\n\n## Code Detail\n\n`handleSessionDestroy` 會移除 connectionId，當沒有 attached connection 且 thread 還在 mapping 中，才送 `thread/unsubscribe`。`handleSessionDelete` 需要 sessionId，找不到就回 Unknown，找得到則先 `thread/archive`，再 emit `session.deleted` 並刪除本地 state。\n\n好處：\n- `thread/unsubscribe` idempotent guard 避免重複 disconnect / stop 造成 lifecycle ledger 噪音。\n- delete 會清 pending tool calls，避免已刪 session 留下懸掛工具請求。\n\n壞處：\n- `thread/unsubscribe` error 目前只記 transcript 但仍回 success，這是偏向 SDK disconnect 不因 detach cleanup 卡死的取捨。\n- archive policy 還沒有 retention / runbook 層面的完整設計。\n\n思考問題：\n- 為什麼 unsubscribe error 不一定要讓 SDK disconnect fail？\n- delete 時為什麼要先 emit lifecycle 再刪 sessions map？"
+    },
+    {
+      "file": "nodejs/test/codex-adapter.test.ts",
+      "line": 341,
+      "endLine": 399,
+      "ref": "0080cdd3cb0ea3689eba05ede0d5c7d11ef07640",
+      "title": "Step 5 - Characterization Test Locks The Lifecycle Translation",
+      "description": "## Insight\n\n**機制**：測試不偷看 adapter 內部 implementation steps，而是在 fake Codex gateway 的 semantic boundary 上觀察 request：disconnect 會看到一次 `thread/unsubscribe`，resume 會看到 `thread/resume`，delete 會看到 `thread/archive`，刪除後 resume 會失敗。\n\n**故障模式**：如果之後有人把 resume 改回只操作 in-memory session，這個 test 會少掉 `thread/resume`；如果 disconnect 變成 archive，或 delete 變成 unsubscribe，也會被抓到。\n\n**設計取捨**：這是 L2/L3 之間的 module characterization，不是完整 live proof；真正 L4 evidence 放在 summary artifact 的 conformance / Chatpilot acceptance。\n\n## 白話解析\n\n這段是在幫海關流程裝監視器。它其實不是檢查每一行怎麼寫，而是檢查旅客做了某個 SDK 動作後，Codex 端收到的 lifecycle 動作是不是對的。\n\n## Code Detail\n\n測試用 `CopilotClient(adapter.clientOptions())` 走 SDK-facing adapter seam，透過 fake gateway 收集 Codex request。它刻意呼叫兩次 `session.disconnect()`，確認 unsubscribe 只有一次，再 resume、delete、確認 delete 後不能 resume。\n\n好處：\n- 測的是 SDK seam，不是直接呼叫 private handler。\n- 能固定 disconnect/resume/delete 的語義差異。\n\n壞處：\n- Fake gateway 不會真正驗證 Codex app-server persisted rollout；那要靠 live conformance artifact。\n- 目前沒有把 adapter restart mapping 納入這個 test，因為那是下一個 Phase 4 brick。\n\n思考問題：\n- 這個 test 為什麼比直接測 `handleSessionDestroy()` 更有價值？\n- 哪些行為應留在 fake-gateway characterization，哪些應留給 live conformance？"
+    }
+  ]
+}

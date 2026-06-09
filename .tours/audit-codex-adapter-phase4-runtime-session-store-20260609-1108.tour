@@ -1,0 +1,50 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "04 - Phase 4 Runtime Session Store: Codex Adapter",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 這條 tour 其實是在看什麼\n\n這條 tour 在看：adapter process 重啟後，SDK session id 如何找回原本的 Codex conversation/thread id。\n\n如果先記不住細節，先抓住每個 step 只是在回答：「SDK 手上的票號，重啟後怎麼重新找到 Codex 那段旅程？」\n\n## 錨定已知\n\n上一條 lifecycle tour 把 `disconnect` 和 `delete` 分清楚。這條往前走一步：如果海關櫃台本身重開機，櫃台要有一張索引表，知道票號 A 對應哪段旅程 T。\n\n## 這條路徑在解決什麼問題\n\n原本 `resumeSession()` 只看 `this.sessions.get(sessionId)`。adapter process 一重啟，memory map 消失，即使 Codex conversation rollout 還在，也會直接 `Unknown session`。\n\n## Mental model\n\nstore 不是 transcript database。它是 adapter-owned mapping index：`SDK session identity -> Codex runtime conversation identity`。Codex 仍是 rollout/thread 的 runtime truth。\n\n## 為什麼值得讀\n\n讀完後，你會知道 A4 被拆成兩半：Codex 能不能載回 thread 是 Phase 3.5 已證明的 runtime 能力；adapter 能不能知道該載哪條 thread，是這個 store brick 要補的能力。"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterSessionStore.ts",
+      "line": 4,
+      "endLine": 15,
+      "ref": "6295e2f959d38918a98547b7caf90914ed9ac3bb",
+      "title": "Step 1 - Mapping Record Stores Identity, Not Transcript",
+      "description": "## Insight\n\n**機制**：`CodexRuntimeSessionRecord` 保存 SDK session id 到 Codex runtime session identity 的 mapping。`runtimeSessionId` 和 `codexThreadId` 在目前 Codex protocol 中是同一個 thread id，但語義上前者是抽象 runtime conversation identity。\n\n**故障模式**：如果只保存 SDK event history，adapter 還是不知道要對 Codex resume 哪個 thread；如果只靠 memory，adapter restart 後就會 Unknown。\n\n**設計取捨**：record 有意不保存完整對話內容，避免 adapter 變成第二套 transcript source of truth；代價是 `getMessages()` 的完整 replay 需要另外處理。\n\n## 白話解析\n\n這段是那張「票號對旅程」的表。它其實不是保存旅程內容，而是保存這張票應該去哪裡找旅程。\n\n## Code Detail\n\nrecord 包含 `sdkSessionId`、`runtimeSessionId`、`codexThreadId`、cwd/model、tool fingerprint、Codex home identity 與 timestamps。\n\n好處：\n- 保持 adapter boundary：只存映射，不偷接管 Codex rollout。\n- `toolFingerprint` 為後續 tool-set compatibility policy 留鉤子。\n\n壞處：\n- `codexHomeIdentity` 目前只是記錄，尚未 enforce。\n- 完整 SDK event replay 不在這個資料結構裡。\n\n思考問題：\n- 為什麼 `runtimeSessionId` 比直接到處說 `threadId` 更適合作為 adapter 語義？\n- 如果 Codex runtime 換成 Gemini/opencode，這個 record 哪些欄位應該保留？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterSessionStore.ts",
+      "line": 69,
+      "endLine": 114,
+      "ref": "6295e2f959d38918a98547b7caf90914ed9ac3bb",
+      "title": "Step 2 - File Store Is A Small Adapter-Owned Index",
+      "description": "## Insight\n\n**機制**：`CodexAdapterSessionStore` 是一個 JSON file-backed map。constructor load，`upsert/delete` 後 flush，並用 tmp file + rename 寫入。\n\n**故障模式**：如果 store parse 不防守，壞檔案可能讓 adapter start 直接崩；如果寫入不是替換式，半寫入會留下不可解析內容。\n\n**設計取捨**：JSON file 很簡單，適合 MVP；代價是沒有跨 process locking，不適合多 adapter process 同時寫同一個 store。\n\n## 白話解析\n\n這段是在實作櫃台的小索引本。它其實就是啟動時讀表，create/resume/delete 時更新表。\n\n## Code Detail\n\n`load()` 會讀既有 file 並 parse records；`flush()` 建目錄、排序 records、寫 tmp file，再 rename 成正式檔。\n\n好處：\n- 沒有引入 DB 或大型 runtime framework。\n- record 排序讓 artifact 可讀、diff 穩定。\n\n壞處：\n- 沒有 file lock；多 writer 場景需要後續升級。\n- JSON parse error 目前會直接冒出，還沒有 repair / quarantine policy。\n\n思考問題：\n- 為什麼這裡不用先做 generic multi-runtime persistence framework？\n- 什麼情境下 JSON file store 會不夠？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 661,
+      "endLine": 695,
+      "ref": "6295e2f959d38918a98547b7caf90914ed9ac3bb",
+      "title": "Step 3 - Resume Falls Back From Memory To Store",
+      "description": "## Insight\n\n**機制**：resume 先查 `this.sessions`。如果 memory 沒有，才查 `sessionStore`。找到 record 後重建最小 `SessionState`，再呼叫 Codex `thread/resume`。\n\n**故障模式**：如果沒有 store fallback，adapter restart 後第一步就 Unknown；如果 fallback 後不呼叫 `thread/resume`，SDK 會以為恢復但 Codex thread 沒有重新載入。\n\n**設計取捨**：這裡只重建能讓 runtime conversation 繼續的最小狀態；完整 events replay 被留下來作為 fidelity follow-up。\n\n## 白話解析\n\n這段是在櫃台 memory 沒了時，去索引本找票號。它其實就是：「我不記得 A 了，但表上寫 A 對應 T，所以我要去 Codex resume T。」\n\n## Code Detail\n\n`handleSessionResume` 從 store 重建 session，attach connection，更新 cwd/model，再發 `thread/resume`。成功後重新 upsert store，更新 `updatedAt` 和可能改變的 cwd/model。\n\n好處：\n- 修掉 adapter restart 後立即 Unknown 的 A4 adapter-side bug。\n- 保留原本 in-memory fast path。\n\n壞處：\n- 如果 Codex runtime home 換了，找到 thread id 也可能無法載入 rollout。\n- `toolFingerprint` 尚未用來阻擋 incompatible tools。\n\n思考問題：\n- 為什麼 mapping store 和 Codex stable home 是兩個不同前提？\n- 這裡應該在 `thread/resume` 前還是後 emit SDK `session.resume`？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 862,
+      "endLine": 896,
+      "ref": "6295e2f959d38918a98547b7caf90914ed9ac3bb",
+      "title": "Step 4 - Record Creation And Minimal Session Rebuild",
+      "description": "## Insight\n\n**機制**：`sessionRecordFromSession` 把 live `SessionState` 投影成 durable mapping record；`sessionFromRecord` 把 durable record 還原成足以 resume/send 的 minimal `SessionState`。\n\n**故障模式**：如果 record 太薄，resume 不知道 cwd/model/thread；如果 rebuild 假裝有完整 events，`getMessages()` 會回不實資訊。\n\n**設計取捨**：重建時 `events: []` 是刻意保守：缺證據就是缺證據，不 invent history。\n\n## 白話解析\n\n這段是在 live 狀態和索引本之間轉換。它其實就是把一段正在跑的旅程登記成可找回的紀錄，再把紀錄還原成可以繼續接線的工作狀態。\n\n## Code Detail\n\nrecord 保存 `runtimeSessionId` / `codexThreadId`、cwd/model、tool fingerprint 與 timestamps。rebuild 時使用 resume params 的 workingDirectory/model 覆蓋 record，tools 則從 resume params 取。\n\n好處：\n- 清楚區分 durable mapping 與 transient connection/session event state。\n- 為後續 B2 tool-set policy 保留 fingerprint input。\n\n壞處：\n- `resumeCount` 從 0 重建，沒有跨 restart 保存統計。\n- `events` 空陣列代表 pre-restart `getMessages()` fidelity 尚未完成。\n\n思考問題：\n- 為什麼這裡不從 Codex `thread/read` 直接 invent SDK events？\n- 哪些欄位是 resume 必要，哪些只是後續 policy/audit 需要？"
+    },
+    {
+      "file": "nodejs/test/codex-adapter.test.ts",
+      "line": 403,
+      "endLine": 465,
+      "ref": "6295e2f959d38918a98547b7caf90914ed9ac3bb",
+      "title": "Step 5 - Restart Simulation Locks The Store Contract",
+      "description": "## Insight\n\n**機制**：測試用第一個 adapter instance create/disconnect，讓 store 落地；再用第二個 adapter instance 和同一個 store resume。第二個 fake gateway 不應看到 `thread/start`，而應看到 `thread/resume`。\n\n**故障模式**：如果 resume 還依賴 memory，第二個 adapter 會 Unknown；如果錯誤地 recreate，測試會看到 `thread/start`。\n\n**設計取捨**：這是 adapter-side restart simulation，不是完整 live Codex restart proof。完整 runtime proof由 Phase 3.5 的 app-server restart spike 提供互補證據。\n\n## 白話解析\n\n這段是在模擬櫃台重開機。它其實就是先讓第一個櫃台寫索引本，再看第二個櫃台能不能照著索引本找到原本那段旅程。\n\n## Code Detail\n\n測試建立 temp store path，第一個 adapter create session 後 stop；第二個 adapter 使用同 store path resume 同一個 SDK session id，並驗證 fake Codex 收到 `thread/resume`。\n\n好處：\n- 測 semantic boundary：SDK action 對 Codex request 的結果。\n- 直接防止回歸成 memory-only resume。\n\n壞處：\n- fake gateway 不驗證真實 rollout path；需搭配 Phase 3.5 live evidence。\n- 未測多 writer store collision。\n\n思考問題：\n- 這個測試為什麼不能替代 live Codex app-server restart spike？\n- 如果第二個 adapter 看到 `thread/start`，語義上代表什麼錯誤？"
+    }
+  ]
+}

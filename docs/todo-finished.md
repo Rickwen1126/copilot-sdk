@@ -1,10 +1,42 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-04 21:10
+Last Updated: 2026-06-09 11:55
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Codex Adapter Refactor / Production Hardening Phase 4 @2026-06-09-1155
+
+Section source:
+
+- Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
+- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md), Phase 4
+- Production readiness inventory: [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md)
+- Phase 3.5 capability spike: [codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json)
+- Evidence artifacts: [refactor-phase4-session-lifecycle@2026-06-08-1130.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase4-session-lifecycle@2026-06-08-1130.summary.json), [refactor-phase4-runtime-session-store@2026-06-09-1102.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase4-runtime-session-store@2026-06-09-1102.summary.json), [refactor-phase4-final-hardening@2026-06-09-1145.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase4-final-hardening@2026-06-09-1145.summary.json)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Audit: [.audit/AUDIT-codex-adapter-phase4-final-v1@2026-06-09-1150.md](../.audit/AUDIT-codex-adapter-phase4-final-v1@2026-06-09-1150.md)
+- Review tours: [.tours/audit-codex-adapter-phase4-session-lifecycle-20260608-1138.tour](../.tours/audit-codex-adapter-phase4-session-lifecycle-20260608-1138.tour), [.tours/audit-codex-adapter-phase4-runtime-session-store-20260609-1108.tour](../.tours/audit-codex-adapter-phase4-runtime-session-store-20260609-1108.tour), [.tours/audit-codex-adapter-phase4-final-20260609-1150.tour](../.tours/audit-codex-adapter-phase4-final-20260609-1150.tour)
+- Code/Surface: [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/src/experimental/codexAdapterSessionStore.ts](../nodejs/src/experimental/codexAdapterSessionStore.ts), [nodejs/src/experimental/codexAppServerGateway.ts](../nodejs/src/experimental/codexAppServerGateway.ts), [nodejs/src/experimental/codexAdapterMappers.ts](../nodejs/src/experimental/codexAdapterMappers.ts), [nodejs/src/experimental/codexAdapterServer.ts](../nodejs/src/experimental/codexAdapterServer.ts), [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts), [nodejs/test/codex-adapter-mappers.test.ts](../nodejs/test/codex-adapter-mappers.test.ts)
+- Source: active todo `P0: Codex Adapter Production Readiness Queue` Phase 4 and `P1: Runtime Adapter Refactor Architecture Guard` Phase 4
+
+- [x] Implemented session lifecycle semantics from Phase 3.5 spike evidence.
+  Completion evidence: `session.create` starts non-ephemeral Codex threads, SDK disconnect maps to idempotent `thread/unsubscribe`, SDK resume maps to `thread/resume`, and SDK delete maps to `thread/archive`.
+- [x] Implemented adapter-owned runtime session mapping store.
+  Completion evidence: adapter restart can recover `sdkSessionId -> Codex runtime session/thread id` from persisted store and call `thread/resume` instead of failing with `Unknown session`.
+- [x] Implemented incompatible resume tool-set policy.
+  Completion evidence: in-memory resume with changed tools, adapter-restart resume with missing required tools, and adapter-restart resume with changed tools are rejected before Codex `thread/resume`.
+- [x] Implemented long-running server hygiene.
+  Completion evidence: adapter and gateway transcripts are bounded by `transcriptLimit`; protocol-v3 pending dynamic tool calls time out and return a failed Codex dynamic tool response; gateway request path can restart a previously-started app-server after child exit.
+- [x] Implemented safe tool-result text fallback.
+  Completion evidence: object tool results without `textResultForLlm` no longer leak arbitrary object structure into Codex `inputText`; mapper test covers this contract.
+- [x] Documented the production locked lane and runbook.
+  Completion evidence: `production-runbook.md` documents required `codex login`, stable `CODEX_ADAPTER_CODEX_HOME`, stable `CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH`, Chatpilot locked defaults (`approvalPolicy=never`, `sandboxMode=readOnly`, `networkAccess=false`), resume tool-set policy, and common operational knobs.
+- [x] Passed final Phase 4 verification gates.
+  Completion evidence: local gates passed (`npx vitest run test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts` with 34 tests, scoped `npx tsc --noEmit ...`, scoped `npx eslint ...`, and `npm run build`); selected-profile conformance `/tmp/copilot-codex-refactor-phase4-final.json` run `d83f7062-a944-40cb-a0d9-3f56a436c85c` verdict `pass`; Chatpilot acceptance `/tmp/chatpilot-codex-refactor-phase4-final.json` run `15aade97-d245-43e7-ab78-58c8a9ae631e` status `pass`.
+- [x] Audited Phase 4 as ready for consolidated user review.
+  Completion evidence: final audit verdict is pass with explicit post-Phase-4 residual risks. Residuals are assigned to Phase 5/6: representative native-tool compliance benchmark, auth token refresh / 401 recovery validation, and optional SDK event-history replay decision if product evidence requires it.
 
 ## Completed: Codex Adapter Production Capability Spike Gate @2026-06-04-2028
 

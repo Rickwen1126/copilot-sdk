@@ -61,6 +61,7 @@ function buildOptions(): CodexAdapterOptions {
         sandboxMode: envSandboxMode("CODEX_ADAPTER_SANDBOX_MODE"),
         networkAccess: envBool("CODEX_ADAPTER_NETWORK_ACCESS"),
         requestTimeoutMs: envInt("CODEX_ADAPTER_REQUEST_TIMEOUT_MS"),
+        runtimeSessionStorePath: envString("CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH"),
         clientInfo: {
             name: envString("CODEX_ADAPTER_CLIENT_NAME"),
             title: envString("CODEX_ADAPTER_CLIENT_TITLE"),

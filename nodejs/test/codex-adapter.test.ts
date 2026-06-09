@@ -1,4 +1,5 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { approveAll, CopilotClient } from "../src/index.js";
@@ -397,6 +398,70 @@ describe("Codex adapter experimental boundary", () => {
                 onPermissionRequest: approveAll,
             })
         ).rejects.toThrow(/Unknown session/);
+    });
+
+    it("resumes from the persisted runtime session mapping after adapter restart", async () => {
+        const storePath = join(
+            mkdtempSync(join(tmpdir(), "codex-adapter-session-store-")),
+            "sessions.json"
+        );
+        const firstCodex = new FakeCodexGateway();
+        const firstAdapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            runtimeSessionStorePath: storePath,
+        });
+        (firstAdapter as unknown as { codex: FakeCodexGateway }).codex = firstCodex;
+        await firstAdapter.start();
+        const firstClient = new CopilotClient(firstAdapter.clientOptions());
+        await firstClient.start();
+
+        const session = await firstClient.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+        });
+        const sessionId = session.sessionId;
+        await session.disconnect();
+        await firstClient.stop();
+        await firstAdapter.stop();
+
+        const secondCodex = new FakeCodexGateway();
+        const secondAdapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            runtimeSessionStorePath: storePath,
+        });
+        (secondAdapter as unknown as { codex: FakeCodexGateway }).codex = secondCodex;
+        await secondAdapter.start();
+        onTestFinished(() => secondAdapter.stop());
+        const secondClient = new CopilotClient(secondAdapter.clientOptions());
+        await secondClient.start();
+        onTestFinished(async () => {
+            await secondClient.stop();
+        });
+
+        const resumed = await secondClient.resumeSession(sessionId, {
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+        });
+
+        expect(secondCodex.requests).not.toContainEqual(
+            expect.objectContaining({ method: "thread/start" })
+        );
+        expect(secondCodex.requests).toContainEqual({
+            method: "thread/resume",
+            params: expect.objectContaining({
+                threadId: "fake-thread-1",
+            }),
+        });
+
+        const assistantMessage = await resumed.sendAndWait(
+            {
+                prompt: "Continue after adapter restart.",
+            },
+            1_000
+        );
+        expect(assistantMessage?.data.content).toBe("adapter characterization reply");
     });
 });
 

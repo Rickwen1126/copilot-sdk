@@ -1,6 +1,6 @@
 import { createServer, type Server, type Socket } from "node:net";
 import process from "node:process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
     createMessageConnection,
     StreamMessageReader,
@@ -30,6 +30,10 @@ import type {
     JsonRpcRequest,
     JsonRpcResponse,
 } from "./codexAppServerGateway.js";
+import {
+    CodexAdapterSessionStore,
+    type CodexRuntimeSessionRecord,
+} from "./codexAdapterSessionStore.js";
 
 export type CodexAdapterSandboxMode =
     | "dangerFullAccess"
@@ -77,6 +81,7 @@ export type CodexAdapterOptions = {
     sandboxMode?: CodexAdapterSandboxMode;
     networkAccess?: boolean;
     requestTimeoutMs?: number;
+    runtimeSessionStorePath?: string;
     clientInfo?: {
         name?: string;
         title?: string;
@@ -186,6 +191,29 @@ function hasToolDescriptor(session: SessionState, toolName: string): boolean {
     return session.tools.some((tool) => tool.name === toolName);
 }
 
+function stableStringify(value: unknown): string {
+    if (Array.isArray(value)) {
+        return `[${value.map(stableStringify).join(",")}]`;
+    }
+    if (isRecord(value)) {
+        return `{${Object.keys(value)
+            .sort()
+            .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+            .join(",")}}`;
+    }
+    return JSON.stringify(value);
+}
+
+function toolFingerprintFromDescriptors(tools: ToolDescriptor[]): string {
+    const normalized = tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+        skipPermission: tool.skipPermission === true,
+    }));
+    return createHash("sha256").update(stableStringify(normalized)).digest("hex");
+}
+
 function createSessionEvent<T extends string, D>(
     session: SessionState,
     type: T,
@@ -218,6 +246,8 @@ export class CodexCopilotAdapterServer {
     private codexRequestUnsubscribe: (() => void) | null = null;
     private nextConnectionId = 1;
     private codex: CodexRuntimeGateway;
+    private sessionStore: CodexAdapterSessionStore;
+    private codexHomeIdentity?: string;
     private options: Required<
         Pick<
             CodexAdapterOptions,
@@ -244,6 +274,8 @@ export class CodexCopilotAdapterServer {
             networkAccess: options.networkAccess ?? false,
         };
         this.codex = new CodexAppServerGateway(options);
+        this.sessionStore = new CodexAdapterSessionStore(options.runtimeSessionStorePath);
+        this.codexHomeIdentity = options.codexHome;
     }
 
     async start(): Promise<{ port: number; cliUrl: string; clientOptions: CopilotClientOptions }> {
@@ -584,6 +616,7 @@ export class CodexCopilotAdapterServer {
         };
         this.sessions.set(sessionId, session);
         this.threadToSession.set(threadId, sessionId);
+        this.sessionStore.upsert(this.sessionRecordFromSession(session, createdAt));
 
         this.emitLifecycle("session.created", sessionId, {
             startTime: createdAt,
@@ -625,9 +658,14 @@ export class CodexCopilotAdapterServer {
             throw new Error("session.resume requires sessionId");
         }
 
-        const session = this.sessions.get(sessionId);
+        let session = this.sessions.get(sessionId);
         if (!session) {
-            throw new Error(`Unknown session: ${sessionId}`);
+            const record = this.sessionStore.get(sessionId);
+            if (!record) {
+                throw new Error(`Unknown session: ${sessionId}`);
+            }
+            session = this.sessionFromRecord(record, params);
+            this.sessions.set(session.sessionId, session);
         }
 
         const alreadyInUse = session.attachedConnectionIds.size > 0;
@@ -654,6 +692,7 @@ export class CodexCopilotAdapterServer {
         if (resumeResponse.error) {
             throw resumeResponse.error;
         }
+        this.sessionStore.upsert(this.sessionRecordFromSession(session, nowIso()));
 
         const resumeTime = nowIso();
         this.emitLifecycle("session.resumed", session.sessionId, {
@@ -806,6 +845,7 @@ export class CodexCopilotAdapterServer {
         });
         this.sessions.delete(sessionId);
         this.threadToSession.delete(session.threadId);
+        this.sessionStore.delete(sessionId);
         this.deletePendingToolCallsForSession(sessionId);
 
         return { success: true };
@@ -817,6 +857,43 @@ export class CodexCopilotAdapterServer {
                 this.pendingDynamicToolCalls.delete(requestId);
             }
         }
+    }
+
+    private sessionRecordFromSession(
+        session: SessionState,
+        updatedAt: string
+    ): CodexRuntimeSessionRecord {
+        return {
+            sdkSessionId: session.sessionId,
+            runtime: "codex",
+            runtimeSessionId: session.threadId,
+            codexThreadId: session.threadId,
+            cwd: session.cwd,
+            model: session.model,
+            toolFingerprint: toolFingerprintFromDescriptors(session.tools),
+            codexHomeIdentity: this.codexHomeIdentity,
+            createdAt: session.createdAt,
+            updatedAt,
+        };
+    }
+
+    private sessionFromRecord(
+        record: CodexRuntimeSessionRecord,
+        params: Record<string, unknown>
+    ): SessionState {
+        const tools = toolDescriptorsFromSessionCreateParams(params);
+        return {
+            sessionId: record.sdkSessionId,
+            threadId: record.runtimeSessionId,
+            createdAt: record.createdAt,
+            cwd: typeof params.workingDirectory === "string" ? params.workingDirectory : record.cwd,
+            model: typeof params.model === "string" ? params.model : record.model,
+            tools,
+            lastEventId: null,
+            events: [],
+            attachedConnectionIds: new Set(),
+            resumeCount: 0,
+        };
     }
 
     private handlePendingToolCall(params: unknown) {

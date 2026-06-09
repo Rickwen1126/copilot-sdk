@@ -1,0 +1,69 @@
+{
+  "createdAt": "2026-06-09 11:02",
+  "status": "pass",
+  "phase": "refactor-phase4-runtime-session-store",
+  "sourcePlan": "docs/integrations/codex-sdk-runtime-profile/refactor/plan.md",
+  "sourceTodo": "docs/todo.md#p0-codex-adapter-production-readiness-queue-2026-06-04-2016",
+  "codeSurfaces": [
+    "nodejs/src/experimental/codexAdapter.ts",
+    "nodejs/src/experimental/codexAdapterSessionStore.ts",
+    "nodejs/src/experimental/codexAdapterServer.ts",
+    "nodejs/test/codex-adapter.test.ts"
+  ],
+  "implementationSummary": [
+    "Added an adapter-owned runtime session store for SDK session id to Codex runtime conversation identity mappings.",
+    "Persisted records store sdkSessionId, runtimeSessionId, codexThreadId, cwd, model, toolFingerprint, codexHomeIdentity, createdAt, and updatedAt.",
+    "session.create writes the mapping after Codex thread/start returns a thread id.",
+    "session.resume falls back to the persisted mapping when the adapter in-memory sessions map is empty, then calls Codex thread/resume for the mapped thread id.",
+    "session.delete removes the persisted mapping after successful Codex thread/archive.",
+    "codex-adapter CLI accepts CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH."
+  ],
+  "semanticBoundary": [
+    "The store persists the adapter mapping, not the full conversation transcript.",
+    "Codex remains the runtime truth for the conversation rollout/thread record.",
+    "Cross-process restart continuity requires both a stable runtime session store path and a stable Codex home/runtime storage identity.",
+    "Full SDK-visible history reconstruction after adapter restart is not claimed by this brick; it remains a fidelity follow-up if product paths require getMessages() to replay pre-restart SDK event shape."
+  ],
+  "tests": {
+    "restartSimulation": {
+      "status": "pass",
+      "description": "A first adapter instance creates a session and writes the store; a second adapter instance with an empty in-memory sessions map and the same store resumes the SDK session by calling Codex thread/resume instead of thread/start.",
+      "test": "nodejs/test/codex-adapter.test.ts:400"
+    },
+    "localGates": [
+      "npx vitest run test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts src/experimental/codexAdapterMappers.ts src/experimental/codexAppServerGateway.ts src/experimental/codexAdapterSessionStore.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "npx eslint src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts src/experimental/codexAdapterMappers.ts src/experimental/codexAppServerGateway.ts src/experimental/codexAdapterSessionStore.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "npm run build"
+    ]
+  },
+  "selectedProfileConformance": {
+    "artifactPath": "/tmp/copilot-codex-refactor-phase4-store.json",
+    "runId": "27a75582-8f74-41b6-8199-892466c70b83",
+    "verdict": "pass",
+    "checks": [
+      "core new session",
+      "resume continuation",
+      "command approval approve",
+      "command approval deny",
+      "file approval approve/deny",
+      "custom tool call",
+      "tool deny or failure"
+    ]
+  },
+  "chatpilotAcceptance": {
+    "artifactPath": "/tmp/chatpilot-codex-refactor-phase4-store.json",
+    "runId": "ef283cd1-3423-45ad-8f29-0fae12409106",
+    "status": "pass",
+    "crossBackendAssertions": [
+      "copilot-cli=pass codex-adapter=pass",
+      "copilot-cli_rows=1 codex-adapter_rows=1",
+      "copilot-cli save/list=1/1; codex-adapter save/list=1/1"
+    ]
+  },
+  "residualRisks": [
+    "If the adapter uses isolated temporary Codex homes, a persisted SDK-to-thread mapping alone is insufficient for process-restart continuity because Codex rollout storage identity also changes.",
+    "Tool-set compatibility on resume is still a separate Phase 4 policy brick.",
+    "Pre-restart SDK event history replay through session.getMessages() is not reconstructed from Codex thread/read in this brick."
+  ]
+}

@@ -1,8 +1,9 @@
 import { mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { approveAll, CopilotClient } from "../src/index.js";
+import { approveAll, CopilotClient, defineTool } from "../src/index.js";
 import {
     CODEX_ADAPTER_CAPABILITIES,
     CodexCopilotAdapterServer,
@@ -131,6 +132,12 @@ class FakeCodexGateway {
     onRequest(handler: (request: FakeCodexMessage & { id: number | string }) => void): () => void {
         this.requestHandlers.add(handler);
         return () => this.requestHandlers.delete(handler);
+    }
+
+    emitRequest(request: FakeCodexMessage & { id: number | string }): void {
+        for (const handler of this.requestHandlers) {
+            handler(request);
+        }
     }
 
     summary() {
@@ -463,17 +470,264 @@ describe("Codex adapter experimental boundary", () => {
         );
         expect(assistantMessage?.data.content).toBe("adapter characterization reply");
     });
+
+    it("rejects in-memory resume when the requested tool set changes", async () => {
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        const session = await client.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+            tools: [
+                defineTool("stable_tool", {
+                    description: "Original tool shape",
+                    handler: () => "stable",
+                }),
+            ],
+        });
+
+        await expect(
+            client.resumeSession(session.sessionId, {
+                model: "gpt-test",
+                onPermissionRequest: approveAll,
+                tools: [
+                    defineTool("changed_tool", {
+                        description: "Changed tool shape",
+                        handler: () => "changed",
+                    }),
+                ],
+            })
+        ).rejects.toThrow(/tool set is incompatible with the active runtime session/);
+
+        expect(fakeCodex.requests.filter((entry) => entry.method === "thread/resume")).toHaveLength(
+            0
+        );
+    });
+
+    it("rejects adapter-restart resume when persisted tool mapping is not supplied", async () => {
+        const storePath = join(
+            mkdtempSync(join(tmpdir(), "codex-adapter-session-store-tools-")),
+            "sessions.json"
+        );
+        const firstCodex = new FakeCodexGateway();
+        const firstAdapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            runtimeSessionStorePath: storePath,
+        });
+        (firstAdapter as unknown as { codex: FakeCodexGateway }).codex = firstCodex;
+        await firstAdapter.start();
+        const firstClient = new CopilotClient(firstAdapter.clientOptions());
+        await firstClient.start();
+
+        const session = await firstClient.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+            tools: [
+                defineTool("restart_tool", {
+                    description: "Tool that must be reattached after restart",
+                    handler: () => "restart",
+                }),
+            ],
+        });
+        const sessionId = session.sessionId;
+        await session.disconnect();
+        await firstClient.stop();
+        await firstAdapter.stop();
+
+        const secondCodex = new FakeCodexGateway();
+        const secondAdapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            runtimeSessionStorePath: storePath,
+        });
+        (secondAdapter as unknown as { codex: FakeCodexGateway }).codex = secondCodex;
+        await secondAdapter.start();
+        onTestFinished(() => secondAdapter.stop());
+        const secondClient = new CopilotClient(secondAdapter.clientOptions());
+        await secondClient.start();
+        onTestFinished(async () => {
+            await secondClient.stop();
+        });
+
+        await expect(
+            secondClient.resumeSession(sessionId, {
+                model: "gpt-test",
+                onPermissionRequest: approveAll,
+            })
+        ).rejects.toThrow(/matching tools are required after adapter restart/);
+
+        expect(secondCodex.requests.filter((entry) => entry.method === "thread/resume")).toHaveLength(
+            0
+        );
+    });
+
+    it("rejects adapter-restart resume when the supplied tool set does not match the persisted mapping", async () => {
+        const storePath = join(
+            mkdtempSync(join(tmpdir(), "codex-adapter-session-store-tool-mismatch-")),
+            "sessions.json"
+        );
+        const firstCodex = new FakeCodexGateway();
+        const firstAdapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            runtimeSessionStorePath: storePath,
+        });
+        (firstAdapter as unknown as { codex: FakeCodexGateway }).codex = firstCodex;
+        await firstAdapter.start();
+        const firstClient = new CopilotClient(firstAdapter.clientOptions());
+        await firstClient.start();
+
+        const session = await firstClient.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+            tools: [
+                defineTool("original_restart_tool", {
+                    description: "Original persisted tool",
+                    handler: () => "original",
+                }),
+            ],
+        });
+        const sessionId = session.sessionId;
+        await session.disconnect();
+        await firstClient.stop();
+        await firstAdapter.stop();
+
+        const secondCodex = new FakeCodexGateway();
+        const secondAdapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            runtimeSessionStorePath: storePath,
+        });
+        (secondAdapter as unknown as { codex: FakeCodexGateway }).codex = secondCodex;
+        await secondAdapter.start();
+        onTestFinished(() => secondAdapter.stop());
+        const secondClient = new CopilotClient(secondAdapter.clientOptions());
+        await secondClient.start();
+        onTestFinished(async () => {
+            await secondClient.stop();
+        });
+
+        await expect(
+            secondClient.resumeSession(sessionId, {
+                model: "gpt-test",
+                onPermissionRequest: approveAll,
+                tools: [
+                    defineTool("changed_restart_tool", {
+                        description: "Changed persisted tool",
+                        handler: () => "changed",
+                    }),
+                ],
+            })
+        ).rejects.toThrow(/tool set is incompatible with the persisted runtime session/);
+
+        expect(secondCodex.requests.filter((entry) => entry.method === "thread/resume")).toHaveLength(
+            0
+        );
+    });
+
+    it("caps adapter transcripts for long-running server summaries", async () => {
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            transcriptLimit: 3,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        await client.ping();
+        await client.ping();
+        await client.ping();
+        await client.ping();
+
+        const summary = adapter.summary() as { transcripts: unknown[] };
+        expect(summary.transcripts).toHaveLength(3);
+    });
+
+    it("times out pending protocol-v3 dynamic tool calls and returns a failed Codex response", async () => {
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            requestTimeoutMs: 10,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        await client.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+            tools: [
+                defineTool("slow_tool", {
+                    description: "Tool that never reports a result",
+                    handler: () => new Promise(() => {}),
+                }),
+            ],
+        });
+
+        fakeCodex.emitRequest({
+            id: "tool-timeout-1",
+            method: "item/tool/call",
+            params: {
+                threadId: "fake-thread-1",
+                tool: "slow_tool",
+                callId: "slow-call-1",
+                arguments: {},
+            },
+        });
+        await delay(30);
+
+        expect(fakeCodex.responses).toContainEqual({
+            id: "tool-timeout-1",
+            result: {
+                contentItems: [
+                    {
+                        type: "inputText",
+                        text: "Timed out waiting for SDK tool result: slow_tool",
+                    },
+                ],
+                success: false,
+            },
+            error: undefined,
+        });
+
+        expect(fakeCodex.responses).toHaveLength(1);
+    });
 });
 
 describe("Codex app-server gateway internal boundary", () => {
-    it("keeps pre-start gateway errors observable instead of silently succeeding", () => {
+    it("keeps pre-start gateway errors observable instead of silently succeeding", async () => {
         const gateway = new CodexAppServerGateway({
             codexBin: "codex",
             codexHome: "/tmp/copilot-sdk-missing-codex-home",
             isolateCodexHome: false,
         });
 
-        expect(() => gateway.request("model/list")).toThrow(/not started/);
+        await expect(gateway.request("model/list")).rejects.toThrow(/not started/);
         expect(() => gateway.notify("initialized", {})).toThrow(/not started/);
         expect(() => gateway.respond(1, {})).toThrow(/not started/);
         expect(gateway.summary()).toEqual({

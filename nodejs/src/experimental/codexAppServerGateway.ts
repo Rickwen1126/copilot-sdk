@@ -36,6 +36,7 @@ export type CodexAppServerGatewayOptions = {
     codexHome?: string;
     isolateCodexHome?: boolean;
     requestTimeoutMs?: number;
+    transcriptLimit?: number;
     clientInfo?: {
         name?: string;
         title?: string;
@@ -56,6 +57,7 @@ type CodexGatewayTranscriptEntry = {
 };
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
+const DEFAULT_TRANSCRIPT_LIMIT = 500;
 
 function resolveBinary(name: string): string {
     try {
@@ -133,12 +135,15 @@ export class CodexAppServerGateway {
     private codexHome: string;
     private codexBin: string;
     private requestTimeoutMs: number;
+    private transcriptLimit: number;
+    private restartable = false;
     private clientInfo: Required<Required<CodexAppServerGatewayOptions>["clientInfo"]>;
 
     constructor(options: CodexAppServerGatewayOptions = {}) {
         this.codexHome = prepareCodexHome(options);
         this.codexBin = options.codexBin ?? resolveBinary("codex");
         this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+        this.transcriptLimit = options.transcriptLimit ?? DEFAULT_TRANSCRIPT_LIMIT;
         this.clientInfo = {
             name: options.clientInfo?.name ?? "copilot_sdk_codex_adapter",
             title: options.clientInfo?.title ?? "Copilot SDK Codex Adapter",
@@ -146,13 +151,25 @@ export class CodexAppServerGateway {
         };
     }
 
+    private recordTranscript(entry: CodexGatewayTranscriptEntry) {
+        this.transcript.push(entry);
+        if (this.transcript.length > this.transcriptLimit) {
+            this.transcript.splice(0, this.transcript.length - this.transcriptLimit);
+        }
+    }
+
     async start(): Promise<void> {
+        if (this.child) {
+            return;
+        }
+        this.restartable = true;
         this.child = spawn(this.codexBin, ["app-server"], {
             env: createCodexEnv(this.codexHome),
             stdio: ["pipe", "pipe", "pipe"],
         });
 
         this.child.on("exit", (code, signal) => {
+            this.child = null;
             for (const [id, pending] of this.pending.entries()) {
                 clearTimeout(pending.timeout);
                 pending.reject(
@@ -172,7 +189,7 @@ export class CodexAppServerGateway {
             } catch {
                 // Keep raw line for transcript.
             }
-            this.transcript.push({ at: nowIso(), direction: "codex->adapter", message: parsed });
+            this.recordTranscript({ at: nowIso(), direction: "codex->adapter", message: parsed });
 
             if (isRequest(parsed)) {
                 for (const handler of this.requestHandlers) {
@@ -200,7 +217,7 @@ export class CodexAppServerGateway {
 
         const stderr = readline.createInterface({ input: this.child.stderr });
         stderr.on("line", (line) => {
-            this.transcript.push({
+            this.recordTranscript({
                 at: nowIso(),
                 direction: "codex-stderr",
                 message: line,
@@ -225,19 +242,26 @@ export class CodexAppServerGateway {
         this.notify("initialized", {});
     }
 
-    request(method: string, params?: unknown): Promise<JsonRpcResponse> {
+    async request(method: string, params?: unknown): Promise<JsonRpcResponse> {
         if (!this.child) {
+            if (!this.restartable) {
+                throw new Error("codex app-server is not started");
+            }
+            await this.start();
+        }
+        const child = this.child;
+        if (!child) {
             throw new Error("codex app-server is not started");
         }
 
         const id = this.nextId++;
         const payload = JSON.stringify({ id, method, params });
-        this.transcript.push({
+        this.recordTranscript({
             at: nowIso(),
             direction: "adapter->codex",
             message: { id, method, params },
         });
-        this.child.stdin.write(`${payload}\n`);
+        child.stdin.write(`${payload}\n`);
 
         return new Promise<JsonRpcResponse>((resolve, reject) => {
             const timeout = setTimeout(() => {
@@ -253,7 +277,7 @@ export class CodexAppServerGateway {
             throw new Error("codex app-server is not started");
         }
         const payload = JSON.stringify({ method, params });
-        this.transcript.push({
+        this.recordTranscript({
             at: nowIso(),
             direction: "adapter->codex",
             message: { method, params },
@@ -269,7 +293,7 @@ export class CodexAppServerGateway {
             id,
             ...(error ? { error } : { result }),
         });
-        this.transcript.push({
+        this.recordTranscript({
             at: nowIso(),
             direction: "adapter->codex.response",
             message: error ? { id, error } : { id, result },
@@ -294,10 +318,11 @@ export class CodexAppServerGateway {
 
         this.child.kill("SIGTERM");
         await delay(200);
-        if (!this.child.killed) {
+        if (this.child && !this.child.killed) {
             this.child.kill("SIGKILL");
         }
         this.child = null;
+        this.restartable = false;
     }
 
     summary() {

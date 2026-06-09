@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-09 11:02
+Last Updated: 2026-06-09 11:45
 Status: Active
 
 ## P0: Codex Adapter Production Readiness Queue @2026-06-04-2016
@@ -21,7 +21,9 @@ Section source:
   - Progress evidence: [refactor-phase4-session-lifecycle@2026-06-08-1130.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase4-session-lifecycle@2026-06-08-1130.summary.json).
   - Progress: runtime session mapping store implemented and verified. Adapter restart can recover `sdkSessionId -> Codex runtime session/thread id` mapping from the store and call `thread/resume` instead of failing with `Unknown session`.
   - Progress evidence: [refactor-phase4-runtime-session-store@2026-06-09-1102.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase4-runtime-session-store@2026-06-09-1102.summary.json).
-  - Remaining A4 caveat: cross-process production resume also requires stable Codex runtime storage identity; temporary isolated Codex homes cannot be treated as durable restart storage. Full SDK event-history replay after adapter restart is not yet claimed.
+  - Progress: resume tool-set compatibility policy, bounded transcripts, protocol-v3 pending tool timeout, safe object tool-result text fallback, and adapter env/runbook knobs are implemented locally.
+  - Runbook: [Codex Adapter Production Runbook](./integrations/codex-sdk-runtime-profile/production-runbook.md).
+  - Remaining caveat: full SDK event-history replay after adapter restart is not yet claimed.
   - Completion evidence: session destroy/resume/tool-refresh/sandbox behavior is implemented from spike evidence, direct cleanup items are covered by module/composed tests, `codex login` runbook exists, and Phase 1 no-regression plus Chatpilot acceptance remain green.
 
 - [ ] Phase 5 production proof expansion.

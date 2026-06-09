@@ -1,7 +1,7 @@
 # Alternate Runtime Backends (Experimental)
 
 Created: 2026-04-28
-Last Updated: 2026-06-01 14:05
+Last Updated: 2026-06-09 11:45
 Status: Experimental
 
 Use this guide when you want a Copilot-shaped SDK experience in the app layer, but do **not** want the Copilot runtime contract to become your system's core substrate.
@@ -148,6 +148,7 @@ Current evidence:
 
 - Conformance artifact index: [codex-sdk-runtime-profile/conformance-artifacts.md](./codex-sdk-runtime-profile/conformance-artifacts.md)
 - Unsupported/deferred capability notes: [codex-sdk-runtime-profile/unsupported-capabilities.md](./codex-sdk-runtime-profile/unsupported-capabilities.md)
+- Codex adapter production runbook: [codex-sdk-runtime-profile/production-runbook.md](./codex-sdk-runtime-profile/production-runbook.md)
 - Architecture diagram: [../architecture/skyeye.html](../architecture/skyeye.html)
 - Code map: [../architecture/runtime-backend-code-map.md](../architecture/runtime-backend-code-map.md)
 

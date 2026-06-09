@@ -117,6 +117,22 @@ describe("Codex adapter dynamic tool result mappers", () => {
         });
     });
 
+    it("does not leak arbitrary object tool-result structure to the model", () => {
+        expect(
+            mapSdkToolResultToCodexDynamicToolResponse(
+                {
+                    resultType: "success",
+                    internalId: "secret-row-123",
+                    rawPayload: { nested: "debug-only" },
+                },
+                undefined
+            )
+        ).toEqual({
+            contentItems: [{ type: "inputText", text: "Tool completed without textResultForLlm." }],
+            success: true,
+        });
+    });
+
     it("serializes non-string SDK tool results without inventing content", () => {
         expect(mapSdkToolResultToCodexDynamicToolResponse(null, undefined)).toEqual({
             contentItems: [{ type: "inputText", text: "" }],

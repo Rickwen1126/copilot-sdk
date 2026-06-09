@@ -1,0 +1,90 @@
+{
+  "createdAt": "2026-06-09T03:45:00.000Z",
+  "phase": "refactor-phase4-final-hardening",
+  "status": "pass",
+  "scope": [
+    "Reject incompatible resume tool-set changes instead of pretending Codex supports dynamicTools hot-update on thread/resume.",
+    "Require matching SDK tools after adapter restart when the persisted runtime mapping was created with tools.",
+    "Bound adapter and Codex gateway transcripts through a transcriptLimit ring buffer.",
+    "Add protocol-v3 pending dynamic tool timeout so a missing SDK tool result does not leak pending state forever.",
+    "Stop JSON-stringifying arbitrary object tool results into Codex inputText when textResultForLlm is absent.",
+    "Expose CODEX_ADAPTER_TRANSCRIPT_LIMIT and document the production locked lane, codex login pre-step, durable resume store, and safe defaults."
+  ],
+  "phase4IssueCoverage": {
+    "A1": "session lifecycle brick maps disconnect/destroy to thread/unsubscribe and delete to thread/archive",
+    "A2": "session destroy no longer leaves active thread mapping attached after unsubscribe",
+    "A3": "adapter and gateway transcript summaries are bounded by transcriptLimit",
+    "A4": "runtime session mapping store supports adapter restart resume through persisted sdkSessionId -> codexThreadId",
+    "A5": "gateway marks exited child as restartable and request() can restart a previously-started app-server",
+    "B1": "SDK-shaped available_tools/excluded_tools remains unsupported by Codex; Phase 4 locked lane uses approvalPolicy=never, sandboxMode=readOnly, networkAccess=false",
+    "B2": "incompatible resume tool-set changes are rejected before thread/resume",
+    "B3": "protocol-v3 pending dynamic tool calls time out and respond failure to Codex",
+    "B4": "object tool results without textResultForLlm no longer leak arbitrary object structure",
+    "C1": "Chatpilot locked lane defaults prevent native shell/file side-effect approval escalation",
+    "D1": "production runbook documents codex login as a required pre-step"
+  },
+  "localGates": [
+    {
+      "command": "npx vitest run test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "status": "pass",
+      "tests": 34
+    },
+    {
+      "command": "npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts src/experimental/codexAdapterMappers.ts src/experimental/codexAppServerGateway.ts src/experimental/codexAdapterSessionStore.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "status": "pass"
+    },
+    {
+      "command": "npx eslint src/experimental/codexAdapter.ts src/experimental/codexAdapterServer.ts src/experimental/codexAdapterMappers.ts src/experimental/codexAppServerGateway.ts src/experimental/codexAdapterSessionStore.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "status": "pass"
+    },
+    {
+      "command": "npm run build",
+      "status": "pass"
+    }
+  ],
+  "composedEvidence": {
+    "selectedProfileConformance": {
+      "path": "/tmp/copilot-codex-refactor-phase4-final.json",
+      "runId": "d83f7062-a944-40cb-a0d9-3f56a436c85c",
+      "verdict": "pass",
+      "targetProfiles": ["SDK Core Profile", "Coding Agent Profile"],
+      "capabilities": [
+        "core new session",
+        "resume continuation",
+        "command approval approve",
+        "command approval deny",
+        "file approval approve",
+        "custom tool call",
+        "tool deny/failure"
+      ],
+      "ledgerCounts": {
+        "copilotCli": 404,
+        "codexAdapter": 1145
+      }
+    },
+    "chatpilotAcceptance": {
+      "path": "/tmp/chatpilot-codex-refactor-phase4-final.json",
+      "runId": "15aade97-d245-43e7-ab78-58c8a9ae631e",
+      "status": "pass",
+      "backends": ["copilot-cli", "codex-adapter"],
+      "codexAdapterAssertions": 12,
+      "codexAdapterFailedAssertions": [],
+      "codexAdapterLogEvidence": {
+        "sessionSetupCount": 1,
+        "createdOrResumedCount": 1,
+        "reuseCount": 1,
+        "saveToolCallCount": 1,
+        "saveToolResultCount": 1,
+        "listToolCallCount": 1,
+        "listToolResultCount": 1,
+        "sdkSendCount": 2,
+        "sdkResponseCount": 2
+      }
+    }
+  },
+  "residualRisks": [
+    "Full SDK event-history replay after adapter process restart remains out of this Phase 4 store scope unless later product evidence requires it.",
+    "Native tool suppression is implemented as a locked lane through sandbox/approval/network defaults; Phase 5 still needs representative tool-call compliance benchmarks.",
+    "Auth token refresh and 401 recovery for isolated Codex home remains Phase 6 production validation."
+  ]
+}

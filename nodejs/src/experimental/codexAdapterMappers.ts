@@ -67,7 +67,7 @@ export function mapSdkToolResultToCodexDynamicToolResponse(
         const text =
             typeof result.textResultForLlm === "string"
                 ? result.textResultForLlm
-                : JSON.stringify(result);
+                : "Tool completed without textResultForLlm.";
         const resultType = typeof result.resultType === "string" ? result.resultType : "success";
         return {
             contentItems: [{ type: "inputText", text }],

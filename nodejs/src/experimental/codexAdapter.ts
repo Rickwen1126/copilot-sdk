@@ -81,6 +81,7 @@ export type CodexAdapterOptions = {
     sandboxMode?: CodexAdapterSandboxMode;
     networkAccess?: boolean;
     requestTimeoutMs?: number;
+    transcriptLimit?: number;
     runtimeSessionStorePath?: string;
     clientInfo?: {
         name?: string;
@@ -107,10 +108,13 @@ type PendingDynamicToolCall = {
     sessionId: string;
     toolCallId: string;
     toolName: string;
+    timeout: ReturnType<typeof setTimeout>;
 };
 
 const DEFAULT_MODEL = "gpt-5.4";
 const DEFAULT_HOST = "127.0.0.1";
+const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
+const DEFAULT_TRANSCRIPT_LIMIT = 500;
 
 export const CODEX_ADAPTER_CAPABILITIES = {
     targetProfiles: ["SDK Core Profile", "Coding Agent Profile"],
@@ -214,6 +218,12 @@ function toolFingerprintFromDescriptors(tools: ToolDescriptor[]): string {
     return createHash("sha256").update(stableStringify(normalized)).digest("hex");
 }
 
+const EMPTY_TOOL_FINGERPRINT = toolFingerprintFromDescriptors([]);
+
+function hasResumeToolDescriptors(params: Record<string, unknown>): boolean {
+    return Array.isArray(params.tools);
+}
+
 function createSessionEvent<T extends string, D>(
     session: SessionState,
     type: T,
@@ -248,6 +258,7 @@ export class CodexCopilotAdapterServer {
     private codex: CodexRuntimeGateway;
     private sessionStore: CodexAdapterSessionStore;
     private codexHomeIdentity?: string;
+    private transcriptLimit: number;
     private options: Required<
         Pick<
             CodexAdapterOptions,
@@ -258,6 +269,7 @@ export class CodexCopilotAdapterServer {
             | "approvalsReviewer"
             | "sandboxMode"
             | "networkAccess"
+            | "requestTimeoutMs"
         >
     > &
         Pick<CodexAdapterOptions, "port">;
@@ -272,16 +284,25 @@ export class CodexCopilotAdapterServer {
             approvalsReviewer: options.approvalsReviewer ?? "user",
             sandboxMode: options.sandboxMode ?? "readOnly",
             networkAccess: options.networkAccess ?? false,
+            requestTimeoutMs: options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
         };
+        this.transcriptLimit = options.transcriptLimit ?? DEFAULT_TRANSCRIPT_LIMIT;
         this.codex = new CodexAppServerGateway(options);
         this.sessionStore = new CodexAdapterSessionStore(options.runtimeSessionStorePath);
         this.codexHomeIdentity = options.codexHome;
     }
 
+    private recordTranscript(entry: CodexAdapterTranscriptEntry) {
+        this.transcript.push(entry);
+        if (this.transcript.length > this.transcriptLimit) {
+            this.transcript.splice(0, this.transcript.length - this.transcriptLimit);
+        }
+    }
+
     async start(): Promise<{ port: number; cliUrl: string; clientOptions: CopilotClientOptions }> {
         await this.codex.start();
         this.codexUnsubscribe = this.codex.onNotification((notification) => {
-            this.transcript.push({
+            this.recordTranscript({
                 at: nowIso(),
                 direction: "codex->adapter",
                 message: notification,
@@ -289,7 +310,7 @@ export class CodexCopilotAdapterServer {
             this.handleCodexNotification(notification);
         });
         this.codexRequestUnsubscribe = this.codex.onRequest((request) => {
-            this.transcript.push({
+            this.recordTranscript({
                 at: nowIso(),
                 direction: "codex->adapter.request",
                 message: request,
@@ -342,7 +363,7 @@ export class CodexCopilotAdapterServer {
             new StreamMessageWriter(socket)
         );
         this.connections.set(connectionId, connection);
-        this.transcript.push({
+        this.recordTranscript({
             at: nowIso(),
             direction: "adapter.connection.open",
             message: {
@@ -356,14 +377,14 @@ export class CodexCopilotAdapterServer {
             handler: (params: unknown, connectionId: string) => Promise<unknown> | unknown
         ) => {
             connection.onRequest(method, async (params: unknown) => {
-                this.transcript.push({
+                this.recordTranscript({
                     at: nowIso(),
                     direction: "sdk->adapter.request",
                     message: { method, params },
                 });
                 try {
                     const result = await handler(params, connectionId);
-                    this.transcript.push({
+                    this.recordTranscript({
                         at: nowIso(),
                         direction: "adapter->sdk.response",
                         message: { method, result },
@@ -371,7 +392,7 @@ export class CodexCopilotAdapterServer {
                     return result;
                 } catch (error) {
                     const rpcError = toJsonRpcError(error);
-                    this.transcript.push({
+                    this.recordTranscript({
                         at: nowIso(),
                         direction: "adapter->sdk.response",
                         message: { method, error: rpcError },
@@ -403,7 +424,7 @@ export class CodexCopilotAdapterServer {
         socket.on("close", () => {
             this.connections.delete(connectionId);
             this.detachConnection(connectionId);
-            this.transcript.push({
+            this.recordTranscript({
                 at: nowIso(),
                 direction: "adapter.connection.close",
                 message: {
@@ -425,7 +446,7 @@ export class CodexCopilotAdapterServer {
             ? [...new Set([...targetConnectionIds])]
             : [...this.connections.keys()];
         if (connectionIds.length === 0) {
-            this.transcript.push({
+            this.recordTranscript({
                 at: nowIso(),
                 direction: "adapter->sdk.notification.skipped",
                 message: {
@@ -436,7 +457,7 @@ export class CodexCopilotAdapterServer {
             return;
         }
         const notification = { method, params };
-        this.transcript.push({
+        this.recordTranscript({
             at: nowIso(),
             direction: "adapter->sdk.notification",
             message: notification,
@@ -658,14 +679,37 @@ export class CodexCopilotAdapterServer {
             throw new Error("session.resume requires sessionId");
         }
 
+        const resumeHasTools = hasResumeToolDescriptors(params);
+        const resumeTools = resumeHasTools ? toolDescriptorsFromSessionCreateParams(params) : null;
         let session = this.sessions.get(sessionId);
         if (!session) {
             const record = this.sessionStore.get(sessionId);
             if (!record) {
                 throw new Error(`Unknown session: ${sessionId}`);
             }
-            session = this.sessionFromRecord(record, params);
+            if (!resumeTools && record.toolFingerprint !== EMPTY_TOOL_FINGERPRINT) {
+                throw new Error(
+                    `Cannot resume session ${sessionId}: matching tools are required after adapter restart`
+                );
+            }
+            if (
+                resumeTools &&
+                toolFingerprintFromDescriptors(resumeTools) !== record.toolFingerprint
+            ) {
+                throw new Error(
+                    `Cannot resume session ${sessionId}: tool set is incompatible with the persisted runtime session`
+                );
+            }
+            session = this.sessionFromRecord(record, params, resumeTools ?? []);
             this.sessions.set(session.sessionId, session);
+        } else if (
+            resumeTools &&
+            toolFingerprintFromDescriptors(resumeTools) !==
+                toolFingerprintFromDescriptors(session.tools)
+        ) {
+            throw new Error(
+                `Cannot resume session ${sessionId}: tool set is incompatible with the active runtime session`
+            );
         }
 
         const alreadyInUse = session.attachedConnectionIds.size > 0;
@@ -804,7 +848,7 @@ export class CodexCopilotAdapterServer {
                         threadId: session.threadId,
                     });
                     if (unsubscribeResponse.error) {
-                        this.transcript.push({
+                        this.recordTranscript({
                             at: nowIso(),
                             direction: "adapter.session.destroy.unsubscribe.error",
                             message: {
@@ -854,6 +898,7 @@ export class CodexCopilotAdapterServer {
     private deletePendingToolCallsForSession(sessionId: string) {
         for (const [requestId, pending] of this.pendingDynamicToolCalls.entries()) {
             if (pending.sessionId === sessionId) {
+                clearTimeout(pending.timeout);
                 this.pendingDynamicToolCalls.delete(requestId);
             }
         }
@@ -879,9 +924,9 @@ export class CodexCopilotAdapterServer {
 
     private sessionFromRecord(
         record: CodexRuntimeSessionRecord,
-        params: Record<string, unknown>
+        params: Record<string, unknown>,
+        tools: ToolDescriptor[]
     ): SessionState {
-        const tools = toolDescriptorsFromSessionCreateParams(params);
         return {
             sessionId: record.sdkSessionId,
             threadId: record.runtimeSessionId,
@@ -910,6 +955,7 @@ export class CodexCopilotAdapterServer {
         if (!pending) {
             return { success: false };
         }
+        clearTimeout(pending.timeout);
         this.pendingDynamicToolCalls.delete(requestId);
 
         const response = mapSdkToolResultToCodexDynamicToolResponse(params.result, params.error);
@@ -930,7 +976,7 @@ export class CodexCopilotAdapterServer {
             );
         }
 
-        this.transcript.push({
+        this.recordTranscript({
             at: nowIso(),
             direction: "adapter.tool.completed",
             message: {
@@ -1081,7 +1127,7 @@ export class CodexCopilotAdapterServer {
             request.method === "item/fileChange/requestApproval"
                 ? mapCodexFileChangeApprovalToPermissionRequest(params, changes)
                 : mapCodexCommandApprovalToPermissionRequest(params);
-        this.transcript.push({
+        this.recordTranscript({
             at: nowIso(),
             direction: "adapter->sdk.request",
             message: {
@@ -1098,7 +1144,7 @@ export class CodexCopilotAdapterServer {
                 sessionId: session.sessionId,
                 permissionRequest,
             });
-            this.transcript.push({
+            this.recordTranscript({
                 at: nowIso(),
                 direction: "sdk->adapter.response",
                 message: {
@@ -1114,7 +1160,7 @@ export class CodexCopilotAdapterServer {
                     : mapPermissionResultToCodexCommandDecision(result, params);
             this.codex.respond(request.id, { decision });
         } catch (error) {
-            this.transcript.push({
+            this.recordTranscript({
                 at: nowIso(),
                 direction: "sdk->adapter.response",
                 message: {
@@ -1169,11 +1215,36 @@ export class CodexCopilotAdapterServer {
         }
 
         const sdkRequestId = `codex-dynamic-tool:${toolCallId}`;
+        const timeout = setTimeout(() => {
+            const pending = this.pendingDynamicToolCalls.get(sdkRequestId);
+            if (!pending) {
+                return;
+            }
+            this.pendingDynamicToolCalls.delete(sdkRequestId);
+            this.codex.respond(
+                pending.codexRequestId,
+                mapSdkToolResultToCodexDynamicToolResponse(
+                    undefined,
+                    `Timed out waiting for SDK tool result: ${pending.toolName}`
+                )
+            );
+            this.recordTranscript({
+                at: nowIso(),
+                direction: "adapter.tool.timeout",
+                message: {
+                    requestId: sdkRequestId,
+                    sessionId: pending.sessionId,
+                    toolName: pending.toolName,
+                    toolCallId: pending.toolCallId,
+                },
+            });
+        }, this.options.requestTimeoutMs);
         this.pendingDynamicToolCalls.set(sdkRequestId, {
             codexRequestId: request.id,
             sessionId: session.sessionId,
             toolCallId,
             toolName,
+            timeout,
         });
 
         this.emitSessionEvent(
@@ -1207,7 +1278,7 @@ export class CodexCopilotAdapterServer {
             toolName,
             arguments: params.arguments,
         };
-        this.transcript.push({
+        this.recordTranscript({
             at: nowIso(),
             direction: "adapter->sdk.request",
             message: {
@@ -1220,7 +1291,7 @@ export class CodexCopilotAdapterServer {
                 "tool.call",
                 toolCallParams
             );
-            this.transcript.push({
+            this.recordTranscript({
                 at: nowIso(),
                 direction: "sdk->adapter.response",
                 message: {
@@ -1235,7 +1306,7 @@ export class CodexCopilotAdapterServer {
             );
         } catch (error) {
             const summarized = summarizeUnknownError(error);
-            this.transcript.push({
+            this.recordTranscript({
                 at: nowIso(),
                 direction: "sdk->adapter.response",
                 message: {

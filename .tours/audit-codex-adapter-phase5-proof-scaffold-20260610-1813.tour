@@ -1,0 +1,50 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "AUDIT - Codex Adapter Phase 5 Proof Scaffold",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## What this audit tour is looking at\n\nThis tour is about a small but important Phase 5 step: turning proof ideas into reusable report machinery before we scale into live benchmark runs.\n\nThe core question is: how do we avoid saying \"Phase 5 passed\" just because a scaffold exists?\n\nMental model: the new helper is a scoreboard, not the game. It can judge observations cleanly, but A6/B5/C2 still need real observations from live multi-session runs, a real 26-tool schema source, and prompt-local compliance benchmarks.\n\nThis matters because conformance work can quietly degrade into smoke tests. The useful pattern here is to separate evidence collection from evidence interpretation, then keep docs honest about what has and has not been proven."
+    },
+    {
+      "file": "nodejs/src/experimental/codexConformanceProof.ts",
+      "line": 67,
+      "endLine": 135,
+      "ref": "fac582b92e58902dea35511ea14bc7a720d58b26",
+      "title": "Schema Round-Trip Proof",
+      "description": "## Insight\n\nMechanism: this function compares expected SDK tool descriptors with observed Codex dynamic tools and preserves three failure shapes: missing tool, description mismatch, and schema mismatch.\n\nFailure mode: if the real Chatpilot manifest later loses a required schema field or Codex sees a mutated schema, this report should fail with a named issue instead of only saying \"acceptance failed\".\n\nDesign trade-off: this is pure and easy to test, but it does not discover tools by itself. B5 still needs the real 26-tool manifest source.\n\n## Plain Read\n\nThis step is the schema scoreboard. It does not start Chatpilot or Codex; it only checks whether a list of expected tools survived translation into observed dynamic tools.\n\n## Code Detail\n\nThe important design is that missing and mutated evidence stays explicit in `issues`, and the final report exposes both per-tool items and aggregate assertions.\n\nGood: stable unit-testable contract, no runtime IO, clear failure names.\n\nCost: it can only be as complete as the manifest fed into it.\n\nReview question: when we wire B5, where should the expected 26-tool descriptor source come from so this helper is judging production reality?"
+    },
+    {
+      "file": "nodejs/src/experimental/codexConformanceProof.ts",
+      "line": 137,
+      "endLine": 219,
+      "ref": "fac582b92e58902dea35511ea14bc7a720d58b26",
+      "title": "Tool-Call Compliance Proof",
+      "description": "## Insight\n\nMechanism: observations become compliance items, then items become backend accuracy and three aggregate assertions: expected SDK tool selected, native tool avoided, runtime completed cleanly.\n\nFailure mode: if Codex chooses text-only output, a wrong SDK tool, a native tool, or hits timeout/error, the item records the specific issue.\n\nDesign trade-off: this gives C2 a clean scoring language now, but prompt-local attribution still depends on richer live ledger data later.\n\n## Plain Read\n\nThis step grades each benchmark prompt. A prompt passes only if the right Chatpilot tool was called, no native Codex tool was used, and the run did not error.\n\n## Code Detail\n\n`backendAccuracy` is intentionally simple: passed / total / accuracy by backend. That gives us a compact comparison between Copilot CLI and Codex adapter once the benchmark matrix exists.\n\nGood: direct mapping from observation to score.\n\nCost: the current acceptance integration feeds coarse native-tool observations, so final C2 should use structured prompt-local ledger entries.\n\nReview question: which future report field would you inspect first if Codex had a lower accuracy than Copilot CLI?"
+    },
+    {
+      "file": "nodejs/examples/chatpilot-runtime-acceptance.ts",
+      "line": 118,
+      "endLine": 121,
+      "ref": "fac582b92e58902dea35511ea14bc7a720d58b26",
+      "title": "Concurrent Session Count Guard",
+      "description": "## Insight\n\nMechanism: `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS` now passes through `positiveIntegerEnv`, so invalid values fall back to one session.\n\nFailure mode: the original scaffold could turn a bad env value into `NaN`, which could produce zero session inputs and fail before meaningful acceptance evidence existed.\n\nDesign trade-off: strict fallback keeps the harness robust, but it does not warn the operator yet. That is acceptable for this small fix; a future CLI-quality runner may want explicit config diagnostics.\n\n## Plain Read\n\nThis is the guardrail for the A6 entrypoint. If someone mistypes the env var, the harness still runs one session instead of creating an empty run.\n\n## Code Detail\n\nThe parser is intentionally local to the script. It keeps configuration handling close to the acceptance harness without introducing a broader config module.\n\nGood: small, deterministic, typechecked.\n\nCost: silent fallback can hide misconfiguration if the user expected a larger run.\n\nReview question: for the live A6 artifact, should the report echo the parsed concurrent session count prominently?"
+    },
+    {
+      "file": "nodejs/examples/chatpilot-runtime-acceptance.ts",
+      "line": 236,
+      "endLine": 355,
+      "ref": "fac582b92e58902dea35511ea14bc7a720d58b26",
+      "title": "Per-Session Evidence Assembly",
+      "description": "## Insight\n\nMechanism: the harness now creates N session inputs, runs conversations concurrently, then builds per-session DB rows, log evidence, tool compliance, and assertions.\n\nFailure mode: if two sessions collapse into the same SDK session id or route marker, the aggregate assertions should fail instead of merely reporting that the HTTP server answered.\n\nDesign trade-off: keeping top-level report fields pointed at the first session preserves old report consumers, while `sessions[]` carries the new multi-session evidence.\n\n## Plain Read\n\nThis is where A6 starts to become testable. The report no longer has to pretend one user is enough; it can keep separate evidence for each route/session.\n\n## Code Detail\n\nThe key assertions are distinct SDK session ids and distinct persisted route markers. Those are data-level checks, which is the right direction for production proof.\n\nGood: preserves compatibility and adds richer evidence.\n\nCost: no live artifact has been produced yet, so this is still a harness capability, not a passed A6 result.\n\nReview question: if a future run has `sessions.length === 3` but only two persisted markers, what does that tell us about the runtime path?"
+    },
+    {
+      "file": "docs/todo.md",
+      "line": 17,
+      "endLine": 21,
+      "ref": "fac582b92e58902dea35511ea14bc7a720d58b26",
+      "title": "Docs Keep Phase 5 Open",
+      "description": "## Insight\n\nMechanism: the active todo records the scaffold as partial evidence and leaves the real completion evidence explicit: live multi-session acceptance, full schema round-trip, and compliance benchmark.\n\nFailure mode: without this wording, future sessions might mistake helper tests for production readiness and archive Phase 5 too early.\n\nDesign trade-off: the docs are slightly more verbose, but they protect review intent and handoff clarity.\n\n## Plain Read\n\nThis is the honesty checkpoint. It tells the next session exactly what is done and what still has to be proven.\n\n## Code Detail\n\nThe same boundary is mirrored in the conformance artifact index: scaffold result, not completion claim.\n\nGood: prevents checklist drift.\n\nCost: requires future sessions to update docs again when live artifacts land.\n\nReview question: what evidence would have to exist before this todo can move to `docs/todo-finished.md`?"
+    }
+  ]
+}

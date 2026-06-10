@@ -1,7 +1,7 @@
 # Conformance Artifacts
 
 Created: 2026-06-01 14:05
-Last Updated: 2026-06-01 14:05
+Last Updated: 2026-06-10 16:03
 Status: Active
 
 This index records the current evidence for Codex adapter parity in the selected profile.
@@ -90,3 +90,22 @@ Passing app-level assertions:
 - both backends invoke the same SDK-visible `save_memo` and `list_memos` tool intents
 - both backends reuse the same Chatpilot SDK session on the second turn
 - adapter summary contains both Codex `item/tool/call` and protocol-v2 SDK `tool.call`
+
+## Phase 5 Proof Infrastructure Scaffold
+
+Summary artifact: [artifacts/refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json](./artifacts/refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json)
+
+Result:
+
+- `nodejs/src/experimental/codexConformanceProof.ts` now owns pure schema round-trip and tool-call compliance assertion helpers.
+- `nodejs/examples/chatpilot-runtime-acceptance.ts` now emits per-backend and aggregate `toolCallCompliance` report sections for the existing `save_memo` / `list_memos` app-level flow.
+- `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS` now lets the Chatpilot acceptance harness produce per-session evidence for multi-session runs.
+- This is a Phase 5 scaffold, not a production-readiness completion claim: A6 still needs a live multi-session artifact, B5 full Chatpilot tool manifest coverage remains active, and C2 representative compliance benchmark remains active.
+
+Verification:
+
+- `npx vitest run test/codex-conformance-proof.test.ts test/codex-adapter-mappers.test.ts` -> pass, 22 tests
+- `npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck examples/chatpilot-runtime-acceptance.ts` -> pass
+- `npx tsc --noEmit` -> pass
+- `npx prettier --check src/experimental/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts` -> pass
+- `npx eslint src/experimental/codexConformanceProof.ts test/codex-conformance-proof.test.ts` -> pass

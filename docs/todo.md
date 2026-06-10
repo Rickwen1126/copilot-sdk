@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-09 11:55
+Last Updated: 2026-06-10 16:03
 Status: Active
 
 ## P0: Codex Adapter Production Readiness Queue @2026-06-04-2016
@@ -17,6 +17,8 @@ Section source:
 - [ ] Phase 5 production proof expansion.
   - Assigned issues: A6, B5, C2.
   - Completion evidence: multi-session concurrent acceptance, 26-tool schema round-trip acceptance, and tool-call compliance benchmark exist with machine-readable artifacts.
+  - Current partial evidence: [refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json) adds the shared schema round-trip and tool-call compliance proof language, unit coverage, `toolCallCompliance` report shape, and `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS` multi-session harness entrypoint in Chatpilot runtime acceptance.
+  - Remaining: add real Chatpilot 26-tool manifest/schema round-trip runner, representative compliance benchmark prompts, and live multi-session concurrent acceptance artifact.
 
 - [ ] Phase 6 production policy and model-behavior cleanup.
   - Assigned issues: B6, B7, C3, C4, D2, D3.
@@ -52,6 +54,7 @@ Section source:
   - Code/Surface: [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), future scenario/runner/ledger/assertion/report/fixture modules
   - Source: refactor plan Phase 5; subagent review finding about stale inline harness code
   - Completion evidence: stale inline minimal harness code is deleted or archived as non-active reference, harness responsibilities are split by evidence ownership, production proof expansion issues are covered or explicitly re-planned, and selected-profile artifacts remain semantically equivalent or intentionally improved.
+  - Current partial evidence: [nodejs/src/experimental/codexConformanceProof.ts](../nodejs/src/experimental/codexConformanceProof.ts) owns proof assertions for schema round-trip and tool-call compliance; [nodejs/test/codex-conformance-proof.test.ts](../nodejs/test/codex-conformance-proof.test.ts) covers pass/fail/not-run evidence states.
 
 - [ ] Phase 6: Conditional Strategy / Policy extraction.
   - Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)

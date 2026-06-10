@@ -6,6 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
+import {
+    buildToolCallComplianceReport,
+    type ToolCallComplianceObservation,
+    type ToolCallComplianceReport,
+} from "../src/experimental/codexConformanceProof.js";
 
 type BackendName = "copilot-cli" | "codex-adapter";
 type AssertionStatus = "pass" | "fail";
@@ -28,6 +33,21 @@ type ManagedProcess = {
     proc: ChildProcess;
     stdout: string[];
     stderr: string[];
+};
+
+type ChatpilotSessionReport = {
+    userId: string;
+    routeId: string;
+    sdkSessionId: string;
+    marker: string;
+    responses: {
+        save: unknown;
+        list: unknown;
+    };
+    dbRows: MemoRow[];
+    logEvidence: ChatpilotRunReport["logEvidence"];
+    toolCallCompliance: ToolCallComplianceReport;
+    assertions: Assertion[];
 };
 
 type ChatpilotRunReport = {
@@ -67,7 +87,9 @@ type ChatpilotRunReport = {
         sdkSendCount: number;
         sdkResponseCount: number;
     };
+    toolCallCompliance: ToolCallComplianceReport;
     assertions: Assertion[];
+    sessions: ChatpilotSessionReport[];
     logs: {
         chatpilotPreview: string;
         adapterPreview?: string;
@@ -83,6 +105,7 @@ type AcceptanceReport = {
     backends: BackendName[];
     reports: ChatpilotRunReport[];
     crossBackendAssertions: Assertion[];
+    toolCallCompliance: ToolCallComplianceReport;
 };
 
 const CHATPILOT_REPO = process.env.CHATPILOT_REPO ?? "/Users/rickwen/code/chatpilot";
@@ -92,7 +115,25 @@ const RUN_ID = process.env.CHATPILOT_ACCEPTANCE_RUN_ID ?? randomUUID();
 const OUTPUT_PATH = process.env.CHATPILOT_ACCEPTANCE_OUT;
 const REQUEST_TIMEOUT_MS = Number(process.env.CHATPILOT_ACCEPTANCE_REQUEST_TIMEOUT_MS ?? 300_000);
 const READY_TIMEOUT_MS = Number(process.env.CHATPILOT_ACCEPTANCE_READY_TIMEOUT_MS ?? 120_000);
+const CONCURRENT_SESSIONS = Math.max(
+    1,
+    Number(process.env.CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS ?? 1)
+);
 const NODEJS_ROOT = process.cwd();
+
+type ChatpilotSessionInput = {
+    userId: string;
+    routeId: string;
+    sdkSessionId: string;
+    marker: string;
+};
+
+type ChatpilotConversationResult = ChatpilotSessionInput & {
+    responses: {
+        save: unknown;
+        list: unknown;
+    };
+};
 
 async function main(): Promise<void> {
     const reports: ChatpilotRunReport[] = [];
@@ -101,9 +142,17 @@ async function main(): Promise<void> {
     }
 
     const crossBackendAssertions = buildCrossBackendAssertions(reports);
+    const toolCallCompliance = buildToolCallComplianceReport(
+        reports.flatMap((report) =>
+            report.toolCallCompliance.observations.map(({ status, issues, ...observation }) => ({
+                ...observation,
+            }))
+        )
+    );
     const status = [
         ...reports.flatMap((report) => report.assertions),
         ...crossBackendAssertions,
+        ...toolCallCompliance.assertions,
     ].every((assertion) => assertion.status === "pass")
         ? "pass"
         : "fail";
@@ -117,6 +166,7 @@ async function main(): Promise<void> {
         backends: BACKENDS,
         reports,
         crossBackendAssertions,
+        toolCallCompliance,
     };
 
     const outputPath = OUTPUT_PATH ?? join(tmpdir(), `chatpilot-codex-phase6-${RUN_ID}.json`);
@@ -151,10 +201,9 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
     );
     writeFileSync(routeBindingsPath, buildRouteBindingsYaml(), "utf8");
 
-    const userId = `phase6-${backend}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-    const routeId = `cli:${userId}`;
-    const sdkSessionId = `cli-${userId}__phase6`;
-    const marker = `PHASE6_${backend.replace("-", "_")}_${randomUUID().slice(0, 8)}`;
+    const sessionInputs = Array.from({ length: CONCURRENT_SESSIONS }, (_, index) =>
+        createSessionInput(backend, index)
+    );
 
     let adapter: ManagedProcess | undefined;
     let chatpilot: ManagedProcess | undefined;
@@ -184,26 +233,9 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
         });
         await waitForHealth(chatpilotUrl, chatpilot, READY_TIMEOUT_MS);
 
-        const savePrompt = [
-            `記住：${marker}`,
-            "這是 Phase 6 runtime acceptance marker。",
-            "你必須呼叫 save_memo 工具保存完整 marker。",
-            "工具成功後只回覆 SAVED。",
-        ].join(" ");
-        const listPrompt = [
-            "列出我的備忘錄。",
-            "你必須呼叫 list_memos 工具。",
-            `回覆必須包含 marker ${marker}。`,
-        ].join(" ");
-
-        const saveResponse = await postCliChat(chatpilotUrl, {
-            message: savePrompt,
-            user_id: userId,
-        });
-        const listResponse = await postCliChat(chatpilotUrl, {
-            message: listPrompt,
-            user_id: userId,
-        });
+        const conversations = await Promise.all(
+            sessionInputs.map((input) => runChatpilotConversation(chatpilotUrl, input))
+        );
 
         await delay(1_000);
         if (chatpilot) {
@@ -215,32 +247,82 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
             adapter = undefined;
         }
 
-        const dbRows = readMemoRows(memoryDb, routeId);
         const chatpilotLog = existsSync(logFile) ? readFileSync(logFile, "utf8") : "";
         const adapterTrace =
             adapterSummary && existsSync(adapterSummary)
                 ? readFileSync(adapterSummary, "utf8")
                 : undefined;
 
-        const logEvidence = collectLogEvidence(chatpilotLog, {
-            routeId,
-            sdkSessionId,
-            marker,
+        const sessions = conversations.map((conversation) => {
+            const dbRows = readMemoRows(memoryDb, conversation.routeId);
+            const logEvidence = collectLogEvidence(chatpilotLog, {
+                routeId: conversation.routeId,
+                sdkSessionId: conversation.sdkSessionId,
+                marker: conversation.marker,
+            });
+            const toolCallCompliance = buildAcceptanceToolCallCompliance({
+                backend,
+                logEvidence,
+                adapterTrace,
+            });
+            const assertions = buildAssertions({
+                backend,
+                routeId: conversation.routeId,
+                sdkSessionId: conversation.sdkSessionId,
+                marker: conversation.marker,
+                saveResponse: conversation.responses.save,
+                listResponse: conversation.responses.list,
+                dbRows,
+                chatpilotLog,
+                logEvidence,
+                adapterTrace,
+            });
+            return {
+                userId: conversation.userId,
+                routeId: conversation.routeId,
+                sdkSessionId: conversation.sdkSessionId,
+                marker: conversation.marker,
+                responses: conversation.responses,
+                dbRows,
+                logEvidence,
+                toolCallCompliance,
+                assertions,
+            };
         });
-        const assertions = buildAssertions({
-            backend,
-            routeId,
-            sdkSessionId,
-            marker,
-            saveResponse,
-            listResponse,
-            dbRows,
-            chatpilotLog,
-            logEvidence,
-            adapterTrace,
-        });
+        const primary = sessions[0];
+        const toolCallCompliance = buildToolCallComplianceReport(
+            sessions.flatMap((session) =>
+                session.toolCallCompliance.observations.map(
+                    ({ status, issues, ...observation }) => ({
+                        ...observation,
+                    })
+                )
+            )
+        );
+        const assertions = [
+            ...sessions.flatMap((session) => session.assertions),
+            assertion(
+                "requested concurrent session count completed",
+                sessions.length === CONCURRENT_SESSIONS,
+                `requested=${CONCURRENT_SESSIONS} completed=${sessions.length}`
+            ),
+            assertion(
+                "concurrent sessions kept distinct SDK session ids",
+                new Set(sessions.map((session) => session.sdkSessionId)).size === sessions.length,
+                `sdk_session_ids=${sessions.map((session) => session.sdkSessionId).join(",")}`
+            ),
+            assertion(
+                "concurrent sessions persisted distinct route markers",
+                sessions.every((session) =>
+                    session.dbRows.some((row) => row.text.includes(session.marker))
+                ),
+                `markers=${sessions.map((session) => session.marker).join(",")}`
+            ),
+        ];
 
-        const status = assertions.every((assertion) => assertion.status === "pass")
+        const status = [...assertions, ...toolCallCompliance.assertions].every(
+            (assertion) => assertion.status === "pass"
+        )
             ? "pass"
             : "fail";
 
@@ -248,10 +330,10 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
             backend,
             status,
             runId,
-            userId,
-            routeId,
-            sdkSessionId,
-            marker,
+            userId: primary.userId,
+            routeId: primary.routeId,
+            sdkSessionId: primary.sdkSessionId,
+            marker: primary.marker,
             chatpilotUrl,
             chatpilotPort,
             adapterPort,
@@ -265,13 +347,12 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
                 logFile,
                 adapterSummary,
             },
-            responses: {
-                save: saveResponse,
-                list: listResponse,
-            },
-            dbRows,
-            logEvidence,
+            responses: primary.responses,
+            dbRows: primary.dbRows,
+            logEvidence: primary.logEvidence,
+            toolCallCompliance,
             assertions,
+            sessions,
             logs: {
                 chatpilotPreview: tail(chatpilotLog, 12_000),
                 adapterPreview: adapterTrace ? tail(adapterTrace, 12_000) : undefined,
@@ -285,6 +366,50 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
             await stopProcess(adapter);
         }
     }
+}
+
+function createSessionInput(backend: BackendName, index: number): ChatpilotSessionInput {
+    const userId = `phase6-${backend}-${index}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    return {
+        userId,
+        routeId: `cli:${userId}`,
+        sdkSessionId: `cli-${userId}__phase6`,
+        marker: `PHASE6_${backend.replace("-", "_")}_${index}_${randomUUID().slice(0, 8)}`,
+    };
+}
+
+async function runChatpilotConversation(
+    chatpilotUrl: string,
+    input: ChatpilotSessionInput
+): Promise<ChatpilotConversationResult> {
+    const savePrompt = [
+        `記住：${input.marker}`,
+        "這是 Phase 6 runtime acceptance marker。",
+        "你必須呼叫 save_memo 工具保存完整 marker。",
+        "工具成功後只回覆 SAVED。",
+    ].join(" ");
+    const listPrompt = [
+        "列出我的備忘錄。",
+        "你必須呼叫 list_memos 工具。",
+        `回覆必須包含 marker ${input.marker}。`,
+    ].join(" ");
+
+    const saveResponse = await postCliChat(chatpilotUrl, {
+        message: savePrompt,
+        user_id: input.userId,
+    });
+    const listResponse = await postCliChat(chatpilotUrl, {
+        message: listPrompt,
+        user_id: input.userId,
+    });
+
+    return {
+        ...input,
+        responses: {
+            save: saveResponse,
+            list: listResponse,
+        },
+    };
 }
 
 function parseBackends(value: string): BackendName[] {
@@ -721,6 +846,61 @@ function collectLogEvidence(
             new RegExp(`\\[SDK\\] ${escapeRegExp(sdkSessionId)} response`, "g")
         ),
     };
+}
+
+function buildAcceptanceToolCallCompliance({
+    backend,
+    logEvidence,
+    adapterTrace,
+}: {
+    backend: BackendName;
+    logEvidence: ChatpilotRunReport["logEvidence"];
+    adapterTrace?: string;
+}): ToolCallComplianceReport {
+    const nativeToolCalls =
+        backend === "codex-adapter" ? extractKnownNativeToolCalls(adapterTrace ?? "") : [];
+    const observations: ToolCallComplianceObservation[] = [
+        {
+            backend,
+            promptId: "save-marker",
+            expectedToolName: "save_memo",
+            sdkToolCalls: observedToolCalls("save_memo", logEvidence.saveToolCallCount),
+            nativeToolCalls,
+            resultStatus: logEvidence.saveToolResultCount >= 1 ? "ok" : "error",
+            evidence: `save_call_count=${logEvidence.saveToolCallCount} save_result_count=${logEvidence.saveToolResultCount}`,
+        },
+        {
+            backend,
+            promptId: "list-marker",
+            expectedToolName: "list_memos",
+            sdkToolCalls: observedToolCalls("list_memos", logEvidence.listToolCallCount),
+            nativeToolCalls,
+            resultStatus: logEvidence.listToolResultCount >= 1 ? "ok" : "error",
+            evidence: `list_call_count=${logEvidence.listToolCallCount} list_result_count=${logEvidence.listToolResultCount}`,
+        },
+    ];
+
+    return buildToolCallComplianceReport(observations);
+}
+
+function observedToolCalls(toolName: string, count: number): string[] {
+    return Array.from({ length: count }, () => toolName);
+}
+
+function extractKnownNativeToolCalls(adapterTrace: string): string[] {
+    const nativeToolNames = [
+        "apply_patch",
+        "local_shell",
+        "read_file",
+        "shell",
+        "update_plan",
+        "write_file",
+    ];
+    return nativeToolNames.filter((toolName) =>
+        new RegExp(
+            `"name"\\s*:\\s*"${escapeRegExp(toolName)}"|toolName=${escapeRegExp(toolName)}`
+        ).test(adapterTrace)
+    );
 }
 
 function buildAssertions({

@@ -1,0 +1,58 @@
+{
+  "artifactType": "refactor-phase5-proof-language-scaffold",
+  "generatedAt": "2026-06-10T16:03:00+08:00",
+  "phase": "Phase 5: Conformance Harness Decomposition",
+  "status": "partial-pass",
+  "scope": {
+    "productionReadinessIssues": ["A6", "B5", "C2"],
+    "codeSurfaces": [
+      "nodejs/src/experimental/codexConformanceProof.ts",
+      "nodejs/test/codex-conformance-proof.test.ts",
+      "nodejs/examples/chatpilot-runtime-acceptance.ts"
+    ]
+  },
+  "summary": [
+    "Added a pure proof helper module for schema round-trip and tool-call compliance assertions.",
+    "Added unit coverage for schema preservation, missing/mutated schema evidence, backend accuracy summaries, native-tool call failures, and not-run benchmark state.",
+    "Extended Chatpilot runtime acceptance reports with per-backend and aggregate toolCallCompliance artifacts for the existing save_memo/list_memos flow.",
+    "Added CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS so the same acceptance harness can run multiple app-level sessions concurrently and retain per-session evidence."
+  ],
+  "notACompletionClaim": [
+    "This scaffold does not complete Phase 5.",
+    "A6 has a harness entrypoint but still needs a live multi-session artifact run before closure.",
+    "B5 still needs full Chatpilot tool manifest/schema round-trip coverage beyond save_memo/list_memos.",
+    "C2 still needs a representative multi-tool, multi-backend compliance benchmark."
+  ],
+  "verification": [
+    {
+      "command": "npx vitest run test/codex-conformance-proof.test.ts test/codex-adapter-mappers.test.ts",
+      "cwd": "nodejs",
+      "result": "pass",
+      "details": "2 files, 22 tests"
+    },
+    {
+      "command": "npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck examples/chatpilot-runtime-acceptance.ts",
+      "cwd": "nodejs",
+      "result": "pass"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "cwd": "nodejs",
+      "result": "pass"
+    },
+    {
+      "command": "npx prettier --check src/experimental/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts",
+      "cwd": "nodejs",
+      "result": "pass"
+    },
+    {
+      "command": "npx eslint src/experimental/codexConformanceProof.ts test/codex-conformance-proof.test.ts",
+      "cwd": "nodejs",
+      "result": "pass"
+    }
+  ],
+  "notes": [
+    "Verification commands emitted pyenv rehash warnings because /Users/rickwen/.pyenv/shims is not writable; command exit codes were still zero.",
+    "No live Chatpilot, adapter, or Codex app-server process was started for this scaffold."
+  ]
+}

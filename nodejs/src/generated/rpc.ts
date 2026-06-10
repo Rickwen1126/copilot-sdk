@@ -423,10 +423,10 @@ export type InstalledPluginSource =
  * Category of instruction source — used for merge logic
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "InstructionsSourcesType".
+ * via the `definition` "InstructionSourceType".
  */
 /** @experimental */
-export type InstructionsSourcesType =
+export type InstructionSourceType =
   /** Instructions loaded from the user's home configuration. */
   | "home"
   /** Instructions loaded from repository-scoped files. */
@@ -445,10 +445,10 @@ export type InstructionsSourcesType =
  * Where this source lives — used for UI grouping
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "InstructionsSourcesLocation".
+ * via the `definition` "InstructionSourceLocation".
  */
 /** @experimental */
-export type InstructionsSourcesLocation =
+export type InstructionSourceLocation =
   /** Instructions live in user-level configuration. */
   | "user"
   /** Instructions live in repository-level configuration. */
@@ -1011,6 +1011,20 @@ export type ProviderConfigWireApi =
   | "completions"
   /** OpenAI Responses API wire format. */
   | "responses";
+/**
+ * Wire protocol the caller must speak to `baseUrl`. Tells the caller which LLM client library to instantiate.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderWireProtocol".
+ */
+/** @experimental */
+export type ProviderWireProtocol =
+  /** OpenAI Chat Completions wire format (`/chat/completions`). Use the `openai` client library. */
+  | "openai-completions"
+  /** OpenAI Responses wire format (`/responses`). Use the `openai` client library. */
+  | "openai-responses"
+  /** Anthropic Messages wire format (`/v1/messages`). Use the `@anthropic-ai/sdk` client library. */
+  | "anthropic";
 /**
  * Schema for the `PushAttachment` type.
  *
@@ -2010,6 +2024,23 @@ export interface AgentReloadResult {
    * Reloaded custom agents
    */
   agents: AgentInfo[];
+}
+/**
+ * Optional project paths to include in agent discovery.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "AgentsDiscoverRequest".
+ */
+/** @experimental */
+export interface AgentsDiscoverRequest {
+  /**
+   * Optional list of project directory paths to scan for project-scoped agents. When omitted or empty, only user/plugin/remote-independent agents are returned (no project scan).
+   */
+  projectPaths?: string[];
+  /**
+   * When true, omit the host's agents (the `<COPILOT_HOME>/agents` directory and all plugin agents), leaving only project and remote agents. For multitenant deployments.
+   */
+  excludeHostAgents?: boolean;
 }
 /**
  * Name of the custom agent to select for subsequent turns.
@@ -3965,6 +3996,23 @@ export interface InstalledPluginInfo {
   enabled: boolean;
 }
 /**
+ * Optional project paths to include in instruction discovery.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "InstructionsDiscoverRequest".
+ */
+/** @experimental */
+export interface InstructionsDiscoverRequest {
+  /**
+   * Optional list of project directory paths to scan for repository/working-directory instruction sources. When omitted or empty, only user-level and plugin instruction sources are returned (no project scan).
+   */
+  projectPaths?: string[];
+  /**
+   * When true, omit the host's instruction sources (user/home-level files and plugin rules), leaving only repository and working-directory sources. For multitenant deployments.
+   */
+  excludeHostInstructions?: boolean;
+}
+/**
  * Instruction sources loaded for the session, in merge order.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -3975,16 +4023,16 @@ export interface InstructionsGetSourcesResult {
   /**
    * Instruction sources for the session
    */
-  sources: InstructionsSources[];
+  sources: InstructionSource[];
 }
 /**
- * Schema for the `InstructionsSources` type.
+ * Schema for the `InstructionSource` type.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "InstructionsSources".
+ * via the `definition` "InstructionSource".
  */
 /** @experimental */
-export interface InstructionsSources {
+export interface InstructionSource {
   /**
    * Unique identifier for this source (used for toggling)
    */
@@ -4001,8 +4049,8 @@ export interface InstructionsSources {
    * Raw content of the instruction file
    */
   content: string;
-  type: InstructionsSourcesType;
-  location: InstructionsSourcesLocation;
+  type: InstructionSourceType;
+  location: InstructionSourceLocation;
   /**
    * Glob pattern(s) from frontmatter — when set, this instruction applies only to matching files
    */
@@ -4015,6 +4063,10 @@ export interface InstructionsSources {
    * When true, this source starts disabled and must be toggled on by the user
    */
   defaultDisabled?: boolean;
+  /**
+   * The project path this source was discovered from. Only set by sessionless discovery for repository/working-directory sources, where it disambiguates same-named files (e.g. .github/copilot-instructions.md) across multiple workspace roots. The session-scoped getSources leaves it unset.
+   */
+  projectPath?: string;
 }
 /**
  * Schema for the `LocalSessionMetadataValue` type.
@@ -7772,6 +7824,69 @@ export interface ProviderConfigAzure {
   apiVersion?: string;
 }
 /**
+ * A snapshot of the provider endpoint the session is currently configured to talk to, with enough information for an external caller to make inference calls directly against the same backend using the OpenAI or Anthropic client libraries.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderEndpoint".
+ */
+/** @experimental */
+export interface ProviderEndpoint {
+  protocol: ProviderWireProtocol;
+  /**
+   * Base URL the caller should pass to the LLM client library (e.g. `new OpenAI({ baseURL })` or `new Anthropic({ baseURL })`).
+   */
+  baseUrl: string;
+  /**
+   * Credential for the LLM client constructor (e.g. `new OpenAI({ apiKey })` or `new Anthropic({ apiKey })`). The OpenAI / Anthropic client libraries turn this into the appropriate auth header (typically `Authorization: Bearer …`). Omitted only when the endpoint accepts unauthenticated requests (e.g. a local model server).
+   */
+  apiKey?: string;
+  /**
+   * Static HTTP headers the caller must include on every outbound request. Does NOT include the `Authorization` header (the LLM client library adds that from `apiKey`) and does NOT include the `sessionToken` header (sent separately).
+   */
+  headers: {
+    [k: string]: string | undefined;
+  };
+  sessionToken?: ProviderSessionToken;
+}
+/**
+ * Short-lived, rotating credential the caller must send on every request, in addition to `apiKey` if one is present. Omitted when the endpoint does not require one.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderSessionToken".
+ */
+/** @experimental */
+export interface ProviderSessionToken {
+  /**
+   * The short-lived token value.
+   */
+  token: string;
+  /**
+   * HTTP header name the token must be sent under.
+   */
+  header: string;
+  /**
+   * The model the token is bound to, when applicable. When set, the token is only valid for requests against this model.
+   */
+  model?: string;
+  /**
+   * When the token expires. Callers should refresh by calling `get` again before this time, or reactively on any 401/403 response from `baseUrl`.
+   */
+  expiresAt: string;
+}
+/**
+ * Optional model identifier to scope the endpoint snapshot to.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderEndpointGetRequest".
+ */
+/** @experimental */
+export interface ProviderEndpointGetRequest {
+  /**
+   * Model identifier the caller intends to use against the returned endpoint. Used to pick the wire protocol (Anthropic Messages vs. OpenAI Responses vs. OpenAI Chat Completions) and to scope any returned `sessionToken` to that model. When omitted, the session's currently active model is used. Ignored when the session uses a custom provider that doesn't vary by model.
+   */
+  modelId?: string;
+}
+/**
  * File attachment
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -8553,9 +8668,21 @@ export interface ScheduleEntry {
    */
   id: number;
   /**
-   * Interval between scheduled ticks, in milliseconds.
+   * Interval between scheduled ticks, in milliseconds (relative-interval schedules).
    */
-  intervalMs: number;
+  intervalMs?: number;
+  /**
+   * 5-field cron expression for a recurring calendar schedule, evaluated in `tz`.
+   */
+  cron?: string;
+  /**
+   * IANA timezone the `cron` expression is evaluated in.
+   */
+  tz?: string;
+  /**
+   * Absolute fire time (epoch milliseconds) for a one-shot calendar schedule.
+   */
+  at?: number;
   /**
    * Prompt text that gets enqueued on every tick.
    */
@@ -8721,6 +8848,32 @@ export interface SendResult {
    * Unique identifier assigned to the message
    */
   messageId: string;
+}
+/**
+ * Agents discovered across user, project, plugin, and remote sources.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ServerAgentList".
+ */
+/** @experimental */
+export interface ServerAgentList {
+  /**
+   * All discovered agents across all sources
+   */
+  agents: AgentInfo[];
+}
+/**
+ * Instruction sources discovered across user, repository, and plugin sources.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ServerInstructionSourceList".
+ */
+/** @experimental */
+export interface ServerInstructionSourceList {
+  /**
+   * All discovered instruction sources
+   */
+  sources: InstructionSource[];
 }
 /**
  * Schema for the `ServerSkill` type.
@@ -11112,9 +11265,13 @@ export interface TaskAgentInfo {
    */
   result?: string;
   /**
-   * Model used for the task when specified
+   * Requested model override for the task when specified
    */
   model?: string;
+  /**
+   * Runtime model resolved for the task when available
+   */
+  resolvedModel?: string;
   executionMode?: TaskExecutionMode;
   /**
    * Whether the task is currently in the original sync wait and can be moved to background mode. False once it is already backgrounded, idle, finished, or no longer has a promotable sync waiter.
@@ -12838,6 +12995,30 @@ export function createServerRpc(connection: MessageConnection) {
             discover: async (params: SkillsDiscoverRequest): Promise<ServerSkillList> =>
                 connection.sendRequest("skills.discover", params),
         },
+        /** @experimental */
+        agents: {
+            /**
+             * Discovers custom agents across user, project, plugin, and remote sources.
+             *
+             * @param params Optional project paths to include in agent discovery.
+             *
+             * @returns Agents discovered across user, project, plugin, and remote sources.
+             */
+            discover: async (params: AgentsDiscoverRequest): Promise<ServerAgentList> =>
+                connection.sendRequest("agents.discover", params),
+        },
+        /** @experimental */
+        instructions: {
+            /**
+             * Discovers instruction sources across user, repository, and plugin sources.
+             *
+             * @param params Optional project paths to include in instruction discovery.
+             *
+             * @returns Instruction sources discovered across user, repository, and plugin sources.
+             */
+            discover: async (params: InstructionsDiscoverRequest): Promise<ServerInstructionSourceList> =>
+                connection.sendRequest("instructions.discover", params),
+        },
         user: {
             settings: {
                 /**
@@ -13674,15 +13855,6 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
             reload: async (): Promise<void> =>
                 connection.sendRequest("session.mcp.reload", { sessionId }),
             /**
-             * Reloads MCP server connections for the session with an explicit host-provided configuration.
-             *
-             * @param params Opaque MCP reload configuration.
-             *
-             * @returns MCP server startup filtering result.
-             */
-            reloadWithConfig: async (params: McpReloadWithConfigRequest): Promise<McpStartServersResult> =>
-                connection.sendRequest("session.mcp.reloadWithConfig", { sessionId, ...params }),
-            /**
              * Runs an MCP sampling inference on behalf of an MCP server.
              *
              * @param params Identifiers and raw MCP CreateMessageRequest params used to run a sampling inference.
@@ -13717,49 +13889,12 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
             removeGitHub: async (): Promise<McpRemoveGitHubResult> =>
                 connection.sendRequest("session.mcp.removeGitHub", { sessionId }),
             /**
-             * Configures the built-in GitHub MCP server for the session's current auth context.
-             *
-             * @param params Opaque auth info used to configure GitHub MCP.
-             *
-             * @returns Result of configuring GitHub MCP.
-             */
-            configureGitHub: async (params: McpConfigureGitHubRequest): Promise<McpConfigureGitHubResult> =>
-                connection.sendRequest("session.mcp.configureGitHub", { sessionId, ...params }),
-            /**
-             * Starts an individual MCP server on the session's host.
-             *
-             * @param params Server name and opaque configuration for an individual MCP server start.
-             */
-            startServer: async (params: McpStartServerRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.startServer", { sessionId, ...params }),
-            /**
-             * Restarts an individual MCP server on the session's host (stops then starts).
-             *
-             * @param params Server name and opaque configuration for an individual MCP server restart.
-             */
-            restartServer: async (params: McpRestartServerRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.restartServer", { sessionId, ...params }),
-            /**
              * Stops an individual MCP server on the session's host.
              *
              * @param params Server name for an individual MCP server stop.
              */
             stopServer: async (params: McpStopServerRequest): Promise<void> =>
                 connection.sendRequest("session.mcp.stopServer", { sessionId, ...params }),
-            /**
-             * Registers a pre-connected external MCP client (e.g. IDE) on the session's host. The caller retains lifecycle ownership of the client and transport. Marked internal because the `client` and `transport` arguments are in-process MCP SDK instances that cannot be serialized across the JSON-RPC boundary; once the CLI moves on top of the SDK, external clients will be expressed as transport configs the runtime can construct itself.
-             *
-             * @param params Registration parameters for an external MCP client.
-             */
-            registerExternalClient: async (params: McpRegisterExternalClientRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.registerExternalClient", { sessionId, ...params }),
-            /**
-             * Unregisters a previously registered external MCP client by server name. Marked internal as the paired companion of `registerExternalClient`: only in-process callers that registered a client this way can meaningfully unregister it. Disappears alongside `registerExternalClient`: once external clients are described to the runtime as config rather than handed in as instances, lifecycle (including deregistration) is owned entirely by the runtime.
-             *
-             * @param params Server name identifying the external client to remove.
-             */
-            unregisterExternalClient: async (params: McpUnregisterExternalClientRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.unregisterExternalClient", { sessionId, ...params }),
             /**
              * Checks whether a named MCP server is currently running on the session's host.
              *
@@ -13771,15 +13906,6 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                 connection.sendRequest("session.mcp.isServerRunning", { sessionId, ...params }),
             /** @experimental */
             oauth: {
-                /**
-                 * Responds to a pending MCP OAuth provider request. Marked internal because the `provider` argument is an in-process OAuthClientProvider instance that cannot be carried over the wire; the public OAuth surface will route the response through a wire-clean handshake once the CLI moves on top of the SDK.
-                 *
-                 * @param params MCP OAuth request id and optional provider response.
-                 *
-                 * @returns Empty result after recording the MCP OAuth response.
-                 */
-                respond: async (params: McpOauthRespondRequest): Promise<McpOauthRespondResult> =>
-                    connection.sendRequest("session.mcp.oauth.respond", { sessionId, ...params }),
                 /**
                  * Starts OAuth authentication for a remote MCP server.
                  *
@@ -13860,6 +13986,18 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              */
             reload: async (params?: PluginsReloadRequest): Promise<void> =>
                 connection.sendRequest("session.plugins.reload", { sessionId, ...params }),
+        },
+        /** @experimental */
+        providerEndpoint: {
+            /**
+             * Returns the provider endpoint and credentials the session is currently configured to talk to, so the caller can make inference calls directly against the same backend the session uses. May throw for sessions whose authentication scheme is not yet supported.
+             *
+             * @param params Optional model identifier to scope the endpoint snapshot to.
+             *
+             * @returns A snapshot of the provider endpoint the session is currently configured to talk to, with enough information for an external caller to make inference calls directly against the same backend using the OpenAI or Anthropic client libraries.
+             */
+            get: async (params?: ProviderEndpointGetRequest): Promise<ProviderEndpoint> =>
+                connection.sendRequest("session.providerEndpoint.get", { sessionId, ...params }),
         },
         /** @experimental */
         options: {
@@ -14562,6 +14700,77 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              */
             stop: async (params: ScheduleStopRequest): Promise<ScheduleStopResult> =>
                 connection.sendRequest("session.schedule.stop", { sessionId, ...params }),
+        },
+    };
+}
+
+/**
+ * Create typed session-scoped RPC methods that are part of the SDK's internal
+ * surface. Not exported on the public client API.
+ * @internal
+ */
+export function createInternalSessionRpc(connection: MessageConnection, sessionId: string) {
+    return {
+        /** @experimental */
+        mcp: {
+            /**
+             * Reloads MCP server connections for the session with an explicit host-provided configuration.
+             *
+             * @param params Opaque MCP reload configuration.
+             *
+             * @returns MCP server startup filtering result.
+             */
+            reloadWithConfig: async (params: McpReloadWithConfigRequest): Promise<McpStartServersResult> =>
+                connection.sendRequest("session.mcp.reloadWithConfig", { sessionId, ...params }),
+            /**
+             * Configures the built-in GitHub MCP server for the session's current auth context.
+             *
+             * @param params Opaque auth info used to configure GitHub MCP.
+             *
+             * @returns Result of configuring GitHub MCP.
+             */
+            configureGitHub: async (params: McpConfigureGitHubRequest): Promise<McpConfigureGitHubResult> =>
+                connection.sendRequest("session.mcp.configureGitHub", { sessionId, ...params }),
+            /**
+             * Starts an individual MCP server on the session's host.
+             *
+             * @param params Server name and opaque configuration for an individual MCP server start.
+             */
+            startServer: async (params: McpStartServerRequest): Promise<void> =>
+                connection.sendRequest("session.mcp.startServer", { sessionId, ...params }),
+            /**
+             * Restarts an individual MCP server on the session's host (stops then starts).
+             *
+             * @param params Server name and opaque configuration for an individual MCP server restart.
+             */
+            restartServer: async (params: McpRestartServerRequest): Promise<void> =>
+                connection.sendRequest("session.mcp.restartServer", { sessionId, ...params }),
+            /**
+             * Registers a pre-connected external MCP client (e.g. IDE) on the session's host. The caller retains lifecycle ownership of the client and transport. Marked internal because the `client` and `transport` arguments are in-process MCP SDK instances that cannot be serialized across the JSON-RPC boundary; once the CLI moves on top of the SDK, external clients will be expressed as transport configs the runtime can construct itself.
+             *
+             * @param params Registration parameters for an external MCP client.
+             */
+            registerExternalClient: async (params: McpRegisterExternalClientRequest): Promise<void> =>
+                connection.sendRequest("session.mcp.registerExternalClient", { sessionId, ...params }),
+            /**
+             * Unregisters a previously registered external MCP client by server name. Marked internal as the paired companion of `registerExternalClient`: only in-process callers that registered a client this way can meaningfully unregister it. Disappears alongside `registerExternalClient`: once external clients are described to the runtime as config rather than handed in as instances, lifecycle (including deregistration) is owned entirely by the runtime.
+             *
+             * @param params Server name identifying the external client to remove.
+             */
+            unregisterExternalClient: async (params: McpUnregisterExternalClientRequest): Promise<void> =>
+                connection.sendRequest("session.mcp.unregisterExternalClient", { sessionId, ...params }),
+            /** @experimental */
+            oauth: {
+                /**
+                 * Responds to a pending MCP OAuth provider request. Marked internal because the `provider` argument is an in-process OAuthClientProvider instance that cannot be carried over the wire; the public OAuth surface will route the response through a wire-clean handshake once the CLI moves on top of the SDK.
+                 *
+                 * @param params MCP OAuth request id and optional provider response.
+                 *
+                 * @returns Empty result after recording the MCP OAuth response.
+                 */
+                respond: async (params: McpOauthRespondRequest): Promise<McpOauthRespondResult> =>
+                    connection.sendRequest("session.mcp.oauth.respond", { sessionId, ...params }),
+            },
         },
     };
 }

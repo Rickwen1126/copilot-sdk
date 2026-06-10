@@ -49,10 +49,10 @@
     {
       "file": "docs/integrations/codex-sdk-runtime-profile/production-runbook.md",
       "line": 9,
-      "endLine": 56,
-      "ref": "742f559f88e9a1818bdb648c5f958454fb788e28",
+      "endLine": 58,
+      "ref": "33bd2abbcda3f6e03a22e8a85a38678d55c226c1",
       "title": "Production Runbook: 把安全 lane 寫成操作契約",
-      "description": "## Insight\n\n機制：runbook 明確列出 `codex login`、stable `CODEX_HOME`、runtime session store、Chatpilot locked lane，以及 incompatible resume tool-set policy。\n\n故障模式：如果這些只存在 code default 或聊天結論，operator 可能用 temporary Codex home 或打開 approval/network override，誤以為還在安全 Chatpilot lane。\n\n設計取捨：Phase 4 先把 locked lane 寫成契約，不做 universal policy framework。這符合 partial boundary：先把目前產品路徑鎖好，等更多 backend/route 需要再 generalize。\n\n## 白話解析\n\n這段是操作手冊。它其實就是告訴人：要讓這條車線可恢復、可控、不要變成 coding-agent 自由發揮，你啟動時必須帶哪些設定。\n\n## Code Detail\n\nrunbook 把 durable resume 和 safety defaults 拆開寫，避免把 process alive 誤當 continuity proof。好處是下一個 session 和 operator 都能直接照做；壞處是還要靠 Phase 5/6 補 benchmark 與 auth-refresh production proof。\n\n思考問題：哪些設定應該永遠是 Chatpilot lane 的 hard guard，而不是 env override？"
+      "description": "## Insight\n\n機制：runbook 明確列出 `codex login`、stable `CODEX_HOME`、runtime session store、每個 thread 的 workspace / `cwd` identity、Chatpilot locked lane，以及 incompatible resume tool-set policy。\n\n故障模式：如果這些只存在 code default 或聊天結論，operator 可能用 temporary Codex home、把同一個 SDK session resume 到不同 workspace，或打開 approval/network override，誤以為還在安全 Chatpilot lane。\n\n設計取捨：Phase 4 先把 locked lane 寫成契約，不做 universal policy framework。這符合 partial boundary：先把目前產品路徑鎖好，等更多 backend/route 需要再 generalize。\n\n## 白話解析\n\n這段是操作手冊。它其實就是告訴人：要讓這條車線可恢復、可控、不要變成 coding-agent 自由發揮，你啟動時必須帶哪些設定；同一張票也不要突然換到另一個工作區繼續跑。\n\n## Code Detail\n\nrunbook 把 durable resume、thread workspace identity 和 safety defaults 拆開寫，避免把 process alive 或 stable home 誤當完整 continuity proof。好處是下一個 session 和 operator 都能直接照做；壞處是還要靠 Phase 5/6 補 benchmark、auth-refresh production proof，以及是否要把 cwd mismatch 從文件契約升級成 runtime guard。\n\n思考問題：同一 SDK session 如果想切換 workspace，應該是 migrate、fork，還是新開 session？哪些設定應該永遠是 Chatpilot lane 的 hard guard，而不是 env override？"
     },
     {
       "file": "docs/integrations/codex-sdk-runtime-profile/artifacts/refactor-phase4-final-hardening@2026-06-09-1145.summary.json",

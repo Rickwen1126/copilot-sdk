@@ -4,7 +4,7 @@
   "steps": [
     {
       "title": "Context",
-      "description": "這條 tour 其實是在看：Codex adapter 如何從 spike runtime 變成可長跑、可 resume、可被 Chatpilot 安全使用的 production workflow。\\n\\n如果先記不住細節，先抓住每個 step 都在回答同一題：adapter 這個「海關」怎麼確認旅客身分、拒絕不相容行李、避免櫃台爆滿，並留下足夠 evidence 讓我們知道它沒有偷偷放水。\\n\\n錨定已知：你可以把 SDK session 想成旅客手上的票，Codex thread 是車站後台實際保留的旅程紀錄，adapter store 是票號和旅程紀錄的索引。Phase 4 的重點不是發明 universal runtime framework，而是把這個海關窗口做穩。\\n\\n這條路徑展示的 mental model：runtime adapter 的正確性不是只看 request 成功，而是看 identity、tool shape、side-effect policy、timeout、artifact evidence 是否一起對齊。"
+      "description": "這條 tour 其實是在看：Codex adapter 如何從 spike runtime 變成可長跑、可 resume、可被 Chatpilot 安全使用的 production workflow。\n\n如果先記不住細節，先抓住每個 step 都在回答同一題：adapter 這個「海關」怎麼確認旅客身分、拒絕不相容行李、避免櫃台爆滿，並留下足夠 evidence 讓我們知道它沒有偷偷放水。\n\n錨定已知：你可以把 SDK session 想成旅客手上的票，Codex thread 是車站後台實際保留的旅程紀錄，adapter store 是票號和旅程紀錄的索引。Phase 4 的重點不是發明 universal runtime framework，而是把這個海關窗口做穩。\n\n這條路徑展示的 mental model：runtime adapter 的正確性不是只看 request 成功，而是看 identity、tool shape、side-effect policy、timeout、artifact evidence 是否一起對齊。"
     },
     {
       "file": "nodejs/src/experimental/codexAdapter.ts",
@@ -12,7 +12,7 @@
       "endLine": 224,
       "ref": "742f559f88e9a1818bdb648c5f958454fb788e28",
       "title": "Tool Fingerprint: Resume 的行李封條",
-      "description": "## Insight\\n\\n機制：`toolFingerprintFromDescriptors()` 把 SDK tool name、description、parameters、skipPermission 正規化後 hash，讓 adapter 能判斷 resume 時的工具集合是不是同一個 shape。\\n\\n故障模式：如果沒有這個 fingerprint，`session.resume` 可能把一個用 A 工具建立的 Codex thread 接到 B 工具 handler 上，模型以為工具存在，但 adapter 實際無法正確處理。\\n\\n設計取捨：hash 只證明 shape 相同，不保存 handler 本身；這比保存完整工具物件乾淨，也符合 adapter store 是 mapping index、不是 transcript/tool registry 的邊界。\\n\\n## 白話解析\\n\\n這段是 resume 的行李封條。它其實就是把「當初帶了哪些工具」變成一個穩定指紋；後面要接回同一趟旅程時，先看封條有沒有被換過。\\n\\n## Code Detail\\n\\n這段用 stable stringify 避免 object key 順序造成 hash 漂移。好處是 fingerprint 可跨 process 比對；壞處是只要 description 或 schema 有小差異就會被視為 incompatible，需要未來產品真的需要時再設計 fork/recreate policy。\\n\\n思考問題：如果工具 handler 行為改了但 schema 沒變，這個 fingerprint 能不能抓到？我們是否需要抓到？"
+      "description": "## Insight\n\n機制：`toolFingerprintFromDescriptors()` 把 SDK tool name、description、parameters、skipPermission 正規化後 hash，讓 adapter 能判斷 resume 時的工具集合是不是同一個 shape。\n\n故障模式：如果沒有這個 fingerprint，`session.resume` 可能把一個用 A 工具建立的 Codex thread 接到 B 工具 handler 上，模型以為工具存在，但 adapter 實際無法正確處理。\n\n設計取捨：hash 只證明 shape 相同，不保存 handler 本身；這比保存完整工具物件乾淨，也符合 adapter store 是 mapping index、不是 transcript/tool registry 的邊界。\n\n## 白話解析\n\n這段是 resume 的行李封條。它其實就是把「當初帶了哪些工具」變成一個穩定指紋；後面要接回同一趟旅程時，先看封條有沒有被換過。\n\n## Code Detail\n\n這段用 stable stringify 避免 object key 順序造成 hash 漂移。好處是 fingerprint 可跨 process 比對；壞處是只要 description 或 schema 有小差異就會被視為 incompatible，需要未來產品真的需要時再設計 fork/recreate policy。\n\n思考問題：如果工具 handler 行為改了但 schema 沒變，這個 fingerprint 能不能抓到？我們是否需要抓到？"
     },
     {
       "file": "nodejs/src/experimental/codexAdapter.ts",
@@ -20,7 +20,7 @@
       "endLine": 704,
       "ref": "742f559f88e9a1818bdb648c5f958454fb788e28",
       "title": "Resume Gate: 不相容工具先擋在 thread/resume 前",
-      "description": "## Insight\\n\\n機制：`handleSessionResume()` 先判斷本次 resume 是否帶 tools，再依照 in-memory session 或 persisted record 比對 fingerprint。adapter restart 後如果原 session 有 tools，本次 resume 沒帶 matching tools 也會被拒絕。\\n\\n故障模式：如果先呼叫 Codex `thread/resume` 再發現工具不相容，runtime thread 已經被重新接上，後續 tool call 可能卡住或錯接。\\n\\n設計取捨：Phase 4 選 reject，而不是 fork 或 recreate。reject 比較保守，但語義最清楚：Codex 不支援 dynamicTools hot-update，所以 adapter 不能假裝支援。\\n\\n## 白話解析\\n\\n這段是海關驗票。它其實就是在說：你可以回到原本旅程，但行李規格不能偷換；如果換了，就不要讓你進站後才爆炸。\\n\\n## Code Detail\\n\\n這段分三種情況：沒有任何 record 是 unknown session；restart 後有 record 則用 stored fingerprint 比對；in-memory session 則跟目前 session tools 比對。好處是錯誤發生在 `thread/resume` 前；壞處是目前沒有更彈性的產品策略，例如 fork/recreate。\\n\\n思考問題：Chatpilot route 如果真的需要同一 session 換工具，應該是新 runtime session、fork thread，還是明確 recreate？"
+      "description": "## Insight\n\n機制：`handleSessionResume()` 先判斷本次 resume 是否帶 tools，再依照 in-memory session 或 persisted record 比對 fingerprint。adapter restart 後如果原 session 有 tools，本次 resume 沒帶 matching tools 也會被拒絕。\n\n故障模式：如果先呼叫 Codex `thread/resume` 再發現工具不相容，runtime thread 已經被重新接上，後續 tool call 可能卡住或錯接。\n\n設計取捨：Phase 4 選 reject，而不是 fork 或 recreate。reject 比較保守，但語義最清楚：Codex 不支援 dynamicTools hot-update，所以 adapter 不能假裝支援。\n\n## 白話解析\n\n這段是海關驗票。它其實就是在說：你可以回到原本旅程，但行李規格不能偷換；如果換了，就不要讓你進站後才爆炸。\n\n## Code Detail\n\n這段分三種情況：沒有任何 record 是 unknown session；restart 後有 record 則用 stored fingerprint 比對；in-memory session 則跟目前 session tools 比對。好處是錯誤發生在 `thread/resume` 前；壞處是目前沒有更彈性的產品策略，例如 fork/recreate。\n\n思考問題：Chatpilot route 如果真的需要同一 session 換工具，應該是新 runtime session、fork thread，還是明確 recreate？"
     },
     {
       "file": "nodejs/src/experimental/codexAdapter.ts",
@@ -28,7 +28,7 @@
       "endLine": 1248,
       "ref": "742f559f88e9a1818bdb648c5f958454fb788e28",
       "title": "Pending Tool TTL: 不讓工具請求永遠卡住",
-      "description": "## Insight\\n\\n機制：protocol-v3 dynamic tool call 被放進 `pendingDynamicToolCalls` 時，同時建立 timeout。SDK 如果沒有回 tool result，adapter 會回 Codex 一個 failed dynamic tool response 並刪掉 pending entry。\\n\\n故障模式：沒有 TTL 時，一個永遠不回的 Python/SDK tool 會讓 pending map 無限長大，也可能讓上游以為 route 還在忙。\\n\\n設計取捨：timeout 用 adapter request timeout，共用一個 operational knob。這簡單可控，但不同 tool 若需要不同 SLA，未來才需要 per-tool timeout policy。\\n\\n## 白話解析\\n\\n這段是櫃台的逾時叫號。它其實就是在說：工具太久沒回，不要讓旅客永遠站在窗口前；直接回報失敗，櫃台清掉。\\n\\n## Code Detail\\n\\ntimeout 觸發時會再次查 map，避免正常完成後又 double respond。好處是 idempotent；壞處是目前只產生 transcript evidence，沒有 live metrics。\\n\\n思考問題：如果工具結果在 timeout 後才回來，adapter 應該忽略、記錄 warning，還是通知 app？目前為何選忽略？"
+      "description": "## Insight\n\n機制：protocol-v3 dynamic tool call 被放進 `pendingDynamicToolCalls` 時，同時建立 timeout。SDK 如果沒有回 tool result，adapter 會回 Codex 一個 failed dynamic tool response 並刪掉 pending entry。\n\n故障模式：沒有 TTL 時，一個永遠不回的 Python/SDK tool 會讓 pending map 無限長大，也可能讓上游以為 route 還在忙。\n\n設計取捨：timeout 用 adapter request timeout，共用一個 operational knob。這簡單可控，但不同 tool 若需要不同 SLA，未來才需要 per-tool timeout policy。\n\n## 白話解析\n\n這段是櫃台的逾時叫號。它其實就是在說：工具太久沒回，不要讓旅客永遠站在窗口前；直接回報失敗，櫃台清掉。\n\n## Code Detail\n\ntimeout 觸發時會再次查 map，避免正常完成後又 double respond。好處是 idempotent；壞處是目前只產生 transcript evidence，沒有 live metrics。\n\n思考問題：如果工具結果在 timeout 後才回來，adapter 應該忽略、記錄 warning，還是通知 app？目前為何選忽略？"
     },
     {
       "file": "nodejs/src/experimental/codexAppServerGateway.ts",
@@ -36,7 +36,7 @@
       "endLine": 170,
       "ref": "742f559f88e9a1818bdb648c5f958454fb788e28",
       "title": "Gateway Hygiene: Transcript Ring + Restartable Child",
-      "description": "## Insight\\n\\n機制：gateway transcript 透過 `recordTranscript()` 維持 bounded ring buffer；`start()` 也變成 idempotent，並把已啟動過的 gateway 標成 restartable。\\n\\n故障模式：原本 transcript 是 append-only，長跑 app-server 會把 summary 變成無上限水桶；child exit 後也可能讓後續 request 永久停在 not-started 狀態。\\n\\n設計取捨：這不是完整 supervisor，只是 request-time self-heal。它比引入 process manager 小，但也代表健康檢查/重啟策略還不是完整 ops layer。\\n\\n## 白話解析\\n\\n這段是車站後台的基本衛生。它其實就是限制監控錄影不要無限長，並且讓已經開過的窗口掛掉後可以再開。\\n\\n## Code Detail\\n\\nring buffer 用 `splice` 截掉前段舊資料，保留最近 evidence。好處是 summary 可控；壞處是舊 transcript 不再完整，需要外部 log sink 才能做長期 forensic。\\n\\n思考問題：summary 是 debug artifact，不是 durable audit log；這兩者要不要分兩條管線？"
+      "description": "## Insight\n\n機制：gateway transcript 透過 `recordTranscript()` 維持 bounded ring buffer；`start()` 也變成 idempotent，並把已啟動過的 gateway 標成 restartable。\n\n故障模式：原本 transcript 是 append-only，長跑 app-server 會把 summary 變成無上限水桶；child exit 後也可能讓後續 request 永久停在 not-started 狀態。\n\n設計取捨：這不是完整 supervisor，只是 request-time self-heal。它比引入 process manager 小，但也代表健康檢查/重啟策略還不是完整 ops layer。\n\n## 白話解析\n\n這段是車站後台的基本衛生。它其實就是限制監控錄影不要無限長，並且讓已經開過的窗口掛掉後可以再開。\n\n## Code Detail\n\nring buffer 用 `splice` 截掉前段舊資料，保留最近 evidence。好處是 summary 可控；壞處是舊 transcript 不再完整，需要外部 log sink 才能做長期 forensic。\n\n思考問題：summary 是 debug artifact，不是 durable audit log；這兩者要不要分兩條管線？"
     },
     {
       "file": "nodejs/src/experimental/codexAdapterMappers.ts",
@@ -44,7 +44,7 @@
       "endLine": 75,
       "ref": "742f559f88e9a1818bdb648c5f958454fb788e28",
       "title": "Safe Tool Text: 不把內部 dict 直接餵給模型",
-      "description": "## Insight\\n\\n機制：SDK tool result 如果是 object，只有 `textResultForLlm` 會變成 Codex `inputText`；缺少時回固定文字，而不是 `JSON.stringify(result)`。\\n\\n故障模式：任意 dict 直接 stringify 會把內部欄位、ID、debug payload、甚至非模型用資料餵給 LLM，污染推理也浪費 context。\\n\\n設計取捨：固定 fallback 比自動摘要安全，但資訊量較少。正確方向是要求 app/tool 明確提供 `textResultForLlm`。\\n\\n## 白話解析\\n\\n這段是工具結果的出境檢查。它其實就是只放「要給模型看的文字」出去；沒有明確文字，就不要把整包內部資料倒出去。\\n\\n## Code Detail\\n\\n`resultType` 仍控制 success/failure；只是 object body 不再被完整曝光。好處是降低資料洩漏與 prompt pollution；壞處是缺 text 的成功結果會變得不夠有資訊。\\n\\n思考問題：哪些 Chatpilot tools 應該補強 `textResultForLlm`，避免 fallback 太空？"
+      "description": "## Insight\n\n機制：SDK tool result 如果是 object，只有 `textResultForLlm` 會變成 Codex `inputText`；缺少時回固定文字，而不是 `JSON.stringify(result)`。\n\n故障模式：任意 dict 直接 stringify 會把內部欄位、ID、debug payload、甚至非模型用資料餵給 LLM，污染推理也浪費 context。\n\n設計取捨：固定 fallback 比自動摘要安全，但資訊量較少。正確方向是要求 app/tool 明確提供 `textResultForLlm`。\n\n## 白話解析\n\n這段是工具結果的出境檢查。它其實就是只放「要給模型看的文字」出去；沒有明確文字，就不要把整包內部資料倒出去。\n\n## Code Detail\n\n`resultType` 仍控制 success/failure；只是 object body 不再被完整曝光。好處是降低資料洩漏與 prompt pollution；壞處是缺 text 的成功結果會變得不夠有資訊。\n\n思考問題：哪些 Chatpilot tools 應該補強 `textResultForLlm`，避免 fallback 太空？"
     },
     {
       "file": "docs/integrations/codex-sdk-runtime-profile/production-runbook.md",
@@ -52,7 +52,7 @@
       "endLine": 56,
       "ref": "742f559f88e9a1818bdb648c5f958454fb788e28",
       "title": "Production Runbook: 把安全 lane 寫成操作契約",
-      "description": "## Insight\\n\\n機制：runbook 明確列出 `codex login`、stable `CODEX_HOME`、runtime session store、Chatpilot locked lane，以及 incompatible resume tool-set policy。\\n\\n故障模式：如果這些只存在 code default 或聊天結論，operator 可能用 temporary Codex home 或打開 approval/network override，誤以為還在安全 Chatpilot lane。\\n\\n設計取捨：Phase 4 先把 locked lane 寫成契約，不做 universal policy framework。這符合 partial boundary：先把目前產品路徑鎖好，等更多 backend/route 需要再 generalize。\\n\\n## 白話解析\\n\\n這段是操作手冊。它其實就是告訴人：要讓這條車線可恢復、可控、不要變成 coding-agent 自由發揮，你啟動時必須帶哪些設定。\\n\\n## Code Detail\\n\\nrunbook 把 durable resume 和 safety defaults 拆開寫，避免把 process alive 誤當 continuity proof。好處是下一個 session 和 operator 都能直接照做；壞處是還要靠 Phase 5/6 補 benchmark 與 auth-refresh production proof。\\n\\n思考問題：哪些設定應該永遠是 Chatpilot lane 的 hard guard，而不是 env override？"
+      "description": "## Insight\n\n機制：runbook 明確列出 `codex login`、stable `CODEX_HOME`、runtime session store、Chatpilot locked lane，以及 incompatible resume tool-set policy。\n\n故障模式：如果這些只存在 code default 或聊天結論，operator 可能用 temporary Codex home 或打開 approval/network override，誤以為還在安全 Chatpilot lane。\n\n設計取捨：Phase 4 先把 locked lane 寫成契約，不做 universal policy framework。這符合 partial boundary：先把目前產品路徑鎖好，等更多 backend/route 需要再 generalize。\n\n## 白話解析\n\n這段是操作手冊。它其實就是告訴人：要讓這條車線可恢復、可控、不要變成 coding-agent 自由發揮，你啟動時必須帶哪些設定。\n\n## Code Detail\n\nrunbook 把 durable resume 和 safety defaults 拆開寫，避免把 process alive 誤當 continuity proof。好處是下一個 session 和 operator 都能直接照做；壞處是還要靠 Phase 5/6 補 benchmark 與 auth-refresh production proof。\n\n思考問題：哪些設定應該永遠是 Chatpilot lane 的 hard guard，而不是 env override？"
     },
     {
       "file": "docs/integrations/codex-sdk-runtime-profile/artifacts/refactor-phase4-final-hardening@2026-06-09-1145.summary.json",
@@ -60,7 +60,7 @@
       "endLine": 89,
       "ref": "742f559f88e9a1818bdb648c5f958454fb788e28",
       "title": "Evidence: Phase 4 不是只看 unit test",
-      "description": "## Insight\\n\\n機制：summary artifact 同時記錄 local gates、selected-profile conformance、Chatpilot acceptance、issue coverage 與 residual risks。\\n\\n故障模式：如果只看 unit test，會漏掉 app-level runtime reuse、tool side effect、cross-backend parity 這些真正判斷可用性的 evidence。\\n\\n設計取捨：artifact 把 raw `/tmp` evidence path 記下，但不把巨大 transcript 全塞進 repo。這讓 repo 保持可讀，同時保留可追溯入口。\\n\\n## 白話解析\\n\\n這段是驗收表。它其實就是把「門有開」和「旅客真的被正確處理」放在同一張表裡，避免只拿 exit code 當 pass。\\n\\n## Code Detail\\n\\n這裡最重要的是 composed evidence：conformance verdict pass、Chatpilot acceptance pass、Codex adapter assertions 0 fail。好處是 audit 可重建；壞處是 `/tmp` raw artifact 不是永久 repo asset，長期需要 artifact retention policy。\\n\\n思考問題：哪些 raw evidence 值得永久收進 repo，哪些只需要 summary？"
+      "description": "## Insight\n\n機制：summary artifact 同時記錄 local gates、selected-profile conformance、Chatpilot acceptance、issue coverage 與 residual risks。\n\n故障模式：如果只看 unit test，會漏掉 app-level runtime reuse、tool side effect、cross-backend parity 這些真正判斷可用性的 evidence。\n\n設計取捨：artifact 把 raw `/tmp` evidence path 記下，但不把巨大 transcript 全塞進 repo。這讓 repo 保持可讀，同時保留可追溯入口。\n\n## 白話解析\n\n這段是驗收表。它其實就是把「門有開」和「旅客真的被正確處理」放在同一張表裡，避免只拿 exit code 當 pass。\n\n## Code Detail\n\n這裡最重要的是 composed evidence：conformance verdict pass、Chatpilot acceptance pass、Codex adapter assertions 0 fail。好處是 audit 可重建；壞處是 `/tmp` raw artifact 不是永久 repo asset，長期需要 artifact retention policy。\n\n思考問題：哪些 raw evidence 值得永久收進 repo，哪些只需要 summary？"
     }
   ]
 }

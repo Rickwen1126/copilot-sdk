@@ -14,12 +14,15 @@ The adapter starts `codex app-server` through the Codex CLI. For the ChatGPT sub
 
 ## Durable Resume Setup
 
-Production resume requires two stable identities:
+Production resume requires three stable identities:
 
 - `CODEX_ADAPTER_CODEX_HOME`: stable Codex runtime home that contains login and persisted thread state.
 - `CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH`: stable adapter mapping store for `sdkSessionId -> codexThreadId`.
+- per-session workspace / `cwd`: stable execution workspace for the Codex thread.
 
 Do not treat the default isolated temporary Codex home as durable. It is useful for local spike isolation, but it cannot be the production resume source of truth.
+
+Do not resume the same SDK session into a different workspace unless that behavior has an explicit product-level migration policy. The adapter store records the original `cwd` and falls back to it when `resumeSession()` does not provide `workingDirectory`. If a developer changes the tool set or workspace while experimenting, starting a new SDK session is the cleaner path because it creates a fresh Codex thread with a fresh `thread/start` shape.
 
 Recommended production shape:
 
@@ -29,7 +32,7 @@ CODEX_ADAPTER_ISOLATE_CODEX_HOME=false
 CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH="$HOME/.codex/copilot-sdk-runtime-sessions.json"
 ```
 
-Continuity proof is not "the app-server process is alive". The proof is that the adapter can recover the persisted mapping and Codex accepts `thread/resume` for the mapped thread.
+Continuity proof is not "the app-server process is alive". The proof is that the adapter can recover the persisted mapping for the intended SDK session and workspace, then Codex accepts `thread/resume` for the mapped thread.
 
 ## Chatpilot Locked Lane
 

@@ -115,9 +115,9 @@ const RUN_ID = process.env.CHATPILOT_ACCEPTANCE_RUN_ID ?? randomUUID();
 const OUTPUT_PATH = process.env.CHATPILOT_ACCEPTANCE_OUT;
 const REQUEST_TIMEOUT_MS = Number(process.env.CHATPILOT_ACCEPTANCE_REQUEST_TIMEOUT_MS ?? 300_000);
 const READY_TIMEOUT_MS = Number(process.env.CHATPILOT_ACCEPTANCE_READY_TIMEOUT_MS ?? 120_000);
-const CONCURRENT_SESSIONS = Math.max(
-    1,
-    Number(process.env.CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS ?? 1)
+const CONCURRENT_SESSIONS = positiveIntegerEnv(
+    process.env.CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS,
+    1
 );
 const NODEJS_ROOT = process.cwd();
 
@@ -425,6 +425,14 @@ function parseBackends(value: string): BackendName[] {
         return item;
     });
     return Array.from(new Set(backends)) as BackendName[];
+}
+
+function positiveIntegerEnv(value: string | undefined, fallback: number): number {
+    const parsed = Number(value ?? fallback);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+        return fallback;
+    }
+    return parsed;
 }
 
 function buildRouteSettingsYaml({

@@ -1,7 +1,7 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 10:38
+Last Updated: 2026-06-11 10:40
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
@@ -15,6 +15,7 @@ Section source:
 - Evidence artifacts: [refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json), [refactor-phase5-production-proof@2026-06-11-1038.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase5-production-proof@2026-06-11-1038.summary.json)
 - Conformance index: [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md)
 - Prior scaffold audit and tour: [.audit/AUDIT-codex-adapter-phase5-proof-scaffold-v1@2026-06-10-1813.md](../.audit/AUDIT-codex-adapter-phase5-proof-scaffold-v1@2026-06-10-1813.md), [.tours/audit-codex-adapter-phase5-proof-scaffold-20260610-1813.tour](../.tours/audit-codex-adapter-phase5-proof-scaffold-20260610-1813.tour)
+- Production proof audit and tour: [.audit/AUDIT-codex-adapter-phase5-production-proof-v1@2026-06-11-1040.md](../.audit/AUDIT-codex-adapter-phase5-production-proof-v1@2026-06-11-1040.md), [.tours/audit-codex-adapter-phase5-production-proof-20260611-1040.tour](../.tours/audit-codex-adapter-phase5-production-proof-20260611-1040.tour)
 - Code/Surface: [nodejs/conformance/codexConformanceProof.ts](../nodejs/conformance/codexConformanceProof.ts), [nodejs/examples/chatpilot-runtime-acceptance.ts](../nodejs/examples/chatpilot-runtime-acceptance.ts), [nodejs/test/codex-conformance-proof.test.ts](../nodejs/test/codex-conformance-proof.test.ts)
 - Raw live artifacts: `/tmp/chatpilot-codex-phase5-live-20260611-1037.json`, `/tmp/chatpilot-codex-phase5-all-backends-20260611-1038.json`
 - Source: active todo `P0: Codex Adapter Production Readiness Queue` Phase 5

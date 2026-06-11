@@ -1,0 +1,58 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "AUDIT - Codex Adapter Phase 5 Production Proof",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## What this audit tour is checking\n\nPhase 5 production proof expansion is about turning the scaffold into live evidence for three readiness gaps: A6 concurrent sessions, B5 full Chatpilot tool schema round-trip, and a safe C2 backend comparison slice.\n\nMental model: A6 asks whether multiple users can move through the same runtime lane without collapsing identity; B5 asks whether the full tool catalog survives translation; C2 asks whether the model chooses Chatpilot tools instead of native Codex tools. This tour verifies the first two as closed and marks the original all-tool C2 benchmark as a Phase 6 residual."
+    },
+    {
+      "file": "nodejs/examples/chatpilot-runtime-acceptance.ts",
+      "line": 121,
+      "endLine": 190,
+      "ref": "454cf038022e9c245deafd9f15d370e104006674",
+      "title": "Acceptance Report Shape",
+      "description": "## Insight\n\nThe report now carries `toolset`, `toolNames`, aggregate `toolCallCompliance`, and aggregate `toolSchemaRoundTrip` fields. That means the live artifact can say which tool catalog was exposed and whether the Codex adapter actually received matching dynamic tools.\n\nThe important review point is line 164: schema evidence is assembled from per-backend reports, then included in the same pass/fail decision as runtime assertions. This keeps schema drift from becoming a side note."
+    },
+    {
+      "file": "nodejs/examples/chatpilot-runtime-acceptance.ts",
+      "line": 469,
+      "endLine": 507,
+      "ref": "454cf038022e9c245deafd9f15d370e104006674",
+      "title": "All-Chatbot Toolset",
+      "description": "## Insight\n\n`CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot` expands to the 26 chatbot-visible tools used in the live Phase 5 proof.\n\nAudit note: this is enough for the current artifact because the run proves 26 expected and 26 observed schemas. The future drift risk is that the list is hardcoded here, so harness decomposition should eventually source this from the Chatpilot manifest or an exported fixture owned by Chatpilot."
+    },
+    {
+      "file": "nodejs/examples/chatpilot-runtime-acceptance.ts",
+      "line": 941,
+      "endLine": 1008,
+      "ref": "454cf038022e9c245deafd9f15d370e104006674",
+      "title": "Compliance And Aggregate Schema",
+      "description": "## Insight\n\nThe C2 slice turns save/list log evidence into compliance observations, while the aggregate schema report rebuilds expected and observed tool lists from backend-specific schema items.\n\nPlain read: save/list is being graded as a safe app-level benchmark, and schema transport is being graded separately. This is why the audit can accept B5 while still keeping original full C2 as residual."
+    },
+    {
+      "file": "nodejs/examples/chatpilot-runtime-acceptance.ts",
+      "line": 1011,
+      "endLine": 1134,
+      "ref": "454cf038022e9c245deafd9f15d370e104006674",
+      "title": "Codex Trace Extraction And Native Tool Guard",
+      "description": "## Insight\n\nFor Codex adapter runs, expected tools are read from SDK `session.create.tools`, and observed tools are read from Codex `thread/start.dynamicTools`. That is the core B5 round-trip proof.\n\nThe native tool guard scans both marker-scoped transcript entries and the full adapter trace. That hardening matters because a native Codex call might not echo the marker; full-trace scanning is more conservative and reduces false negatives."
+    },
+    {
+      "file": "docs/integrations/codex-sdk-runtime-profile/artifacts/refactor-phase5-production-proof@2026-06-11-1038.summary.json",
+      "line": 20,
+      "endLine": 105,
+      "ref": "454cf038022e9c245deafd9f15d370e104006674",
+      "title": "Live Evidence Summary",
+      "description": "## Insight\n\nThe summary records two live artifacts: a Codex adapter concurrent run and a cross-backend run. The first proves A6 plus B5 under two sessions; the second proves backend comparison behavior for the safe C2 slice.\n\nThe scope boundary at the end is deliberate: external-side-effect tools are not intentionally executed here, and full tool-selection behavior is left for Phase 6."
+    },
+    {
+      "file": "docs/todo.md",
+      "line": 17,
+      "endLine": 19,
+      "ref": "454cf038022e9c245deafd9f15d370e104006674",
+      "title": "C2 Residual Stays Active",
+      "description": "## Insight\n\nThe active todo now includes `C2 residual` in Phase 6. This prevents the Phase 5 safe slice from being mistaken for the original full 26-tool benchmark.\n\nReview question: should Phase 6 implement the full benchmark with dry-run/stubbed external tools, or define a safer equivalent that still measures selection quality across all tool descriptions?"
+    }
+  ]
+}

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
     buildConformanceReportArtifact,
+    combineStatusTriplet,
     combineStatuses,
     makeCheck,
+    missingProbeStatus,
     statusFromBooleans,
+    statusFromOptionalProbe,
+    statusTripletFromOptionalProbe,
 } from "../conformance/codexConformanceReport.js";
 import { type NormalizedLedgerEntry } from "../conformance/codexConformanceLedger.js";
 
@@ -49,6 +53,90 @@ describe("Codex conformance report helpers", () => {
 
         expect(check.status).toBe("not-run");
         expect(check.missing).toEqual(["baseline intent not recorded"]);
+    });
+
+    it("marks configured missing probes as fail only when that backend recorded the scenario", () => {
+        expect(missingProbeStatus({ configured: false, backendRecorded: true })).toBe("not-run");
+        expect(missingProbeStatus({ configured: true, backendRecorded: false })).toBe("not-run");
+        expect(missingProbeStatus({ configured: true, backendRecorded: true })).toBe("fail");
+    });
+
+    it("converts optional probe assertions into status triplets", () => {
+        expect(
+            statusFromOptionalProbe({
+                probePresent: true,
+                passed: true,
+                configured: true,
+                backendRecorded: true,
+            })
+        ).toBe("pass");
+        expect(
+            statusFromOptionalProbe({
+                probePresent: true,
+                passed: false,
+                configured: true,
+                backendRecorded: true,
+            })
+        ).toBe("fail");
+        expect(
+            statusFromOptionalProbe({
+                probePresent: false,
+                passed: true,
+                configured: true,
+                backendRecorded: true,
+            })
+        ).toBe("fail");
+        expect(
+            statusFromOptionalProbe({
+                probePresent: false,
+                passed: true,
+                configured: false,
+                backendRecorded: true,
+            })
+        ).toBe("not-run");
+    });
+
+    it("combines trace/data/intent triplets into one backend status", () => {
+        expect(combineStatusTriplet({ trace: "pass", data: "pass", intent: "pass" })).toBe("pass");
+        expect(combineStatusTriplet({ trace: "pass", data: "not-run", intent: "pass" })).toBe(
+            "not-run"
+        );
+        expect(combineStatusTriplet({ trace: "pass", data: "not-run", intent: "fail" })).toBe(
+            "fail"
+        );
+    });
+
+    it("builds trace/data/intent status triplets from optional probe assertions", () => {
+        expect(
+            statusTripletFromOptionalProbe({
+                probePresent: true,
+                configured: true,
+                backendRecorded: true,
+                tracePassed: true,
+                dataPassed: false,
+                intentPassed: true,
+            })
+        ).toEqual({ trace: "pass", data: "fail", intent: "pass" });
+        expect(
+            statusTripletFromOptionalProbe({
+                probePresent: false,
+                configured: false,
+                backendRecorded: true,
+                tracePassed: true,
+                dataPassed: true,
+                intentPassed: true,
+            })
+        ).toEqual({ trace: "not-run", data: "not-run", intent: "not-run" });
+        expect(
+            statusTripletFromOptionalProbe({
+                probePresent: false,
+                configured: true,
+                backendRecorded: true,
+                tracePassed: true,
+                dataPassed: true,
+                intentPassed: true,
+            })
+        ).toEqual({ trace: "fail", data: "fail", intent: "fail" });
     });
 
     it("assembles report artifact shape without deciding scenario-specific checks", () => {

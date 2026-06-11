@@ -14,12 +14,13 @@ import {
 } from "../conformance/codexConformanceLedger.js";
 import {
     buildConformanceReportArtifact,
+    combineStatusTriplet,
     combineStatuses,
     makeCheck,
     statusFromBooleans,
+    statusTripletFromOptionalProbe,
     type ConformanceCheck,
     type ConformanceReport,
-    type ConformanceStatus,
 } from "../conformance/codexConformanceReport.js";
 import {
     CodexCopilotAdapterServer,
@@ -806,50 +807,33 @@ function buildCommandApprovalCheck(
     const adapterAssistantMessage = getNestedString(adapterApprovalProbe, "assistantMessage");
     const adapterIntent = adapterData && !!adapterAssistantMessage;
 
-    const missingProbeStatus = (backendRecorded: boolean): ConformanceStatus => {
-        if (!scenarioConfigured) {
-            return "not-run";
-        }
-        return backendRecorded ? "fail" : "not-run";
-    };
-
-    const baselineTraceStatus = baselineApprovalProbe
-        ? statusFromBooleans(baselineTrace)
-        : missingProbeStatus(!!protocol);
-    const baselineDataStatus = baselineApprovalProbe
-        ? statusFromBooleans(baselineData)
-        : missingProbeStatus(!!protocol);
-    const baselineIntentStatus = baselineApprovalProbe
-        ? statusFromBooleans(baselineIntent)
-        : missingProbeStatus(!!protocol);
-    const adapterTraceStatus = adapterApprovalProbe
-        ? statusFromBooleans(adapterTrace)
-        : missingProbeStatus(!!adapter);
-    const adapterDataStatus = adapterApprovalProbe
-        ? statusFromBooleans(adapterData)
-        : missingProbeStatus(!!adapter);
-    const adapterIntentStatus = adapterApprovalProbe
-        ? statusFromBooleans(adapterIntent)
-        : missingProbeStatus(!!adapter);
+    const baselineStatuses = statusTripletFromOptionalProbe({
+        probePresent: !!baselineApprovalProbe,
+        configured: scenarioConfigured,
+        backendRecorded: !!protocol,
+        tracePassed: baselineTrace,
+        dataPassed: baselineData,
+        intentPassed: baselineIntent,
+    });
+    const adapterStatuses = statusTripletFromOptionalProbe({
+        probePresent: !!adapterApprovalProbe,
+        configured: scenarioConfigured,
+        backendRecorded: !!adapter,
+        tracePassed: adapterTrace,
+        dataPassed: adapterData,
+        intentPassed: adapterIntent,
+    });
 
     return makeCheck({
         capability: "command approval approve",
         profile: "Coding Agent Profile",
         backendStatus: {
-            copilotCli: combineStatuses(
-                baselineTraceStatus,
-                baselineDataStatus,
-                baselineIntentStatus
-            ),
-            codexAdapter: combineStatuses(
-                adapterTraceStatus,
-                adapterDataStatus,
-                adapterIntentStatus
-            ),
+            copilotCli: combineStatusTriplet(baselineStatuses),
+            codexAdapter: combineStatusTriplet(adapterStatuses),
         },
-        traceParity: combineStatuses(baselineTraceStatus, adapterTraceStatus),
-        dataAssertion: combineStatuses(baselineDataStatus, adapterDataStatus),
-        intentAssertion: combineStatuses(baselineIntentStatus, adapterIntentStatus),
+        traceParity: combineStatuses(baselineStatuses.trace, adapterStatuses.trace),
+        dataAssertion: combineStatuses(baselineStatuses.data, adapterStatuses.data),
+        intentAssertion: combineStatuses(baselineStatuses.intent, adapterStatuses.intent),
         evidence: [
             `baselineApprovalProbe.path=${getNestedString(baselineApprovalProbe, "path") ?? ""}`,
             `baselineApprovalProbe.permissionKinds=${permissionRequestKinds(baselinePermissionRequests).join(",")}`,
@@ -1020,50 +1004,33 @@ function buildCommandApprovalDenyCheck(
     const adapterAssistantMessage = getNestedString(adapterDenialProbe, "assistantMessage");
     const adapterIntent = adapterData && !!adapterAssistantMessage;
 
-    const missingProbeStatus = (backendRecorded: boolean): ConformanceStatus => {
-        if (!scenarioConfigured) {
-            return "not-run";
-        }
-        return backendRecorded ? "fail" : "not-run";
-    };
-
-    const baselineTraceStatus = baselineDenialProbe
-        ? statusFromBooleans(baselineTrace)
-        : missingProbeStatus(!!protocol);
-    const baselineDataStatus = baselineDenialProbe
-        ? statusFromBooleans(baselineData)
-        : missingProbeStatus(!!protocol);
-    const baselineIntentStatus = baselineDenialProbe
-        ? statusFromBooleans(baselineIntent)
-        : missingProbeStatus(!!protocol);
-    const adapterTraceStatus = adapterDenialProbe
-        ? statusFromBooleans(adapterTrace)
-        : missingProbeStatus(!!adapter);
-    const adapterDataStatus = adapterDenialProbe
-        ? statusFromBooleans(adapterData)
-        : missingProbeStatus(!!adapter);
-    const adapterIntentStatus = adapterDenialProbe
-        ? statusFromBooleans(adapterIntent)
-        : missingProbeStatus(!!adapter);
+    const baselineStatuses = statusTripletFromOptionalProbe({
+        probePresent: !!baselineDenialProbe,
+        configured: scenarioConfigured,
+        backendRecorded: !!protocol,
+        tracePassed: baselineTrace,
+        dataPassed: baselineData,
+        intentPassed: baselineIntent,
+    });
+    const adapterStatuses = statusTripletFromOptionalProbe({
+        probePresent: !!adapterDenialProbe,
+        configured: scenarioConfigured,
+        backendRecorded: !!adapter,
+        tracePassed: adapterTrace,
+        dataPassed: adapterData,
+        intentPassed: adapterIntent,
+    });
 
     return makeCheck({
         capability: "command approval deny",
         profile: "Coding Agent Profile",
         backendStatus: {
-            copilotCli: combineStatuses(
-                baselineTraceStatus,
-                baselineDataStatus,
-                baselineIntentStatus
-            ),
-            codexAdapter: combineStatuses(
-                adapterTraceStatus,
-                adapterDataStatus,
-                adapterIntentStatus
-            ),
+            copilotCli: combineStatusTriplet(baselineStatuses),
+            codexAdapter: combineStatusTriplet(adapterStatuses),
         },
-        traceParity: combineStatuses(baselineTraceStatus, adapterTraceStatus),
-        dataAssertion: combineStatuses(baselineDataStatus, adapterDataStatus),
-        intentAssertion: combineStatuses(baselineIntentStatus, adapterIntentStatus),
+        traceParity: combineStatuses(baselineStatuses.trace, adapterStatuses.trace),
+        dataAssertion: combineStatuses(baselineStatuses.data, adapterStatuses.data),
+        intentAssertion: combineStatuses(baselineStatuses.intent, adapterStatuses.intent),
         evidence: [
             `baselineDenialProbe.path=${getNestedString(baselineDenialProbe, "path") ?? ""}`,
             `baselineDenialProbe.permissionKinds=${permissionRequestKinds(baselinePermissionRequests).join(",")}`,
@@ -1272,56 +1239,33 @@ function buildFileApprovalCheck(
         !!getNestedString(adapterApprovalProbe, "assistantMessage") &&
         !!getNestedString(adapterDenialProbe, "assistantMessage");
 
-    const missingProbeStatus = (backendRecorded: boolean): ConformanceStatus => {
-        if (!RUN_FILE_PROBE) {
-            return "not-run";
-        }
-        return backendRecorded ? "fail" : "not-run";
-    };
-
-    const baselineTraceStatus =
-        baselineApprovalProbe && baselineDenialProbe
-            ? statusFromBooleans(baselineTrace)
-            : missingProbeStatus(!!protocol);
-    const baselineDataStatus =
-        baselineApprovalProbe && baselineDenialProbe
-            ? statusFromBooleans(baselineData)
-            : missingProbeStatus(!!protocol);
-    const baselineIntentStatus =
-        baselineApprovalProbe && baselineDenialProbe
-            ? statusFromBooleans(baselineIntent)
-            : missingProbeStatus(!!protocol);
-    const adapterTraceStatus =
-        adapterApprovalProbe && adapterDenialProbe
-            ? statusFromBooleans(adapterTrace)
-            : missingProbeStatus(!!adapter);
-    const adapterDataStatus =
-        adapterApprovalProbe && adapterDenialProbe
-            ? statusFromBooleans(adapterData)
-            : missingProbeStatus(!!adapter);
-    const adapterIntentStatus =
-        adapterApprovalProbe && adapterDenialProbe
-            ? statusFromBooleans(adapterIntent)
-            : missingProbeStatus(!!adapter);
+    const baselineStatuses = statusTripletFromOptionalProbe({
+        probePresent: !!baselineApprovalProbe && !!baselineDenialProbe,
+        configured: RUN_FILE_PROBE,
+        backendRecorded: !!protocol,
+        tracePassed: baselineTrace,
+        dataPassed: baselineData,
+        intentPassed: baselineIntent,
+    });
+    const adapterStatuses = statusTripletFromOptionalProbe({
+        probePresent: !!adapterApprovalProbe && !!adapterDenialProbe,
+        configured: RUN_FILE_PROBE,
+        backendRecorded: !!adapter,
+        tracePassed: adapterTrace,
+        dataPassed: adapterData,
+        intentPassed: adapterIntent,
+    });
 
     return makeCheck({
         capability: "file approval approve/deny",
         profile: "Coding Agent Profile",
         backendStatus: {
-            copilotCli: combineStatuses(
-                baselineTraceStatus,
-                baselineDataStatus,
-                baselineIntentStatus
-            ),
-            codexAdapter: combineStatuses(
-                adapterTraceStatus,
-                adapterDataStatus,
-                adapterIntentStatus
-            ),
+            copilotCli: combineStatusTriplet(baselineStatuses),
+            codexAdapter: combineStatusTriplet(adapterStatuses),
         },
-        traceParity: combineStatuses(baselineTraceStatus, adapterTraceStatus),
-        dataAssertion: combineStatuses(baselineDataStatus, adapterDataStatus),
-        intentAssertion: combineStatuses(baselineIntentStatus, adapterIntentStatus),
+        traceParity: combineStatuses(baselineStatuses.trace, adapterStatuses.trace),
+        dataAssertion: combineStatuses(baselineStatuses.data, adapterStatuses.data),
+        intentAssertion: combineStatuses(baselineStatuses.intent, adapterStatuses.intent),
         evidence: [
             `baselineFileApproval.path=${getNestedString(baselineApprovalProbe, "path") ?? ""}`,
             `baselineFileApproval.permissionKinds=${permissionRequestKinds(baselineApprovalRequests).join(",")}`,
@@ -1562,50 +1506,33 @@ function buildCustomToolCallCheck(
     const baselineIntent = toolProbeIntentPass(baselineToolProbe);
     const adapterIntent = toolProbeIntentPass(adapterToolProbe);
 
-    const missingProbeStatus = (backendRecorded: boolean): ConformanceStatus => {
-        if (!RUN_TOOL_PROBE) {
-            return "not-run";
-        }
-        return backendRecorded ? "fail" : "not-run";
-    };
-
-    const baselineTraceStatus = baselineToolProbe
-        ? statusFromBooleans(baselineTrace)
-        : missingProbeStatus(!!protocol);
-    const baselineDataStatus = baselineToolProbe
-        ? statusFromBooleans(baselineData)
-        : missingProbeStatus(!!protocol);
-    const baselineIntentStatus = baselineToolProbe
-        ? statusFromBooleans(baselineIntent)
-        : missingProbeStatus(!!protocol);
-    const adapterTraceStatus = adapterToolProbe
-        ? statusFromBooleans(adapterTrace)
-        : missingProbeStatus(!!adapter);
-    const adapterDataStatus = adapterToolProbe
-        ? statusFromBooleans(adapterData)
-        : missingProbeStatus(!!adapter);
-    const adapterIntentStatus = adapterToolProbe
-        ? statusFromBooleans(adapterIntent)
-        : missingProbeStatus(!!adapter);
+    const baselineStatuses = statusTripletFromOptionalProbe({
+        probePresent: !!baselineToolProbe,
+        configured: RUN_TOOL_PROBE,
+        backendRecorded: !!protocol,
+        tracePassed: baselineTrace,
+        dataPassed: baselineData,
+        intentPassed: baselineIntent,
+    });
+    const adapterStatuses = statusTripletFromOptionalProbe({
+        probePresent: !!adapterToolProbe,
+        configured: RUN_TOOL_PROBE,
+        backendRecorded: !!adapter,
+        tracePassed: adapterTrace,
+        dataPassed: adapterData,
+        intentPassed: adapterIntent,
+    });
 
     return makeCheck({
         capability: "custom tool call",
         profile: "Coding Agent Profile",
         backendStatus: {
-            copilotCli: combineStatuses(
-                baselineTraceStatus,
-                baselineDataStatus,
-                baselineIntentStatus
-            ),
-            codexAdapter: combineStatuses(
-                adapterTraceStatus,
-                adapterDataStatus,
-                adapterIntentStatus
-            ),
+            copilotCli: combineStatusTriplet(baselineStatuses),
+            codexAdapter: combineStatusTriplet(adapterStatuses),
         },
-        traceParity: combineStatuses(baselineTraceStatus, adapterTraceStatus),
-        dataAssertion: combineStatuses(baselineDataStatus, adapterDataStatus),
-        intentAssertion: combineStatuses(baselineIntentStatus, adapterIntentStatus),
+        traceParity: combineStatuses(baselineStatuses.trace, adapterStatuses.trace),
+        dataAssertion: combineStatuses(baselineStatuses.data, adapterStatuses.data),
+        intentAssertion: combineStatuses(baselineStatuses.intent, adapterStatuses.intent),
         evidence: [
             `baselineToolProbe.toolName=${getNestedString(baselineToolProbe, "toolName") ?? ""}`,
             `baselineToolProbe.handlerCalls=${toolProbeHandlerCallSummary(baselineToolProbe)}`,
@@ -1849,50 +1776,33 @@ function buildToolDenyOrFailureCheck(
     const baselineIntent = toolFailureProbeIntentPass(baselineToolFailureProbe);
     const adapterIntent = toolFailureProbeIntentPass(adapterToolFailureProbe);
 
-    const missingProbeStatus = (backendRecorded: boolean): ConformanceStatus => {
-        if (!RUN_TOOL_FAILURE_PROBE) {
-            return "not-run";
-        }
-        return backendRecorded ? "fail" : "not-run";
-    };
-
-    const baselineTraceStatus = baselineToolFailureProbe
-        ? statusFromBooleans(baselineTrace)
-        : missingProbeStatus(!!protocol);
-    const baselineDataStatus = baselineToolFailureProbe
-        ? statusFromBooleans(baselineData)
-        : missingProbeStatus(!!protocol);
-    const baselineIntentStatus = baselineToolFailureProbe
-        ? statusFromBooleans(baselineIntent)
-        : missingProbeStatus(!!protocol);
-    const adapterTraceStatus = adapterToolFailureProbe
-        ? statusFromBooleans(adapterTrace)
-        : missingProbeStatus(!!adapter);
-    const adapterDataStatus = adapterToolFailureProbe
-        ? statusFromBooleans(adapterData)
-        : missingProbeStatus(!!adapter);
-    const adapterIntentStatus = adapterToolFailureProbe
-        ? statusFromBooleans(adapterIntent)
-        : missingProbeStatus(!!adapter);
+    const baselineStatuses = statusTripletFromOptionalProbe({
+        probePresent: !!baselineToolFailureProbe,
+        configured: RUN_TOOL_FAILURE_PROBE,
+        backendRecorded: !!protocol,
+        tracePassed: baselineTrace,
+        dataPassed: baselineData,
+        intentPassed: baselineIntent,
+    });
+    const adapterStatuses = statusTripletFromOptionalProbe({
+        probePresent: !!adapterToolFailureProbe,
+        configured: RUN_TOOL_FAILURE_PROBE,
+        backendRecorded: !!adapter,
+        tracePassed: adapterTrace,
+        dataPassed: adapterData,
+        intentPassed: adapterIntent,
+    });
 
     return makeCheck({
         capability: "tool deny or failure",
         profile: "Coding Agent Profile",
         backendStatus: {
-            copilotCli: combineStatuses(
-                baselineTraceStatus,
-                baselineDataStatus,
-                baselineIntentStatus
-            ),
-            codexAdapter: combineStatuses(
-                adapterTraceStatus,
-                adapterDataStatus,
-                adapterIntentStatus
-            ),
+            copilotCli: combineStatusTriplet(baselineStatuses),
+            codexAdapter: combineStatusTriplet(adapterStatuses),
         },
-        traceParity: combineStatuses(baselineTraceStatus, adapterTraceStatus),
-        dataAssertion: combineStatuses(baselineDataStatus, adapterDataStatus),
-        intentAssertion: combineStatuses(baselineIntentStatus, adapterIntentStatus),
+        traceParity: combineStatuses(baselineStatuses.trace, adapterStatuses.trace),
+        dataAssertion: combineStatuses(baselineStatuses.data, adapterStatuses.data),
+        intentAssertion: combineStatuses(baselineStatuses.intent, adapterStatuses.intent),
         evidence: [
             `baselineToolFailure.failureCalls=${toolFailureHandlerCallSummary(baselineToolFailureProbe, "failureHandlerCalls")}`,
             `baselineToolFailure.deniedCalls=${toolFailureHandlerCallSummary(baselineToolFailureProbe, "deniedHandlerCalls")}`,

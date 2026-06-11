@@ -36,6 +36,12 @@ export type ConformanceReport = {
     unsupportedProfiles: string[];
 };
 
+export type ConformanceStatusTriplet = {
+    trace: ConformanceStatus;
+    data: ConformanceStatus;
+    intent: ConformanceStatus;
+};
+
 export function statusFromBooleans(...checks: boolean[]): ConformanceStatus {
     return checks.every(Boolean) ? "pass" : "fail";
 }
@@ -60,6 +66,64 @@ export function makeCheck(input: Omit<ConformanceCheck, "status">): ConformanceC
             input.dataAssertion,
             input.intentAssertion
         ),
+    };
+}
+
+export function missingProbeStatus(input: {
+    configured: boolean;
+    backendRecorded: boolean;
+}): ConformanceStatus {
+    if (!input.configured) {
+        return "not-run";
+    }
+    return input.backendRecorded ? "fail" : "not-run";
+}
+
+export function statusFromOptionalProbe(input: {
+    probePresent: boolean;
+    passed: boolean;
+    configured: boolean;
+    backendRecorded: boolean;
+}): ConformanceStatus {
+    return input.probePresent
+        ? statusFromBooleans(input.passed)
+        : missingProbeStatus({
+              configured: input.configured,
+              backendRecorded: input.backendRecorded,
+          });
+}
+
+export function combineStatusTriplet(input: ConformanceStatusTriplet): ConformanceStatus {
+    return combineStatuses(input.trace, input.data, input.intent);
+}
+
+export function statusTripletFromOptionalProbe(input: {
+    probePresent: boolean;
+    configured: boolean;
+    backendRecorded: boolean;
+    tracePassed: boolean;
+    dataPassed: boolean;
+    intentPassed: boolean;
+}): ConformanceStatusTriplet {
+    return {
+        trace: statusFromOptionalProbe({
+            probePresent: input.probePresent,
+            passed: input.tracePassed,
+            configured: input.configured,
+            backendRecorded: input.backendRecorded,
+        }),
+        data: statusFromOptionalProbe({
+            probePresent: input.probePresent,
+            passed: input.dataPassed,
+            configured: input.configured,
+            backendRecorded: input.backendRecorded,
+        }),
+        intent: statusFromOptionalProbe({
+            probePresent: input.probePresent,
+            passed: input.intentPassed,
+            configured: input.configured,
+            backendRecorded: input.backendRecorded,
+        }),
     };
 }
 

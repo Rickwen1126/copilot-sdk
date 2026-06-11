@@ -1,9 +1,26 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import process from "node:process";
 import { type MessageConnection } from "vscode-jsonrpc/node.js";
 import { CopilotClient, approveAll, defineTool } from "../dist/index.js";
+import {
+    approvalProbePathForBackend,
+    approvalProbePrompt,
+    denialProbePathForBackend,
+    denialProbePrompt,
+    fileApprovalProbePrompt,
+    fileDenialProbePrompt,
+    fileDenyProbeNameForBackend,
+    fileProbeNameForBackend,
+    fileProbePath,
+    permissionRequestKinds,
+    permissionRequestsWithKind,
+    promptIntentPass,
+    readApprovalProbeResult,
+    validateShellPermissionRequest,
+    validateWritePermissionRequest,
+    type ApprovalProbeResult,
+} from "../conformance/codexConformanceApprovalProbe.js";
 import {
     collectAdapterLedger,
     collectCopilotLedger,
@@ -77,22 +94,17 @@ const TOOL_FAILURE_PROBE_EXPECTATION: ToolFailureProbeExpectation = {
     expectedFailureError: TOOL_FAILURE_ERROR,
     expectedDeniedResult: TOOL_DENIED_RESULT,
 };
+const APPROVAL_PROBE_PATH_OPTIONS = {
+    basePath: APPROVAL_PROBE_BASE_PATH,
+    phase: SPIKE_PHASE,
+};
+const FILE_PROBE_NAME_OPTIONS = {
+    enabled: RUN_FILE_PROBE,
+    phase: SPIKE_PHASE,
+    runId: RUN_ID,
+};
 
 mkdirSync(WORKDIR, { recursive: true });
-
-type ApprovalProbeBackend = "copilot-cli" | "codex-adapter";
-
-type ApprovalProbeResult = {
-    path: string;
-    prompt: string;
-    assistantMessage?: string;
-    permissionRequests: unknown[];
-    permissionRequestKinds: string[];
-    permissionAssertionFailures: string[];
-    preExisting: boolean;
-    exists: boolean;
-    contents?: string;
-};
 
 type ToolHandlerCall = {
     args: unknown;
@@ -190,77 +202,6 @@ function getNestedRecord(
     key: string
 ): Record<string, unknown> | undefined {
     return record ? nestedRecord(record, key) : undefined;
-}
-
-function approvalProbePathForBackend(backend: ApprovalProbeBackend): string | undefined {
-    if (!APPROVAL_PROBE_BASE_PATH) {
-        return undefined;
-    }
-    if (SPIKE_PHASE === "all") {
-        return `${APPROVAL_PROBE_BASE_PATH}.${backend}`;
-    }
-    return APPROVAL_PROBE_BASE_PATH;
-}
-
-function denialProbePathForBackend(backend: ApprovalProbeBackend): string | undefined {
-    if (!APPROVAL_PROBE_BASE_PATH) {
-        return undefined;
-    }
-    if (SPIKE_PHASE === "all") {
-        return `${APPROVAL_PROBE_BASE_PATH}.deny.${backend}`;
-    }
-    return `${APPROVAL_PROBE_BASE_PATH}.deny`;
-}
-
-function fileProbeNameForBackend(backend: ApprovalProbeBackend): string | undefined {
-    if (!RUN_FILE_PROBE) {
-        return undefined;
-    }
-    if (SPIKE_PHASE === "all") {
-        return `codex-file-approval-${RUN_ID}.${backend}.txt`;
-    }
-    return `codex-file-approval-${RUN_ID}.txt`;
-}
-
-function fileDenyProbeNameForBackend(backend: ApprovalProbeBackend): string | undefined {
-    if (!RUN_FILE_PROBE) {
-        return undefined;
-    }
-    if (SPIKE_PHASE === "all") {
-        return `codex-file-approval-${RUN_ID}.deny.${backend}.txt`;
-    }
-    return `codex-file-approval-${RUN_ID}.deny.txt`;
-}
-
-function fileProbePath(fileName: string | undefined): string | undefined {
-    return fileName ? join(WORKDIR, fileName) : undefined;
-}
-
-function approvalProbePrompt(path: string): string {
-    return `Use a shell command to write exactly hello to ${path}. The shell command should be: printf hello > ${path}. Do not use any other method.`;
-}
-
-function denialProbePrompt(path: string): string {
-    return `Use a shell command to write exactly denied to ${path}. The shell command should be: printf denied > ${path}. Do not use any other method.`;
-}
-
-function fileApprovalProbePrompt(fileName: string): string {
-    return [
-        `Use the file editing tool, not a shell command, to create a file named ${fileName} in the current working directory.`,
-        "The complete file contents must be exactly:",
-        FILE_APPROVE_CONTENT,
-        "Do not use shell commands.",
-    ].join("\n");
-}
-
-function fileDenialProbePrompt(fileName: string): string {
-    return [
-        `Use the file editing tool, not a shell command, to create a file named ${fileName} in the current working directory.`,
-        "The complete file contents must be exactly:",
-        FILE_DENY_CONTENT,
-        "Do not use shell commands.",
-        "If the file edit is denied, do not retry and do not use another method; report that the edit was denied.",
-    ].join("\n");
 }
 
 function toolProbePrompt(): string {
@@ -418,102 +359,6 @@ function createDenyRuntimeFactTool(handlerCalls: ToolHandlerCall[], assertionFai
             };
         },
     });
-}
-
-function permissionRequestKinds(requests: unknown[]): string[] {
-    return requests.map((request) => {
-        if (isRecord(request) && typeof request.kind === "string") {
-            return request.kind;
-        }
-        return "unknown";
-    });
-}
-
-function permissionRequestsWithKind(requests: unknown[], kind: string): unknown[] {
-    return requests.filter((request) => isRecord(request) && request.kind === kind);
-}
-
-function validateShellPermissionRequest(
-    request: unknown,
-    expectedPath: string,
-    expectedContents: string
-): string[] {
-    const failures: string[] = [];
-    if (!isRecord(request)) {
-        return ["permission request is not an object"];
-    }
-
-    if (request.kind !== "shell") {
-        failures.push(`permission request kind is ${String(request.kind)}, expected shell`);
-    }
-
-    const fullCommandText =
-        typeof request.fullCommandText === "string" ? request.fullCommandText : "";
-    if (!fullCommandText.includes(expectedPath)) {
-        failures.push("permission request command does not include expected path");
-    }
-    if (!fullCommandText.includes(`printf ${expectedContents}`)) {
-        failures.push("permission request command does not include expected printf contents");
-    }
-    if (!fullCommandText.includes(">")) {
-        failures.push("permission request command does not include a write redirection");
-    }
-
-    const commands = Array.isArray(request.commands) ? request.commands : [];
-    if (commands.length === 0) {
-        failures.push("permission request has no command metadata");
-    }
-
-    return failures;
-}
-
-function validateWritePermissionRequest(request: unknown, expectedFileName: string): string[] {
-    const failures: string[] = [];
-    if (!isRecord(request)) {
-        return ["permission request is not an object"];
-    }
-
-    if (request.kind !== "write") {
-        failures.push(`permission request kind is ${String(request.kind)}, expected write`);
-    }
-
-    const serialized = JSON.stringify(request);
-    if (!serialized.includes(expectedFileName)) {
-        failures.push("permission request does not include expected file name");
-    }
-
-    return failures;
-}
-
-function readApprovalProbeResult(
-    path: string,
-    prompt: string,
-    assistantMessage: string | undefined,
-    permissionRequests: unknown[],
-    permissionAssertionFailures: string[],
-    preExisting: boolean
-): ApprovalProbeResult {
-    return {
-        path,
-        prompt,
-        assistantMessage,
-        permissionRequests,
-        permissionRequestKinds: permissionRequestKinds(permissionRequests),
-        permissionAssertionFailures,
-        preExisting,
-        exists: existsSync(path),
-        contents: existsSync(path) ? readFileSync(path, "utf8") : undefined,
-    };
-}
-
-function promptIntentPass(prompt: string, assistantMessage: string | undefined): boolean {
-    if (!assistantMessage) {
-        return false;
-    }
-    if (prompt === "Reply with READY and nothing else.") {
-        return assistantMessage.trim() === "READY";
-    }
-    return assistantMessage.trim().length > 0;
 }
 
 function buildCoreNewSessionCheck(
@@ -2107,7 +1952,10 @@ async function recordRealCopilotProtocol() {
         await session2.disconnect();
         stepTrace.push("session2.disconnected");
 
-        const approvalProbePath = approvalProbePathForBackend("copilot-cli");
+        const approvalProbePath = approvalProbePathForBackend(
+            "copilot-cli",
+            APPROVAL_PROBE_PATH_OPTIONS
+        );
         if (approvalProbePath) {
             const approvalProbePromptText = approvalProbePrompt(approvalProbePath);
             const permissionRequests: unknown[] = [];
@@ -2143,17 +1991,20 @@ async function recordRealCopilotProtocol() {
             stepTrace.push("approvalProbe.turn_completed");
             await approvalSession.disconnect();
             stepTrace.push("approvalProbe.disconnected");
-            approvalProbe = readApprovalProbeResult(
-                approvalProbePath,
-                approvalProbePromptText,
-                approvalAssistantMessage?.data.content,
+            approvalProbe = readApprovalProbeResult({
+                path: approvalProbePath,
+                prompt: approvalProbePromptText,
+                assistantMessage: approvalAssistantMessage?.data.content,
                 permissionRequests,
                 permissionAssertionFailures,
-                preExisting
-            );
+                preExisting,
+            });
         }
 
-        const denialProbePath = denialProbePathForBackend("copilot-cli");
+        const denialProbePath = denialProbePathForBackend(
+            "copilot-cli",
+            APPROVAL_PROBE_PATH_OPTIONS
+        );
         if (denialProbePath) {
             const denialProbePromptText = denialProbePrompt(denialProbePath);
             const permissionRequests: unknown[] = [];
@@ -2184,20 +2035,23 @@ async function recordRealCopilotProtocol() {
             stepTrace.push("denialProbe.turn_completed");
             await denialSession.disconnect();
             stepTrace.push("denialProbe.disconnected");
-            denialProbe = readApprovalProbeResult(
-                denialProbePath,
-                denialProbePromptText,
-                denialAssistantMessage?.data.content,
+            denialProbe = readApprovalProbeResult({
+                path: denialProbePath,
+                prompt: denialProbePromptText,
+                assistantMessage: denialAssistantMessage?.data.content,
                 permissionRequests,
                 permissionAssertionFailures,
-                preExisting
-            );
+                preExisting,
+            });
         }
 
-        const fileApprovalName = fileProbeNameForBackend("copilot-cli");
-        const fileApprovalPath = fileProbePath(fileApprovalName);
+        const fileApprovalName = fileProbeNameForBackend("copilot-cli", FILE_PROBE_NAME_OPTIONS);
+        const fileApprovalPath = fileProbePath(fileApprovalName, WORKDIR);
         if (fileApprovalName && fileApprovalPath) {
-            const fileApprovalPromptText = fileApprovalProbePrompt(fileApprovalName);
+            const fileApprovalPromptText = fileApprovalProbePrompt(
+                fileApprovalName,
+                FILE_APPROVE_CONTENT
+            );
             const permissionRequests: unknown[] = [];
             const permissionAssertionFailures: string[] = [];
             const preExisting = existsSync(fileApprovalPath);
@@ -2230,20 +2084,20 @@ async function recordRealCopilotProtocol() {
             stepTrace.push("fileApprovalProbe.turn_completed");
             await fileApprovalSession.disconnect();
             stepTrace.push("fileApprovalProbe.disconnected");
-            fileApprovalProbe = readApprovalProbeResult(
-                fileApprovalPath,
-                fileApprovalPromptText,
-                fileApprovalAssistantMessage?.data.content,
+            fileApprovalProbe = readApprovalProbeResult({
+                path: fileApprovalPath,
+                prompt: fileApprovalPromptText,
+                assistantMessage: fileApprovalAssistantMessage?.data.content,
                 permissionRequests,
                 permissionAssertionFailures,
-                preExisting
-            );
+                preExisting,
+            });
         }
 
-        const fileDenialName = fileDenyProbeNameForBackend("copilot-cli");
-        const fileDenialPath = fileProbePath(fileDenialName);
+        const fileDenialName = fileDenyProbeNameForBackend("copilot-cli", FILE_PROBE_NAME_OPTIONS);
+        const fileDenialPath = fileProbePath(fileDenialName, WORKDIR);
         if (fileDenialName && fileDenialPath) {
-            const fileDenialPromptText = fileDenialProbePrompt(fileDenialName);
+            const fileDenialPromptText = fileDenialProbePrompt(fileDenialName, FILE_DENY_CONTENT);
             const permissionRequests: unknown[] = [];
             const permissionAssertionFailures: string[] = [];
             const preExisting = existsSync(fileDenialPath);
@@ -2275,14 +2129,14 @@ async function recordRealCopilotProtocol() {
             stepTrace.push("fileDenialProbe.turn_completed");
             await fileDenialSession.disconnect();
             stepTrace.push("fileDenialProbe.disconnected");
-            fileDenialProbe = readApprovalProbeResult(
-                fileDenialPath,
-                fileDenialPromptText,
-                fileDenialAssistantMessage?.data.content,
+            fileDenialProbe = readApprovalProbeResult({
+                path: fileDenialPath,
+                prompt: fileDenialPromptText,
+                assistantMessage: fileDenialAssistantMessage?.data.content,
                 permissionRequests,
                 permissionAssertionFailures,
-                preExisting
-            );
+                preExisting,
+            });
         }
 
         if (RUN_TOOL_PROBE) {
@@ -2462,7 +2316,10 @@ async function runAdapterValidation() {
         await session2.disconnect();
         stepTrace.push("session2.disconnected");
 
-        const approvalProbePath = approvalProbePathForBackend("codex-adapter");
+        const approvalProbePath = approvalProbePathForBackend(
+            "codex-adapter",
+            APPROVAL_PROBE_PATH_OPTIONS
+        );
         if (approvalProbePath) {
             const approvalProbePromptText = approvalProbePrompt(approvalProbePath);
             const permissionRequests: unknown[] = [];
@@ -2498,17 +2355,20 @@ async function runAdapterValidation() {
             stepTrace.push("approvalProbe.turn_completed");
             await approvalSession.disconnect();
             stepTrace.push("approvalProbe.disconnected");
-            approvalProbe = readApprovalProbeResult(
-                approvalProbePath,
-                approvalProbePromptText,
-                approvalAssistantMessage?.data.content,
+            approvalProbe = readApprovalProbeResult({
+                path: approvalProbePath,
+                prompt: approvalProbePromptText,
+                assistantMessage: approvalAssistantMessage?.data.content,
                 permissionRequests,
                 permissionAssertionFailures,
-                preExisting
-            );
+                preExisting,
+            });
         }
 
-        const denialProbePath = denialProbePathForBackend("codex-adapter");
+        const denialProbePath = denialProbePathForBackend(
+            "codex-adapter",
+            APPROVAL_PROBE_PATH_OPTIONS
+        );
         if (denialProbePath) {
             const denialProbePromptText = denialProbePrompt(denialProbePath);
             const permissionRequests: unknown[] = [];
@@ -2538,20 +2398,23 @@ async function runAdapterValidation() {
             stepTrace.push("denialProbe.turn_completed");
             await denialSession.disconnect();
             stepTrace.push("denialProbe.disconnected");
-            denialProbe = readApprovalProbeResult(
-                denialProbePath,
-                denialProbePromptText,
-                denialAssistantMessage?.data.content,
+            denialProbe = readApprovalProbeResult({
+                path: denialProbePath,
+                prompt: denialProbePromptText,
+                assistantMessage: denialAssistantMessage?.data.content,
                 permissionRequests,
                 permissionAssertionFailures,
-                preExisting
-            );
+                preExisting,
+            });
         }
 
-        const fileApprovalName = fileProbeNameForBackend("codex-adapter");
-        const fileApprovalPath = fileProbePath(fileApprovalName);
+        const fileApprovalName = fileProbeNameForBackend("codex-adapter", FILE_PROBE_NAME_OPTIONS);
+        const fileApprovalPath = fileProbePath(fileApprovalName, WORKDIR);
         if (fileApprovalName && fileApprovalPath) {
-            const fileApprovalPromptText = fileApprovalProbePrompt(fileApprovalName);
+            const fileApprovalPromptText = fileApprovalProbePrompt(
+                fileApprovalName,
+                FILE_APPROVE_CONTENT
+            );
             const permissionRequests: unknown[] = [];
             const permissionAssertionFailures: string[] = [];
             const preExisting = existsSync(fileApprovalPath);
@@ -2584,20 +2447,23 @@ async function runAdapterValidation() {
             stepTrace.push("fileApprovalProbe.turn_completed");
             await fileApprovalSession.disconnect();
             stepTrace.push("fileApprovalProbe.disconnected");
-            fileApprovalProbe = readApprovalProbeResult(
-                fileApprovalPath,
-                fileApprovalPromptText,
-                fileApprovalAssistantMessage?.data.content,
+            fileApprovalProbe = readApprovalProbeResult({
+                path: fileApprovalPath,
+                prompt: fileApprovalPromptText,
+                assistantMessage: fileApprovalAssistantMessage?.data.content,
                 permissionRequests,
                 permissionAssertionFailures,
-                preExisting
-            );
+                preExisting,
+            });
         }
 
-        const fileDenialName = fileDenyProbeNameForBackend("codex-adapter");
-        const fileDenialPath = fileProbePath(fileDenialName);
+        const fileDenialName = fileDenyProbeNameForBackend(
+            "codex-adapter",
+            FILE_PROBE_NAME_OPTIONS
+        );
+        const fileDenialPath = fileProbePath(fileDenialName, WORKDIR);
         if (fileDenialName && fileDenialPath) {
-            const fileDenialPromptText = fileDenialProbePrompt(fileDenialName);
+            const fileDenialPromptText = fileDenialProbePrompt(fileDenialName, FILE_DENY_CONTENT);
             const permissionRequests: unknown[] = [];
             const permissionAssertionFailures: string[] = [];
             const preExisting = existsSync(fileDenialPath);
@@ -2628,14 +2494,14 @@ async function runAdapterValidation() {
             stepTrace.push("fileDenialProbe.turn_completed");
             await fileDenialSession.disconnect();
             stepTrace.push("fileDenialProbe.disconnected");
-            fileDenialProbe = readApprovalProbeResult(
-                fileDenialPath,
-                fileDenialPromptText,
-                fileDenialAssistantMessage?.data.content,
+            fileDenialProbe = readApprovalProbeResult({
+                path: fileDenialPath,
+                prompt: fileDenialPromptText,
+                assistantMessage: fileDenialAssistantMessage?.data.content,
                 permissionRequests,
                 permissionAssertionFailures,
-                preExisting
-            );
+                preExisting,
+            });
         }
 
         if (RUN_TOOL_PROBE) {

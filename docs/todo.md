@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-10 16:03
+Last Updated: 2026-06-11 10:34
 Status: Active
 
 ## P0: Codex Adapter Production Readiness Queue @2026-06-04-2016
@@ -13,12 +13,6 @@ Section source:
 - Phase 3.5 evidence: [codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json)
 - Code/Surface: adapter facade/session workflow, gateway lifecycle, Chatpilot acceptance harness, production runbook docs
 - Source: production-readiness issue inventory split into spike-required and direct implementation phases
-
-- [ ] Phase 5 production proof expansion.
-  - Assigned issues: A6, B5, C2.
-  - Completion evidence: multi-session concurrent acceptance, 26-tool schema round-trip acceptance, and tool-call compliance benchmark exist with machine-readable artifacts.
-  - Current partial evidence: [refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json) adds the shared schema round-trip and tool-call compliance proof language, unit coverage, `toolCallCompliance` report shape, and `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS` multi-session harness entrypoint in Chatpilot runtime acceptance.
-  - Remaining: add real Chatpilot 26-tool manifest/schema round-trip runner, representative compliance benchmark prompts, and live multi-session concurrent acceptance artifact.
 
 - [ ] Phase 6 production policy and model-behavior cleanup.
   - Assigned issues: B6, B7, C3, C4, D2, D3.

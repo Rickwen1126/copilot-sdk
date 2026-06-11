@@ -8,12 +8,17 @@ import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import {
     buildToolCallComplianceReport,
+    buildToolSchemaRoundTripReport,
+    type DynamicToolLike,
     type ToolCallComplianceObservation,
     type ToolCallComplianceReport,
+    type ToolDescriptorLike,
+    type ToolSchemaRoundTripReport,
 } from "../conformance/codexConformanceProof.js";
 
 type BackendName = "copilot-cli" | "codex-adapter";
 type AssertionStatus = "pass" | "fail";
+type AcceptanceToolset = "phase6" | "all-chatbot";
 
 type Assertion = {
     name: string;
@@ -47,6 +52,7 @@ type ChatpilotSessionReport = {
     dbRows: MemoRow[];
     logEvidence: ChatpilotRunReport["logEvidence"];
     toolCallCompliance: ToolCallComplianceReport;
+    toolSchemaRoundTrip: ToolSchemaRoundTripReport;
     assertions: Assertion[];
 };
 
@@ -88,6 +94,7 @@ type ChatpilotRunReport = {
         sdkResponseCount: number;
     };
     toolCallCompliance: ToolCallComplianceReport;
+    toolSchemaRoundTrip: ToolSchemaRoundTripReport;
     assertions: Assertion[];
     sessions: ChatpilotSessionReport[];
     logs: {
@@ -102,15 +109,20 @@ type AcceptanceReport = {
     status: AssertionStatus;
     chatpilotRepo: string;
     model: string;
+    toolset: AcceptanceToolset;
+    toolNames: string[];
     backends: BackendName[];
     reports: ChatpilotRunReport[];
     crossBackendAssertions: Assertion[];
     toolCallCompliance: ToolCallComplianceReport;
+    toolSchemaRoundTrip: ToolSchemaRoundTripReport;
 };
 
 const CHATPILOT_REPO = process.env.CHATPILOT_REPO ?? "/Users/rickwen/code/chatpilot";
 const MODEL = process.env.CHATPILOT_ACCEPTANCE_MODEL ?? "gpt-5.4";
 const BACKENDS = parseBackends(process.env.CHATPILOT_ACCEPTANCE_BACKENDS ?? "codex-adapter");
+const TOOLSET = parseToolset(process.env.CHATPILOT_ACCEPTANCE_TOOLSET ?? "phase6");
+const TOOL_NAMES = toolNamesForToolset(TOOLSET);
 const RUN_ID = process.env.CHATPILOT_ACCEPTANCE_RUN_ID ?? randomUUID();
 const OUTPUT_PATH = process.env.CHATPILOT_ACCEPTANCE_OUT;
 const REQUEST_TIMEOUT_MS = Number(process.env.CHATPILOT_ACCEPTANCE_REQUEST_TIMEOUT_MS ?? 300_000);
@@ -149,10 +161,12 @@ async function main(): Promise<void> {
             }))
         )
     );
+    const toolSchemaRoundTrip = buildAggregateToolSchemaRoundTripReport(reports);
     const status = [
         ...reports.flatMap((report) => report.assertions),
         ...crossBackendAssertions,
         ...toolCallCompliance.assertions,
+        ...toolSchemaRoundTrip.assertions,
     ].every((assertion) => assertion.status === "pass")
         ? "pass"
         : "fail";
@@ -163,10 +177,13 @@ async function main(): Promise<void> {
         status,
         chatpilotRepo: CHATPILOT_REPO,
         model: MODEL,
+        toolset: TOOLSET,
+        toolNames: TOOL_NAMES,
         backends: BACKENDS,
         reports,
         crossBackendAssertions,
         toolCallCompliance,
+        toolSchemaRoundTrip,
     };
 
     const outputPath = OUTPUT_PATH ?? join(tmpdir(), `chatpilot-codex-phase6-${RUN_ID}.json`);
@@ -196,7 +213,7 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
 
     writeFileSync(
         routeSettingsPath,
-        buildRouteSettingsYaml({ logDir, model: MODEL, workdir }),
+        buildRouteSettingsYaml({ logDir, model: MODEL, workdir, toolNames: TOOL_NAMES }),
         "utf8"
     );
     writeFileSync(routeBindingsPath, buildRouteBindingsYaml(), "utf8");
@@ -264,6 +281,11 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
                 backend,
                 logEvidence,
                 adapterTrace,
+                marker: conversation.marker,
+            });
+            const toolSchemaRoundTrip = buildBackendToolSchemaRoundTripReport({
+                backend,
+                adapterTrace,
             });
             const assertions = buildAssertions({
                 backend,
@@ -276,6 +298,7 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
                 chatpilotLog,
                 logEvidence,
                 adapterTrace,
+                toolSchemaRoundTrip,
             });
             return {
                 userId: conversation.userId,
@@ -286,6 +309,7 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
                 dbRows,
                 logEvidence,
                 toolCallCompliance,
+                toolSchemaRoundTrip,
                 assertions,
             };
         });
@@ -299,8 +323,22 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
                 )
             )
         );
+        const toolSchemaRoundTrip = buildBackendToolSchemaRoundTripReport({
+            backend,
+            adapterTrace,
+        });
         const assertions = [
             ...sessions.flatMap((session) => session.assertions),
+            ...(backend === "codex-adapter"
+                ? toolSchemaRoundTrip.assertions.map(
+                      (item) =>
+                          ({
+                              name: `tool schema round-trip: ${item.name}`,
+                              status: item.status === "pass" ? "pass" : "fail",
+                              evidence: item.evidence,
+                          }) satisfies Assertion
+                  )
+                : []),
             assertion(
                 "requested concurrent session count completed",
                 sessions.length === CONCURRENT_SESSIONS,
@@ -351,6 +389,7 @@ async function runBackend(backend: BackendName): Promise<ChatpilotRunReport> {
             dbRows: primary.dbRows,
             logEvidence: primary.logEvidence,
             toolCallCompliance,
+            toolSchemaRoundTrip,
             assertions,
             sessions,
             logs: {
@@ -427,6 +466,47 @@ function parseBackends(value: string): BackendName[] {
     return Array.from(new Set(backends)) as BackendName[];
 }
 
+function parseToolset(value: string): AcceptanceToolset {
+    if (value === "phase6" || value === "all-chatbot") {
+        return value;
+    }
+    throw new Error(`Unsupported CHATPILOT_ACCEPTANCE_TOOLSET '${value}'`);
+}
+
+function toolNamesForToolset(toolset: AcceptanceToolset): string[] {
+    if (toolset === "phase6") {
+        return ["save_memo", "list_memos"];
+    }
+    return [
+        "warehouse",
+        "quote_search",
+        "submit_task",
+        "task_history",
+        "browse_task",
+        "batch_image_analyze",
+        "get_calendar",
+        "web_search",
+        "workproof_attendance_push",
+        "download_media",
+        "browser_navigate",
+        "browser_eval",
+        "browser_tabs",
+        "document_edit",
+        "show_image",
+        "save_memo",
+        "list_memos",
+        "delete_memo",
+        "save_custom_prompt",
+        "list_custom_prompts",
+        "delete_custom_prompt",
+        "add_reminder",
+        "schedule_task_cron",
+        "list_schedules",
+        "cancel_schedule",
+        "manage_trigger_keywords",
+    ];
+}
+
 function positiveIntegerEnv(value: string | undefined, fallback: number): number {
     const parsed = Number(value ?? fallback);
     if (!Number.isInteger(parsed) || parsed < 1) {
@@ -439,10 +519,12 @@ function buildRouteSettingsYaml({
     logDir,
     model,
     workdir,
+    toolNames,
 }: {
     logDir: string;
     model: string;
     workdir: string;
+    toolNames: string[];
 }): string {
     return `timezone: "Asia/Taipei"
 
@@ -471,7 +553,7 @@ chatbots:
       If the user asks to list or recall memos, you must call list_memos and answer from the tool result.
       Never claim memory changed unless the tool succeeds.
       Keep final replies concise.
-    tools: [save_memo, list_memos]
+    tools: [${toolNames.join(", ")}]
     context_window: 10
     timeout: 300
     workdir: "${escapeYamlString(workdir)}"
@@ -860,13 +942,15 @@ function buildAcceptanceToolCallCompliance({
     backend,
     logEvidence,
     adapterTrace,
+    marker,
 }: {
     backend: BackendName;
     logEvidence: ChatpilotRunReport["logEvidence"];
     adapterTrace?: string;
+    marker: string;
 }): ToolCallComplianceReport {
     const nativeToolCalls =
-        backend === "codex-adapter" ? extractKnownNativeToolCalls(adapterTrace ?? "") : [];
+        backend === "codex-adapter" ? extractKnownNativeToolCalls(adapterTrace ?? "", marker) : [];
     const observations: ToolCallComplianceObservation[] = [
         {
             backend,
@@ -891,11 +975,143 @@ function buildAcceptanceToolCallCompliance({
     return buildToolCallComplianceReport(observations);
 }
 
+function buildAggregateToolSchemaRoundTripReport(
+    reports: ChatpilotRunReport[]
+): ToolSchemaRoundTripReport {
+    const expectedTools: ToolDescriptorLike[] = [];
+    const observedDynamicTools: DynamicToolLike[] = [];
+    for (const report of reports) {
+        expectedTools.push(
+            ...report.toolSchemaRoundTrip.items.map((item) => ({
+                name: item.toolName,
+                description: item.expectedDescription,
+                parameters: item.expectedInputSchema,
+            }))
+        );
+        observedDynamicTools.push(
+            ...report.toolSchemaRoundTrip.items
+                .filter(
+                    (item) =>
+                        item.observedDescription !== undefined ||
+                        item.observedInputSchema !== undefined
+                )
+                .map((item) => ({
+                    name: item.toolName,
+                    description: item.observedDescription,
+                    inputSchema: item.observedInputSchema,
+                }))
+        );
+    }
+    return buildToolSchemaRoundTripReport({
+        expectedTools: uniqueToolsByName(expectedTools),
+        observedDynamicTools: uniqueDynamicToolsByName(observedDynamicTools),
+    });
+}
+
+function buildBackendToolSchemaRoundTripReport({
+    backend,
+    adapterTrace,
+}: {
+    backend: BackendName;
+    adapterTrace?: string;
+}): ToolSchemaRoundTripReport {
+    if (backend !== "codex-adapter") {
+        return {
+            status: "not-run",
+            expectedToolCount: 0,
+            observedToolCount: 0,
+            items: [],
+            assertions: [
+                {
+                    name: "tool schema round-trip requires Codex adapter trace",
+                    status: "not-run",
+                    evidence: `backend=${backend}`,
+                },
+            ],
+        };
+    }
+    const trace = parseAdapterSummary(adapterTrace);
+    const expectedTools = uniqueToolsByName(extractSdkTools(trace));
+    const observedDynamicTools = uniqueDynamicToolsByName(extractCodexDynamicTools(trace));
+    return buildToolSchemaRoundTripReport({ expectedTools, observedDynamicTools });
+}
+
+function parseAdapterSummary(adapterTrace: string | undefined): unknown {
+    if (!adapterTrace) {
+        return undefined;
+    }
+    try {
+        return JSON.parse(adapterTrace);
+    } catch {
+        return undefined;
+    }
+}
+
+function extractSdkTools(summary: unknown): ToolDescriptorLike[] {
+    return transcriptEntries(summary, "transcripts")
+        .filter((entry) => entry.direction === "sdk->adapter.request")
+        .flatMap((entry) => {
+            const message = asRecord(entry.message);
+            if (message?.method !== "session.create") {
+                return [];
+            }
+            const params = asRecord(message.params);
+            const tools = Array.isArray(params?.tools) ? params.tools : [];
+            return tools.filter(isRecord).map((tool) => ({
+                name: typeof tool.name === "string" ? tool.name : "unknown_tool",
+                description: typeof tool.description === "string" ? tool.description : undefined,
+                parameters: asRecord(tool.parameters) ?? undefined,
+            }));
+        })
+        .filter((tool) => tool.name !== "unknown_tool");
+}
+
+function extractCodexDynamicTools(summary: unknown): DynamicToolLike[] {
+    return transcriptEntries(asRecord(summary)?.codex, "transcripts")
+        .filter((entry) => entry.direction === "adapter->codex")
+        .flatMap((entry) => {
+            const message = asRecord(entry.message);
+            if (message?.method !== "thread/start") {
+                return [];
+            }
+            const params = asRecord(message.params);
+            const dynamicTools = Array.isArray(params?.dynamicTools) ? params.dynamicTools : [];
+            return dynamicTools.filter(isRecord).map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema,
+            }));
+        });
+}
+
+function transcriptEntries(
+    source: unknown,
+    key: string
+): Array<{ direction?: unknown; message?: unknown }> {
+    const record = asRecord(source);
+    const entries = record && Array.isArray(record[key]) ? record[key] : [];
+    return entries.filter(isRecord) as Array<{ direction?: unknown; message?: unknown }>;
+}
+
+function uniqueToolsByName(tools: ToolDescriptorLike[]): ToolDescriptorLike[] {
+    return [...new Map(tools.map((tool) => [tool.name, tool])).values()];
+}
+
+function uniqueDynamicToolsByName(tools: DynamicToolLike[]): DynamicToolLike[] {
+    return [
+        ...new Map(
+            tools
+                .filter((tool) => typeof tool.name === "string" && tool.name.length > 0)
+                .map((tool) => [String(tool.name), tool])
+        ).values(),
+    ];
+}
+
 function observedToolCalls(toolName: string, count: number): string[] {
     return Array.from({ length: count }, () => toolName);
 }
 
-function extractKnownNativeToolCalls(adapterTrace: string): string[] {
+function extractKnownNativeToolCalls(adapterTrace: string, marker: string): string[] {
     const nativeToolNames = [
         "apply_patch",
         "local_shell",
@@ -904,10 +1120,16 @@ function extractKnownNativeToolCalls(adapterTrace: string): string[] {
         "update_plan",
         "write_file",
     ];
+    const parsed = parseAdapterSummary(adapterTrace);
+    const candidateText = transcriptEntries(parsed, "transcripts")
+        .filter((entry) => JSON.stringify(entry.message).includes(marker))
+        .map((entry) => JSON.stringify(entry.message))
+        .join("\n");
+    const searchText = candidateText || adapterTrace;
     return nativeToolNames.filter((toolName) =>
         new RegExp(
             `"name"\\s*:\\s*"${escapeRegExp(toolName)}"|toolName=${escapeRegExp(toolName)}`
-        ).test(adapterTrace)
+        ).test(searchText)
     );
 }
 
@@ -921,6 +1143,7 @@ function buildAssertions({
     dbRows,
     logEvidence,
     adapterTrace,
+    toolSchemaRoundTrip,
 }: {
     backend: BackendName;
     routeId: string;
@@ -932,6 +1155,7 @@ function buildAssertions({
     chatpilotLog: string;
     logEvidence: ChatpilotRunReport["logEvidence"];
     adapterTrace?: string;
+    toolSchemaRoundTrip: ToolSchemaRoundTripReport;
 }): Assertion[] {
     const matchingRows = dbRows.filter((row) => row.text.includes(marker));
     const listText = responseText(listResponse);
@@ -1003,6 +1227,13 @@ function buildAssertions({
                 "expected adapter log to include Codex item/tool/call and SDK tool.call"
             )
         );
+        assertions.push(
+            assertion(
+                "all Chatpilot SDK tool schemas round-trip to Codex dynamic tools",
+                toolSchemaRoundTrip.status === "pass",
+                `expected=${toolSchemaRoundTrip.expectedToolCount} observed=${toolSchemaRoundTrip.observedToolCount}`
+            )
+        );
     }
 
     return assertions;
@@ -1072,6 +1303,14 @@ function escapeRegExp(value: string): string {
 
 function tail(value: string, maxChars: number): string {
     return value.length <= maxChars ? value : value.slice(value.length - maxChars);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+    return isRecord(value) ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 async function getFreePort(): Promise<number> {

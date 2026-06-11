@@ -1,0 +1,139 @@
+{
+  "artifactType": "refactor-phase5-production-proof",
+  "generatedAt": "2026-06-11T10:34:00+08:00",
+  "phase": "Phase 5: Production proof expansion",
+  "status": "pass",
+  "scope": {
+    "productionReadinessIssues": ["A6", "B5", "C2"],
+    "codeSurfaces": [
+      "nodejs/conformance/codexConformanceProof.ts",
+      "nodejs/examples/chatpilot-runtime-acceptance.ts",
+      "nodejs/test/codex-conformance-proof.test.ts"
+    ]
+  },
+  "implementation": [
+    "Extended Chatpilot runtime acceptance with CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot so a live session can expose the full 26-tool chatbot-visible Chatpilot toolset.",
+    "Added toolSchemaRoundTrip report extraction from the live adapter summary by comparing SDK session.create tool descriptors with Codex thread/start dynamicTools.",
+    "Kept C2 benchmark prompts safe and app-level by using save_memo and list_memos under 26-tool availability, with prompt-local tool-call observations and native-tool checks.",
+    "Kept B5 schema round-trip as a Codex-adapter-only assertion; Copilot CLI has no Codex dynamicTools trace and is not failed for that not-run field."
+  ],
+  "rawArtifacts": [
+    {
+      "purpose": "A6+B5+C2 codex-adapter live concurrent proof",
+      "path": "/tmp/chatpilot-codex-phase5-live-20260611-1027.json",
+      "sha256": "54105fce4a065406d23915b92dda185cd8a13ff39523efb8d974cc10c8e52c76",
+      "sizeBytes": 243780,
+      "command": "CHATPILOT_ACCEPTANCE_BACKENDS=codex-adapter CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=2 CHATPILOT_ACCEPTANCE_RUN_ID=phase5-live-20260611-1027 CHATPILOT_ACCEPTANCE_OUT=/tmp/chatpilot-codex-phase5-live-20260611-1027.json npx tsx examples/chatpilot-runtime-acceptance.ts",
+      "result": {
+        "status": "pass",
+        "toolset": "all-chatbot",
+        "toolCount": 26,
+        "backend": "codex-adapter",
+        "concurrentSessions": 2,
+        "toolSchemaRoundTrip": {
+          "status": "pass",
+          "expectedToolCount": 26,
+          "observedToolCount": 26,
+          "failedTools": []
+        },
+        "toolCallCompliance": {
+          "status": "pass",
+          "backendAccuracy": {
+            "codex-adapter": {
+              "passed": 4,
+              "total": 4,
+              "accuracy": 1
+            }
+          },
+          "nativeToolCalls": []
+        },
+        "dataLevelEvidence": [
+          "Two concurrent Chatpilot routes completed save/list flows.",
+          "Each route persisted a distinct marker in its own SQLite memory_memos rows.",
+          "Both routes kept distinct SDK session ids and reused the same app-level runtime session on the second turn."
+        ]
+      }
+    },
+    {
+      "purpose": "C2 cross-backend comparison plus B5 codex schema proof",
+      "path": "/tmp/chatpilot-codex-phase5-all-backends-20260611-1034.json",
+      "sha256": "e36c14a6a8f1517b76b862ab6a09288e61856f216068cd735aa1d83ecfd615ca",
+      "sizeBytes": 208569,
+      "command": "CHATPILOT_ACCEPTANCE_BACKENDS=all CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=1 CHATPILOT_ACCEPTANCE_RUN_ID=phase5-all-backends-20260611-1034 CHATPILOT_ACCEPTANCE_OUT=/tmp/chatpilot-codex-phase5-all-backends-20260611-1034.json npx tsx examples/chatpilot-runtime-acceptance.ts",
+      "result": {
+        "status": "pass",
+        "toolset": "all-chatbot",
+        "toolCount": 26,
+        "backends": ["copilot-cli", "codex-adapter"],
+        "crossBackendAssertions": {
+          "bothBackendsPass": true,
+          "bothBackendsPersistMemoRows": true,
+          "bothBackendsUseSameSdkToolIntents": true
+        },
+        "toolSchemaRoundTrip": {
+          "status": "pass",
+          "expectedToolCount": 26,
+          "observedToolCount": 26,
+          "failedTools": []
+        },
+        "toolCallCompliance": {
+          "status": "pass",
+          "backendAccuracy": {
+            "copilot-cli": {
+              "passed": 2,
+              "total": 2,
+              "accuracy": 1
+            },
+            "codex-adapter": {
+              "passed": 2,
+              "total": 2,
+              "accuracy": 1
+            }
+          },
+          "nativeToolCalls": []
+        },
+        "dataLevelEvidence": [
+          "Both backends persisted one or more SQLite memory_memos rows for their route.",
+          "Both backends invoked save_memo and list_memos through Chatpilot SDK-visible tool handlers.",
+          "Codex adapter exposed all 26 SDK tool schemas as Codex dynamicTools without schema mutation."
+        ]
+      }
+    }
+  ],
+  "knownScopeBoundary": [
+    "C2 live benchmark uses safe save_memo/list_memos prompts while all 26 tools are available; it does not intentionally execute external-side-effect tools such as WorkProof push, browser, or web search.",
+    "Full prompt-quality tuning across every tool description remains better aligned with Phase 6 model-behavior cleanup items C3 and C4."
+  ],
+  "verification": [
+    {
+      "command": "npx vitest run test/codex-conformance-proof.test.ts test/codex-adapter-mappers.test.ts",
+      "cwd": "nodejs",
+      "result": "pass",
+      "details": "2 files, 22 tests"
+    },
+    {
+      "command": "npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck examples/chatpilot-runtime-acceptance.ts",
+      "cwd": "nodejs",
+      "result": "pass"
+    },
+    {
+      "command": "npx prettier --check conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts",
+      "cwd": "nodejs",
+      "result": "pass"
+    },
+    {
+      "command": "npx eslint conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts",
+      "cwd": "nodejs",
+      "result": "pass"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "nodejs",
+      "result": "pass"
+    }
+  ],
+  "notes": [
+    "A first sandboxed live run failed before Chatpilot startup because uv could not read /Users/rickwen/.cache/uv/sdists-v9/.git; the same command passed after running with approved escalated filesystem access.",
+    "An intermediate all-backends run exposed a harness bug where Copilot CLI was failed for not having Codex dynamicTools trace; the harness now treats B5 as a Codex-adapter-only assertion."
+  ]
+}

@@ -1,7 +1,7 @@
 # Conformance Artifacts
 
 Created: 2026-06-01 14:05
-Last Updated: 2026-06-10 16:03
+Last Updated: 2026-06-11 10:34
 Status: Active
 
 This index records the current evidence for Codex adapter parity in the selected profile.
@@ -109,3 +109,33 @@ Verification:
 - `npx tsc --noEmit` -> pass
 - `npx prettier --check conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts` -> pass
 - `npx eslint conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts` -> pass
+
+## Phase 5 Production Proof Expansion
+
+Summary artifact: [artifacts/refactor-phase5-production-proof@2026-06-11-1034.summary.json](./artifacts/refactor-phase5-production-proof@2026-06-11-1034.summary.json)
+
+Raw live artifacts:
+
+- `/tmp/chatpilot-codex-phase5-live-20260611-1027.json`
+  - sha256: `54105fce4a065406d23915b92dda185cd8a13ff39523efb8d974cc10c8e52c76`
+  - status: `pass`
+  - scope: codex-adapter, `CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot`, `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=2`
+- `/tmp/chatpilot-codex-phase5-all-backends-20260611-1034.json`
+  - sha256: `e36c14a6a8f1517b76b862ab6a09288e61856f216068cd735aa1d83ecfd615ca`
+  - status: `pass`
+  - scope: copilot-cli and codex-adapter, `CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot`, `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=1`
+
+Result:
+
+- A6 multi-session concurrent acceptance passes on the Codex adapter lane with two concurrent Chatpilot routes, distinct SDK session ids, and distinct persisted SQLite memory markers.
+- B5 full Chatpilot chatbot-visible tool schema round-trip passes: 26 expected SDK tools and 26 observed Codex `dynamicTools`, with no missing, mutated, or unexpected tools.
+- C2 safe tool-call compliance benchmark passes under 26-tool availability: save/list prompts choose `save_memo` and `list_memos` on both Copilot CLI and Codex adapter, native Codex tool calls are absent, and both backends persist/read the marker through Chatpilot data paths.
+- C2 scope boundary: this benchmark intentionally avoids executing external-side-effect tools such as WorkProof push, browser, or web search. Full prompt-quality tuning across every tool description remains Phase 6 model-behavior cleanup work.
+
+Verification:
+
+- `npx vitest run test/codex-conformance-proof.test.ts test/codex-adapter-mappers.test.ts` -> pass, 22 tests
+- `npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck examples/chatpilot-runtime-acceptance.ts` -> pass
+- `npx prettier --check conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts` -> pass
+- `npx eslint conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts` -> pass
+- `npm run build` -> pass

@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 15:34
+Last Updated: 2026-06-11 16:37
 Status: Active
 
 ## P1: Runtime Adapter Refactor Architecture Guard @2026-06-03-1141
@@ -20,7 +20,7 @@ Section source:
   - Code/Surface: [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), future scenario/runner/ledger/assertion/report/fixture modules
   - Source: refactor plan Phase 5; subagent review finding about stale inline harness code
   - Completion evidence: stale inline minimal harness code is deleted or archived as non-active reference, harness responsibilities are split by evidence ownership, production proof expansion issues are covered or explicitly re-planned, and selected-profile artifacts remain semantically equivalent or intentionally improved.
-  - Current partial evidence: [nodejs/conformance/codexConformanceProof.ts](../nodejs/conformance/codexConformanceProof.ts) owns proof assertions for schema round-trip and tool-call compliance; [nodejs/test/codex-conformance-proof.test.ts](../nodejs/test/codex-conformance-proof.test.ts) covers pass/fail/not-run evidence states; Phase 5 production proof expansion is completed and archived in [docs/todo-finished.md](./todo-finished.md), with audit [.audit/AUDIT-codex-adapter-phase5-production-proof-v1@2026-06-11-1040.md](../.audit/AUDIT-codex-adapter-phase5-production-proof-v1@2026-06-11-1040.md). This broader refactor-plan item remains active because stale inline harness decomposition is not complete.
+  - Current partial evidence: [nodejs/conformance/codexConformanceProof.ts](../nodejs/conformance/codexConformanceProof.ts) owns proof assertions for schema round-trip and tool-call compliance; [nodejs/test/codex-conformance-proof.test.ts](../nodejs/test/codex-conformance-proof.test.ts) covers pass/fail/not-run evidence states; Phase 5 production proof expansion is completed and archived in [docs/todo-finished.md](./todo-finished.md), with audit [.audit/AUDIT-codex-adapter-phase5-production-proof-v1@2026-06-11-1040.md](../.audit/AUDIT-codex-adapter-phase5-production-proof-v1@2026-06-11-1040.md). The stale inline `RawCodexAppServerClient` / `_MinimalCopilotAdapterServer` residue has been deleted from [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), and [boundary-fitness.md](./integrations/codex-sdk-runtime-profile/refactor/boundary-fitness.md) now records that oracle fitness rule as `passing-now`. This broader refactor-plan item remains active because scenario/runner/ledger/assertion/report/fixture responsibilities still need decomposition.
 
 - [ ] Phase 6: Conditional Strategy / Policy extraction.
   - Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)

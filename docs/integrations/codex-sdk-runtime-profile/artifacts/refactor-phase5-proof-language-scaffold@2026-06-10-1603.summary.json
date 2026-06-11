@@ -6,7 +6,7 @@
   "scope": {
     "productionReadinessIssues": ["A6", "B5", "C2"],
     "codeSurfaces": [
-      "nodejs/src/experimental/codexConformanceProof.ts",
+      "nodejs/examples/conformance/codexConformanceProof.ts",
       "nodejs/test/codex-conformance-proof.test.ts",
       "nodejs/examples/chatpilot-runtime-acceptance.ts"
     ]
@@ -41,12 +41,12 @@
       "result": "pass"
     },
     {
-      "command": "npx prettier --check src/experimental/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts",
+      "command": "npx prettier --check examples/conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts",
       "cwd": "nodejs",
       "result": "pass"
     },
     {
-      "command": "npx eslint src/experimental/codexConformanceProof.ts test/codex-conformance-proof.test.ts",
+      "command": "npx eslint examples/conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts",
       "cwd": "nodejs",
       "result": "pass"
     }

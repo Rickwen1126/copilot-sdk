@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     buildToolCallComplianceReport,
     buildToolSchemaRoundTripReport,
-} from "../src/experimental/codexConformanceProof.js";
+} from "../examples/conformance/codexConformanceProof.js";
 
 describe("Codex conformance proof helpers", () => {
     it("passes when SDK tool descriptors round-trip into Codex dynamic tool schemas", () => {

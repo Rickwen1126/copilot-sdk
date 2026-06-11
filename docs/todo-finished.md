@@ -1,10 +1,32 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 15:34
+Last Updated: 2026-06-11 23:24
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Codex Adapter Conformance Harness Decomposition Phase 5 @2026-06-11-2324
+
+Section source:
+
+- Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
+- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md), Phase 5
+- Conformance index: [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md)
+- Evidence artifact: [refactor-phase5-decomposition-selected-profile@2026-06-11-2320.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase5-decomposition-selected-profile@2026-06-11-2320.summary.json)
+- Prior progress audit and tour: [.audit/AUDIT-codex-adapter-p1-progress-v1@2026-06-11-1941.md](../.audit/AUDIT-codex-adapter-p1-progress-v1@2026-06-11-1941.md), [.tours/audit-codex-adapter-p1-progress-20260611-1941.tour](../.tours/audit-codex-adapter-p1-progress-20260611-1941.tour)
+- Code/Surface: [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), [nodejs/conformance](../nodejs/conformance), [nodejs/test](../nodejs/test)
+- Raw comparison artifact: `/tmp/copilot-codex-selected-profile-20260611-2320.json`
+- Source: active todo `P1: Runtime Adapter Refactor Architecture Guard` Phase 5
+
+- [x] Deleted the active inline minimal harness residue from the selected-profile spike.
+      Completion evidence: `RawCodexAppServerClient` and `_MinimalCopilotAdapterServer` were removed from [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts); [boundary-fitness.md](./integrations/codex-sdk-runtime-profile/refactor/boundary-fitness.md) records the oracle fitness rule as `passing-now`.
+- [x] Split conformance harness responsibilities by evidence ownership.
+      Completion evidence: proof assertions live in [codexConformanceProof.ts](../nodejs/conformance/codexConformanceProof.ts); ledger normalization in [codexConformanceLedger.ts](../nodejs/conformance/codexConformanceLedger.ts); report aggregation in [codexConformanceReport.ts](../nodejs/conformance/codexConformanceReport.ts); custom tool assertions in [codexConformanceToolProbe.ts](../nodejs/conformance/codexConformanceToolProbe.ts); approval probe contracts in [codexConformanceApprovalProbe.ts](../nodejs/conformance/codexConformanceApprovalProbe.ts); deterministic tool fixtures in [codexConformanceToolFactory.ts](../nodejs/conformance/codexConformanceToolFactory.ts); protocol capture in [codexConformanceProtocolRecorder.ts](../nodejs/conformance/codexConformanceProtocolRecorder.ts); and runner event state in [codexConformanceScenarioState.ts](../nodejs/conformance/codexConformanceScenarioState.ts). Each module has a dedicated `nodejs/test/codex-conformance-*.test.ts` file.
+- [x] Preserved selected-profile semantics after decomposition.
+      Completion evidence: selected-profile comparison run `e627ec9c-5ae6-4a36-b843-df215cd728bd` passed with `copilotCli=405` and `codexAdapter=1145` ledger entries; all seven checks passed for both backends with `traceParity`, `dataAssertion`, and `intentAssertion` all passing and `missing=[]`.
+- [x] Preserved raw artifact hygiene.
+      Completion evidence: the raw 2.7M `/tmp/copilot-codex-selected-profile-20260611-2320.json` transcript is not committed because it contains large runtime transcripts and account/model detail; the repo keeps a compact summary, command, hash, result matrix, and comparison notes instead.
 
 ## Completed: Codex Adapter Experimental Path Graduation Decision @2026-06-11-1534
 

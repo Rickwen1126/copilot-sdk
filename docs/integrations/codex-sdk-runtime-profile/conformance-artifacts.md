@@ -1,7 +1,7 @@
 # Conformance Artifacts
 
 Created: 2026-06-01 14:05
-Last Updated: 2026-06-11 11:43
+Last Updated: 2026-06-11 23:24
 Status: Active
 
 This index records the current evidence for Codex adapter parity in the selected profile.
@@ -166,3 +166,50 @@ Verification:
 - `npx vitest run test/codex-conformance-proof.test.ts test/codex-adapter-mappers.test.ts` -> pass, 24 tests
 - `npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck examples/codex-adapter-phase6-policy-audit.ts examples/codex-app-server-smoke.ts` -> pass
 - `npx eslint conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/codex-adapter-phase6-policy-audit.ts examples/codex-app-server-smoke.ts` -> pass
+
+## Phase 5 Decomposition Selected-Profile Comparison
+
+Summary artifact: [artifacts/refactor-phase5-decomposition-selected-profile@2026-06-11-2320.summary.json](./artifacts/refactor-phase5-decomposition-selected-profile@2026-06-11-2320.summary.json)
+
+Command:
+
+```bash
+SPIKE_PHASE=all \
+SPIKE_TIMEOUT_MS=90000 \
+SPIKE_ADAPTER_APPROVAL_POLICY=untrusted \
+SPIKE_ADAPTER_APPROVALS_REVIEWER=user \
+SPIKE_ADAPTER_SANDBOX_MODE=workspaceWrite \
+SPIKE_APPROVAL_PROBE_PATH=/tmp/copilot-codex-approval-20260611-2320 \
+SPIKE_FILE_PROBE=1 \
+SPIKE_TOOL_PROBE=1 \
+SPIKE_TOOL_FAILURE_PROBE=1 \
+SPIKE_WORKDIR=/tmp/copilot-codex-work-20260611-2320 \
+SPIKE_OUT=/tmp/copilot-codex-selected-profile-20260611-2320.json \
+npx tsx examples/copilot-codex-adapter-spike.ts
+```
+
+Result:
+
+- raw artifact: `/tmp/copilot-codex-selected-profile-20260611-2320.json`
+- sha256: `51dd4058e9215eac3003877bdbb2e13948bfaa6cc762d03c004fd3661909323e`
+- run id: `e627ec9c-5ae6-4a36-b843-df215cd728bd`
+- `conformanceReport.verdict = "pass"`
+- `ledgerCounts.copilotCli = 405`
+- `ledgerCounts.codexAdapter = 1145`
+
+Passing capabilities:
+
+- core new session
+- resume continuation
+- command approval approve
+- command approval deny
+- file approval approve/deny
+- custom tool call
+- tool deny or failure
+
+Comparison:
+
+- The June 1 selected-profile baseline also passed the same seven capabilities.
+- The post-decomposition run keeps every check at `traceParity = "pass"`, `dataAssertion = "pass"`, `intentAssertion = "pass"`, and `missing = []`.
+- Ledger counts differ from the June 1 artifact because recorder/report internals and live runtime behavior changed; no selected-profile capability regressed.
+- First non-escalated attempt `/tmp/copilot-codex-selected-profile-20260611-2317.json` failed only because the Copilot CLI baseline could not create `/Users/rickwen/.copilot/session-state/...` under sandbox EPERM. The escalated run above is the valid comparison artifact.

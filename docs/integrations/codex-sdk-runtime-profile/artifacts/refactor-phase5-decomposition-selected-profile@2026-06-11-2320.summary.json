@@ -1,0 +1,146 @@
+{
+  "createdAt": "2026-06-11 23:20",
+  "status": "pass",
+  "scope": "Phase 5 conformance harness decomposition selected-profile comparison",
+  "branch": "codex-adapter-phase5-proof-20260611",
+  "head": "31b6a5ffa1e97fbc65bbac214facb8e31e1e8dc9",
+  "rawArtifact": "/tmp/copilot-codex-selected-profile-20260611-2320.json",
+  "rawArtifactSha256": "51dd4058e9215eac3003877bdbb2e13948bfaa6cc762d03c004fd3661909323e",
+  "rawArtifactSize": "2.7M",
+  "nonEscalatedAttempt": {
+    "rawArtifact": "/tmp/copilot-codex-selected-profile-20260611-2317.json",
+    "rawArtifactSha256": "6257ee9d91ed616e3a74f2c460079d5b218a249e241e32f32f57be08f79b76f8",
+    "status": "environment-fail",
+    "reason": "Copilot CLI baseline could not write /Users/rickwen/.copilot/session-state under sandbox EPERM"
+  },
+  "command": "SPIKE_PHASE=all SPIKE_TIMEOUT_MS=90000 SPIKE_ADAPTER_APPROVAL_POLICY=untrusted SPIKE_ADAPTER_APPROVALS_REVIEWER=user SPIKE_ADAPTER_SANDBOX_MODE=workspaceWrite SPIKE_APPROVAL_PROBE_PATH=/tmp/copilot-codex-approval-20260611-2320 SPIKE_FILE_PROBE=1 SPIKE_TOOL_PROBE=1 SPIKE_TOOL_FAILURE_PROBE=1 SPIKE_WORKDIR=/tmp/copilot-codex-work-20260611-2320 SPIKE_OUT=/tmp/copilot-codex-selected-profile-20260611-2320.json npx tsx examples/copilot-codex-adapter-spike.ts",
+  "result": {
+    "runId": "e627ec9c-5ae6-4a36-b843-df215cd728bd",
+    "verdict": "pass",
+    "protocolFailure": null,
+    "adapterFailure": null,
+    "ledgerCounts": {
+      "copilotCli": 405,
+      "codexAdapter": 1145
+    },
+    "checks": [
+      {
+        "capability": "core new session",
+        "status": "pass",
+        "backendStatus": {
+          "copilotCli": "pass",
+          "codexAdapter": "pass"
+        },
+        "traceParity": "pass",
+        "dataAssertion": "pass",
+        "intentAssertion": "pass",
+        "missing": []
+      },
+      {
+        "capability": "resume continuation",
+        "status": "pass",
+        "backendStatus": {
+          "copilotCli": "pass",
+          "codexAdapter": "pass"
+        },
+        "traceParity": "pass",
+        "dataAssertion": "pass",
+        "intentAssertion": "pass",
+        "missing": []
+      },
+      {
+        "capability": "command approval approve",
+        "status": "pass",
+        "backendStatus": {
+          "copilotCli": "pass",
+          "codexAdapter": "pass"
+        },
+        "traceParity": "pass",
+        "dataAssertion": "pass",
+        "intentAssertion": "pass",
+        "missing": []
+      },
+      {
+        "capability": "command approval deny",
+        "status": "pass",
+        "backendStatus": {
+          "copilotCli": "pass",
+          "codexAdapter": "pass"
+        },
+        "traceParity": "pass",
+        "dataAssertion": "pass",
+        "intentAssertion": "pass",
+        "missing": []
+      },
+      {
+        "capability": "file approval approve/deny",
+        "status": "pass",
+        "backendStatus": {
+          "copilotCli": "pass",
+          "codexAdapter": "pass"
+        },
+        "traceParity": "pass",
+        "dataAssertion": "pass",
+        "intentAssertion": "pass",
+        "missing": []
+      },
+      {
+        "capability": "custom tool call",
+        "status": "pass",
+        "backendStatus": {
+          "copilotCli": "pass",
+          "codexAdapter": "pass"
+        },
+        "traceParity": "pass",
+        "dataAssertion": "pass",
+        "intentAssertion": "pass",
+        "missing": []
+      },
+      {
+        "capability": "tool deny or failure",
+        "status": "pass",
+        "backendStatus": {
+          "copilotCli": "pass",
+          "codexAdapter": "pass"
+        },
+        "traceParity": "pass",
+        "dataAssertion": "pass",
+        "intentAssertion": "pass",
+        "missing": []
+      }
+    ],
+    "unsupportedProfiles": [
+      "Interactive Profile",
+      "Fidelity Profile",
+      "Extended CLI Profile"
+    ]
+  },
+  "comparisonAgainstPriorSelectedProfile": {
+    "priorRawArtifact": "/tmp/copilot-codex-all-tool-failure-20260601-v1.json",
+    "priorRawArtifactSha256": "cb4d48b44578408d90f02b95c55f6d1b7c867daf344d41233b5b88a3bc1a21d1",
+    "priorVerdict": "pass",
+    "priorPassingCapabilities": [
+      "core new session",
+      "resume continuation",
+      "command approval approve",
+      "command approval deny",
+      "file approval approve/deny",
+      "custom tool call",
+      "tool deny or failure"
+    ],
+    "currentPassingCapabilities": [
+      "core new session",
+      "resume continuation",
+      "command approval approve",
+      "command approval deny",
+      "file approval approve/deny",
+      "custom tool call",
+      "tool deny or failure"
+    ],
+    "semanticResult": "equivalent-pass",
+    "notes": [
+      "The Phase 5 decomposition moved harness responsibilities into conformance helper modules without changing the selected-profile pass surface.",
+      "Ledger counts differ from the June 1 artifact because recorder/report internals and live runtime behavior changed, but every selected-profile capability remains pass with empty missing evidence."
+    ]
+  }
+}

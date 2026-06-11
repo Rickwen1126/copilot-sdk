@@ -42,6 +42,12 @@ import {
     type ConformanceReport,
 } from "../conformance/codexConformanceReport.js";
 import {
+    createScenarioEventBuckets,
+    recordScenarioEvent,
+    summarizeScenarioEventTypes,
+    type ObservedEvent,
+} from "../conformance/codexConformanceScenarioState.js";
+import {
     customToolProbeDataPass,
     customToolProbeFinalMessageUsesResult,
     customToolProbeHandlerCallSummary,
@@ -1515,7 +1521,7 @@ function buildConformanceReport(runId: string, result: Record<string, unknown>):
 
 async function runToolProbeWithClient(
     client: CopilotClient,
-    observedEvents: Array<{ type: string; data?: unknown }>,
+    observedEvents: ObservedEvent[],
     stepTrace: string[],
     tracePrefix: string
 ): Promise<ToolProbeResult> {
@@ -1554,7 +1560,7 @@ async function runToolProbeWithClient(
 
 async function runToolFailureProbeWithClient(
     client: CopilotClient,
-    observedEvents: Array<{ type: string; data?: unknown }>,
+    observedEvents: ObservedEvent[],
     stepTrace: string[],
     tracePrefix: string
 ): Promise<ToolFailureProbeResult> {
@@ -1632,14 +1638,7 @@ async function recordRealCopilotProtocol() {
     });
     let client2: CopilotClient | undefined;
 
-    const observedEventsClient1: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsClient2: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsApproval: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsDenial: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsFileApproval: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsFileDenial: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsToolProbe: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsToolFailureProbe: Array<{ type: string; data?: unknown }> = [];
+    const observedEvents = createScenarioEventBuckets();
     const stepTrace: string[] = [];
     let approvalProbe: ApprovalProbeResult | undefined;
     let denialProbe: ApprovalProbeResult | undefined;
@@ -1662,7 +1661,7 @@ async function recordRealCopilotProtocol() {
             onPermissionRequest: approveAll,
             model: MODEL,
             workingDirectory: WORKDIR,
-            onEvent: (event) => observedEventsClient1.push({ type: event.type, data: event.data }),
+            onEvent: recordScenarioEvent(observedEvents, "client1"),
         });
         stepTrace.push("session1.created");
         const assistantMessage = await session1.sendAndWait(
@@ -1687,7 +1686,7 @@ async function recordRealCopilotProtocol() {
         const session2 = await client2.resumeSession(sessionId, {
             onPermissionRequest: approveAll,
             workingDirectory: WORKDIR,
-            onEvent: (event) => observedEventsClient2.push({ type: event.type, data: event.data }),
+            onEvent: recordScenarioEvent(observedEvents, "client2"),
         });
         stepTrace.push("session2.resumed");
         const history = await session2.getMessages();
@@ -1728,8 +1727,7 @@ async function recordRealCopilotProtocol() {
                 },
                 model: MODEL,
                 workingDirectory: WORKDIR,
-                onEvent: (event) =>
-                    observedEventsApproval.push({ type: event.type, data: event.data }),
+                onEvent: recordScenarioEvent(observedEvents, "approvalProbe"),
             });
             stepTrace.push("approvalProbe.session_created");
             const approvalAssistantMessage = await approvalSession.sendAndWait(
@@ -1772,8 +1770,7 @@ async function recordRealCopilotProtocol() {
                 },
                 model: MODEL,
                 workingDirectory: WORKDIR,
-                onEvent: (event) =>
-                    observedEventsDenial.push({ type: event.type, data: event.data }),
+                onEvent: recordScenarioEvent(observedEvents, "denialProbe"),
             });
             stepTrace.push("denialProbe.session_created");
             const denialAssistantMessage = await denialSession.sendAndWait(
@@ -1821,8 +1818,7 @@ async function recordRealCopilotProtocol() {
                 },
                 model: MODEL,
                 workingDirectory: WORKDIR,
-                onEvent: (event) =>
-                    observedEventsFileApproval.push({ type: event.type, data: event.data }),
+                onEvent: recordScenarioEvent(observedEvents, "fileApprovalProbe"),
             });
             stepTrace.push("fileApprovalProbe.session_created");
             const fileApprovalAssistantMessage = await fileApprovalSession.sendAndWait(
@@ -1866,8 +1862,7 @@ async function recordRealCopilotProtocol() {
                 },
                 model: MODEL,
                 workingDirectory: WORKDIR,
-                onEvent: (event) =>
-                    observedEventsFileDenial.push({ type: event.type, data: event.data }),
+                onEvent: recordScenarioEvent(observedEvents, "fileDenialProbe"),
             });
             stepTrace.push("fileDenialProbe.session_created");
             const fileDenialAssistantMessage = await fileDenialSession.sendAndWait(
@@ -1890,7 +1885,7 @@ async function recordRealCopilotProtocol() {
         if (RUN_TOOL_PROBE) {
             toolProbe = await runToolProbeWithClient(
                 client2,
-                observedEventsToolProbe,
+                observedEvents.toolProbe,
                 stepTrace,
                 "toolProbe"
             );
@@ -1899,7 +1894,7 @@ async function recordRealCopilotProtocol() {
         if (RUN_TOOL_FAILURE_PROBE) {
             toolFailureProbe = await runToolFailureProbeWithClient(
                 client2,
-                observedEventsToolFailureProbe,
+                observedEvents.toolFailureProbe,
                 stepTrace,
                 "toolFailureProbe"
             );
@@ -1917,17 +1912,7 @@ async function recordRealCopilotProtocol() {
             status,
             auth,
             modelIds: models.map((model) => model.id),
-            observedEventTypes: {
-                client1: observedEventsClient1.map((event) => event.type),
-                client2: observedEventsClient2.map((event) => event.type),
-                approvalProbe: observedEventsApproval.map((event) => event.type),
-                denialProbe: observedEventsDenial.map((event) => event.type),
-                fileApprovalProbe: observedEventsFileApproval.map((event) => event.type),
-                fileDenialProbe: observedEventsFileDenial.map((event) => event.type),
-                toolProbe: observedEventsToolProbe.map((event) => event.type),
-                toolFailureProbe: observedEventsToolFailureProbe.map((event) => event.type),
-                history: history.map((event) => event.type),
-            },
+            observedEventTypes: summarizeScenarioEventTypes(observedEvents, history),
             assistantMessage: assistantMessage?.data.content,
             resumedAssistantMessage: resumedAssistantMessage?.data.content,
             expectedResumedAssistantMessage: expectedResumedAnswer,
@@ -1951,16 +1936,7 @@ async function recordRealCopilotProtocol() {
     } catch (error) {
         return {
             failure: summarizeUnknownError(error),
-            observedEventTypes: {
-                client1: observedEventsClient1.map((event) => event.type),
-                client2: observedEventsClient2.map((event) => event.type),
-                approvalProbe: observedEventsApproval.map((event) => event.type),
-                denialProbe: observedEventsDenial.map((event) => event.type),
-                fileApprovalProbe: observedEventsFileApproval.map((event) => event.type),
-                fileDenialProbe: observedEventsFileDenial.map((event) => event.type),
-                toolProbe: observedEventsToolProbe.map((event) => event.type),
-                toolFailureProbe: observedEventsToolFailureProbe.map((event) => event.type),
-            },
+            observedEventTypes: summarizeScenarioEventTypes(observedEvents),
             approvalProbe,
             denialProbe,
             fileApprovalProbe,
@@ -1995,14 +1971,7 @@ async function runAdapterValidation() {
         cliUrl: `127.0.0.1:${port}`,
         logLevel: "info",
     });
-    const observedEventsClient1: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsClient2: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsApproval: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsDenial: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsFileApproval: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsFileDenial: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsToolProbe: Array<{ type: string; data?: unknown }> = [];
-    const observedEventsToolFailureProbe: Array<{ type: string; data?: unknown }> = [];
+    const observedEvents = createScenarioEventBuckets();
     let client2: CopilotClient | undefined;
     const stepTrace: string[] = [];
     let approvalProbe: ApprovalProbeResult | undefined;
@@ -2026,7 +1995,7 @@ async function runAdapterValidation() {
             onPermissionRequest: approveAll,
             model: MODEL,
             workingDirectory: WORKDIR,
-            onEvent: (event) => observedEventsClient1.push({ type: event.type, data: event.data }),
+            onEvent: recordScenarioEvent(observedEvents, "client1"),
         });
         stepTrace.push("session1.created");
         const assistantMessage = await session1.sendAndWait(
@@ -2051,7 +2020,7 @@ async function runAdapterValidation() {
         const session2 = await client2.resumeSession(sessionId, {
             onPermissionRequest: approveAll,
             workingDirectory: WORKDIR,
-            onEvent: (event) => observedEventsClient2.push({ type: event.type, data: event.data }),
+            onEvent: recordScenarioEvent(observedEvents, "client2"),
         });
         stepTrace.push("session2.resumed");
         const history = await session2.getMessages();
@@ -2092,8 +2061,7 @@ async function runAdapterValidation() {
                 },
                 model: MODEL,
                 workingDirectory: WORKDIR,
-                onEvent: (event) =>
-                    observedEventsApproval.push({ type: event.type, data: event.data }),
+                onEvent: recordScenarioEvent(observedEvents, "approvalProbe"),
             });
             stepTrace.push("approvalProbe.session_created");
             const approvalAssistantMessage = await approvalSession.sendAndWait(
@@ -2135,8 +2103,7 @@ async function runAdapterValidation() {
                 },
                 model: MODEL,
                 workingDirectory: WORKDIR,
-                onEvent: (event) =>
-                    observedEventsDenial.push({ type: event.type, data: event.data }),
+                onEvent: recordScenarioEvent(observedEvents, "denialProbe"),
             });
             stepTrace.push("denialProbe.session_created");
             const denialAssistantMessage = await denialSession.sendAndWait(
@@ -2184,8 +2151,7 @@ async function runAdapterValidation() {
                 },
                 model: MODEL,
                 workingDirectory: WORKDIR,
-                onEvent: (event) =>
-                    observedEventsFileApproval.push({ type: event.type, data: event.data }),
+                onEvent: recordScenarioEvent(observedEvents, "fileApprovalProbe"),
             });
             stepTrace.push("fileApprovalProbe.session_created");
             const fileApprovalAssistantMessage = await fileApprovalSession.sendAndWait(
@@ -2231,8 +2197,7 @@ async function runAdapterValidation() {
                 },
                 model: MODEL,
                 workingDirectory: WORKDIR,
-                onEvent: (event) =>
-                    observedEventsFileDenial.push({ type: event.type, data: event.data }),
+                onEvent: recordScenarioEvent(observedEvents, "fileDenialProbe"),
             });
             stepTrace.push("fileDenialProbe.session_created");
             const fileDenialAssistantMessage = await fileDenialSession.sendAndWait(
@@ -2255,7 +2220,7 @@ async function runAdapterValidation() {
         if (RUN_TOOL_PROBE) {
             toolProbe = await runToolProbeWithClient(
                 client2,
-                observedEventsToolProbe,
+                observedEvents.toolProbe,
                 stepTrace,
                 "toolProbe"
             );
@@ -2264,7 +2229,7 @@ async function runAdapterValidation() {
         if (RUN_TOOL_FAILURE_PROBE) {
             toolFailureProbe = await runToolFailureProbeWithClient(
                 client2,
-                observedEventsToolFailureProbe,
+                observedEvents.toolFailureProbe,
                 stepTrace,
                 "toolFailureProbe"
             );
@@ -2283,17 +2248,7 @@ async function runAdapterValidation() {
             status,
             auth,
             modelIds: models.map((model) => model.id),
-            observedEventTypes: {
-                client1: observedEventsClient1.map((event) => event.type),
-                client2: observedEventsClient2.map((event) => event.type),
-                approvalProbe: observedEventsApproval.map((event) => event.type),
-                denialProbe: observedEventsDenial.map((event) => event.type),
-                fileApprovalProbe: observedEventsFileApproval.map((event) => event.type),
-                fileDenialProbe: observedEventsFileDenial.map((event) => event.type),
-                toolProbe: observedEventsToolProbe.map((event) => event.type),
-                toolFailureProbe: observedEventsToolFailureProbe.map((event) => event.type),
-                history: history.map((event) => event.type),
-            },
+            observedEventTypes: summarizeScenarioEventTypes(observedEvents, history),
             assistantMessage: assistantMessage?.data.content,
             resumedAssistantMessage: resumedAssistantMessage?.data.content,
             expectedResumedAssistantMessage: expectedResumedAnswer,
@@ -2318,16 +2273,7 @@ async function runAdapterValidation() {
         return {
             adapter: adapter.summary(),
             failure: summarizeUnknownError(error),
-            observedEventTypes: {
-                client1: observedEventsClient1.map((event) => event.type),
-                client2: observedEventsClient2.map((event) => event.type),
-                approvalProbe: observedEventsApproval.map((event) => event.type),
-                denialProbe: observedEventsDenial.map((event) => event.type),
-                fileApprovalProbe: observedEventsFileApproval.map((event) => event.type),
-                fileDenialProbe: observedEventsFileDenial.map((event) => event.type),
-                toolProbe: observedEventsToolProbe.map((event) => event.type),
-                toolFailureProbe: observedEventsToolFailureProbe.map((event) => event.type),
-            },
+            observedEventTypes: summarizeScenarioEventTypes(observedEvents),
             approvalProbe,
             denialProbe,
             fileApprovalProbe,

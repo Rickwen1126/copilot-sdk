@@ -1,6 +1,6 @@
 {
   "artifactType": "refactor-phase5-production-proof",
-  "generatedAt": "2026-06-11T10:34:00+08:00",
+  "generatedAt": "2026-06-11T10:44:00+08:00",
   "phase": "Phase 5: Production proof expansion",
   "status": "pass",
   "scope": {
@@ -14,16 +14,16 @@
   "implementation": [
     "Extended Chatpilot runtime acceptance with CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot so a live session can expose the full 26-tool chatbot-visible Chatpilot toolset.",
     "Added toolSchemaRoundTrip report extraction from the live adapter summary by comparing SDK session.create tool descriptors with Codex thread/start dynamicTools.",
-    "Kept C2 benchmark prompts safe and app-level by using save_memo and list_memos under 26-tool availability, with prompt-local tool-call observations and native-tool checks.",
+    "Kept C2 benchmark prompts safe and app-level by using save_memo and list_memos under 26-tool availability, with prompt-local tool-call observations and conservative full-trace native-tool checks.",
     "Kept B5 schema round-trip as a Codex-adapter-only assertion; Copilot CLI has no Codex dynamicTools trace and is not failed for that not-run field."
   ],
   "rawArtifacts": [
     {
       "purpose": "A6+B5+C2 codex-adapter live concurrent proof",
-      "path": "/tmp/chatpilot-codex-phase5-live-20260611-1027.json",
-      "sha256": "54105fce4a065406d23915b92dda185cd8a13ff39523efb8d974cc10c8e52c76",
-      "sizeBytes": 243780,
-      "command": "CHATPILOT_ACCEPTANCE_BACKENDS=codex-adapter CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=2 CHATPILOT_ACCEPTANCE_RUN_ID=phase5-live-20260611-1027 CHATPILOT_ACCEPTANCE_OUT=/tmp/chatpilot-codex-phase5-live-20260611-1027.json npx tsx examples/chatpilot-runtime-acceptance.ts",
+      "path": "/tmp/chatpilot-codex-phase5-live-20260611-1042.json",
+      "sha256": "b045b8c29231faadf7c13a57c4e4ee0a260d1bf968a03468a2469e00992ccb15",
+      "sizeBytes": 244007,
+      "command": "CHATPILOT_ACCEPTANCE_BACKENDS=codex-adapter CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=2 CHATPILOT_ACCEPTANCE_RUN_ID=phase5-live-20260611-1042 CHATPILOT_ACCEPTANCE_OUT=/tmp/chatpilot-codex-phase5-live-20260611-1042.json npx tsx examples/chatpilot-runtime-acceptance.ts",
       "result": {
         "status": "pass",
         "toolset": "all-chatbot",
@@ -56,10 +56,10 @@
     },
     {
       "purpose": "C2 cross-backend comparison plus B5 codex schema proof",
-      "path": "/tmp/chatpilot-codex-phase5-all-backends-20260611-1034.json",
-      "sha256": "e36c14a6a8f1517b76b862ab6a09288e61856f216068cd735aa1d83ecfd615ca",
-      "sizeBytes": 208569,
-      "command": "CHATPILOT_ACCEPTANCE_BACKENDS=all CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=1 CHATPILOT_ACCEPTANCE_RUN_ID=phase5-all-backends-20260611-1034 CHATPILOT_ACCEPTANCE_OUT=/tmp/chatpilot-codex-phase5-all-backends-20260611-1034.json npx tsx examples/chatpilot-runtime-acceptance.ts",
+      "path": "/tmp/chatpilot-codex-phase5-all-backends-20260611-1044.json",
+      "sha256": "7c9fea5c2dbca576120abef809e0115a5c578fb529f8a45b9ff93aa37e8d660f",
+      "sizeBytes": 208988,
+      "command": "CHATPILOT_ACCEPTANCE_BACKENDS=all CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=1 CHATPILOT_ACCEPTANCE_RUN_ID=phase5-all-backends-20260611-1044 CHATPILOT_ACCEPTANCE_OUT=/tmp/chatpilot-codex-phase5-all-backends-20260611-1044.json npx tsx examples/chatpilot-runtime-acceptance.ts",
       "result": {
         "status": "pass",
         "toolset": "all-chatbot",
@@ -134,6 +134,7 @@
   ],
   "notes": [
     "A first sandboxed live run failed before Chatpilot startup because uv could not read /Users/rickwen/.cache/uv/sdists-v9/.git; the same command passed after running with approved escalated filesystem access.",
-    "An intermediate all-backends run exposed a harness bug where Copilot CLI was failed for not having Codex dynamicTools trace; the harness now treats B5 as a Codex-adapter-only assertion."
+    "An intermediate all-backends run exposed a harness bug where Copilot CLI was failed for not having Codex dynamicTools trace; the harness now treats B5 as a Codex-adapter-only assertion.",
+    "Audit pre-check hardened native-tool detection to scan both marker-scoped transcript entries and the full adapter trace, then regenerated both live artifacts."
   ]
 }

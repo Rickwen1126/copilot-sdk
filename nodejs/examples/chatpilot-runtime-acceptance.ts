@@ -1121,11 +1121,11 @@ function extractKnownNativeToolCalls(adapterTrace: string, marker: string): stri
         "write_file",
     ];
     const parsed = parseAdapterSummary(adapterTrace);
-    const candidateText = transcriptEntries(parsed, "transcripts")
+    const markerScopedText = transcriptEntries(parsed, "transcripts")
         .filter((entry) => JSON.stringify(entry.message).includes(marker))
         .map((entry) => JSON.stringify(entry.message))
         .join("\n");
-    const searchText = candidateText || adapterTrace;
+    const searchText = [markerScopedText, adapterTrace].filter(Boolean).join("\n");
     return nativeToolNames.filter((toolName) =>
         new RegExp(
             `"name"\\s*:\\s*"${escapeRegExp(toolName)}"|toolName=${escapeRegExp(toolName)}`

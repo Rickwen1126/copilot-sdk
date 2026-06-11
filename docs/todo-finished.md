@@ -1,30 +1,30 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 10:34
+Last Updated: 2026-06-11 10:44
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
 
-## Completed: Codex Adapter Production Proof Expansion Phase 5 @2026-06-11-1034
+## Completed: Codex Adapter Production Proof Expansion Phase 5 @2026-06-11-1044
 
 Section source:
 
 - Production readiness inventory: [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md), issues A6, B5, C2
 - Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md), Phase 5
-- Evidence artifacts: [refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json), [refactor-phase5-production-proof@2026-06-11-1034.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase5-production-proof@2026-06-11-1034.summary.json)
+- Evidence artifacts: [refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase5-proof-language-scaffold@2026-06-10-1603.summary.json), [refactor-phase5-production-proof@2026-06-11-1044.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase5-production-proof@2026-06-11-1044.summary.json)
 - Conformance index: [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md)
 - Prior scaffold audit and tour: [.audit/AUDIT-codex-adapter-phase5-proof-scaffold-v1@2026-06-10-1813.md](../.audit/AUDIT-codex-adapter-phase5-proof-scaffold-v1@2026-06-10-1813.md), [.tours/audit-codex-adapter-phase5-proof-scaffold-20260610-1813.tour](../.tours/audit-codex-adapter-phase5-proof-scaffold-20260610-1813.tour)
 - Code/Surface: [nodejs/conformance/codexConformanceProof.ts](../nodejs/conformance/codexConformanceProof.ts), [nodejs/examples/chatpilot-runtime-acceptance.ts](../nodejs/examples/chatpilot-runtime-acceptance.ts), [nodejs/test/codex-conformance-proof.test.ts](../nodejs/test/codex-conformance-proof.test.ts)
-- Raw live artifacts: `/tmp/chatpilot-codex-phase5-live-20260611-1027.json`, `/tmp/chatpilot-codex-phase5-all-backends-20260611-1034.json`
+- Raw live artifacts: `/tmp/chatpilot-codex-phase5-live-20260611-1042.json`, `/tmp/chatpilot-codex-phase5-all-backends-20260611-1044.json`
 - Source: active todo `P0: Codex Adapter Production Readiness Queue` Phase 5
 
 - [x] Added real Chatpilot 26-tool schema round-trip proof.
   Completion evidence: `CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot` drives a live Chatpilot session with 26 chatbot-visible tools; the adapter report compares SDK `session.create.tools` against Codex `thread/start.dynamicTools`; both live artifacts report `expectedToolCount=26`, `observedToolCount=26`, and no failed tools.
 - [x] Produced live A6 multi-session concurrent acceptance.
-  Completion evidence: `/tmp/chatpilot-codex-phase5-live-20260611-1027.json` passes with `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=2`; each concurrent route has a distinct SDK session id, persists a distinct marker in SQLite `memory_memos`, and reuses the app-level runtime session for the second turn.
+  Completion evidence: `/tmp/chatpilot-codex-phase5-live-20260611-1042.json` passes with `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=2`; each concurrent route has a distinct SDK session id, persists a distinct marker in SQLite `memory_memos`, and reuses the app-level runtime session for the second turn.
 - [x] Produced C2 safe tool-call compliance benchmark and backend comparison evidence.
-  Completion evidence: `/tmp/chatpilot-codex-phase5-all-backends-20260611-1034.json` passes with both `copilot-cli` and `codex-adapter`; both backends select `save_memo` and `list_memos` under 26-tool availability, persist/read data through Chatpilot, and report no native Codex tool calls.
+  Completion evidence: `/tmp/chatpilot-codex-phase5-all-backends-20260611-1044.json` passes with both `copilot-cli` and `codex-adapter`; both backends select `save_memo` and `list_memos` under 26-tool availability, persist/read data through Chatpilot, and report no native Codex tool calls under marker-scoped plus full-trace scanning.
 - [x] Preserved the C2 safety boundary for external-side-effect tools.
   Completion evidence: the Phase 5 summary records that this benchmark does not intentionally execute WorkProof push, browser, web search, or other external-side-effect tools. Full prompt-quality tuning across every tool description remains assigned to Phase 6 model-behavior cleanup.
 

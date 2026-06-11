@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import process from "node:process";
-import { type MessageConnection } from "vscode-jsonrpc/node.js";
 import { CopilotClient, approveAll } from "../dist/index.js";
 import {
     approvalProbePathForBackend,
@@ -27,8 +26,11 @@ import {
     countLedgerHops,
     hasLedgerHop,
     type NormalizedLedgerEntry,
-    type TranscriptEntry,
 } from "../conformance/codexConformanceLedger.js";
+import {
+    startClientWithRecorder,
+    summarizeUnknownError,
+} from "../conformance/codexConformanceProtocolRecorder.js";
 import {
     buildConformanceReportArtifact,
     combineStatusTriplet,
@@ -152,21 +154,6 @@ type ToolFailureProbeResult = {
 
 function nowIso(): string {
     return new Date().toISOString();
-}
-
-function summarizeUnknownError(error: unknown) {
-    if (error instanceof Error) {
-        return {
-            name: error.name,
-            message: error.message,
-            stack: error.stack,
-        };
-    }
-
-    return {
-        name: "Error",
-        message: typeof error === "string" ? error : JSON.stringify(error),
-    };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1524,118 +1511,6 @@ function buildConformanceReport(runId: string, result: Record<string, unknown>):
         copilotLedger,
         adapterLedger,
     });
-}
-
-function attachClientProtocolRecorder(client: CopilotClient) {
-    const transcripts: TranscriptEntry[] = [];
-    const connection = (client as unknown as { connection?: MessageConnection }).connection;
-    if (!connection) {
-        throw new Error("Client connection not available for protocol recording");
-    }
-
-    const mutableConnection = connection as MessageConnection & {
-        sendRequest: MessageConnection["sendRequest"];
-    };
-    const originalSendRequest = mutableConnection.sendRequest.bind(connection);
-    mutableConnection.sendRequest = (async (method: string, ...args: unknown[]) => {
-        const params = args[0];
-        transcripts.push({
-            at: nowIso(),
-            direction: "sdk->copilot.request",
-            message: { method, params },
-        });
-        try {
-            const result = await originalSendRequest(method, ...(args as [unknown]));
-            transcripts.push({
-                at: nowIso(),
-                direction: "copilot->sdk.response",
-                message: { method, result },
-            });
-            return result;
-        } catch (error) {
-            transcripts.push({
-                at: nowIso(),
-                direction: "copilot->sdk.response",
-                message: { method, error: summarizeUnknownError(error) },
-            });
-            throw error;
-        }
-    }) as MessageConnection["sendRequest"];
-
-    const patchNotificationHandler = (
-        name: "handleSessionEventNotification" | "handleSessionLifecycleNotification"
-    ) => {
-        const current = (client as unknown as Record<string, unknown>)[name];
-        if (typeof current !== "function") {
-            return;
-        }
-        const original = current.bind(client);
-        (client as unknown as Record<string, unknown>)[name] = (notification: unknown) => {
-            transcripts.push({
-                at: nowIso(),
-                direction:
-                    name === "handleSessionEventNotification"
-                        ? "copilot->sdk.notification.session.event"
-                        : "copilot->sdk.notification.session.lifecycle",
-                message: notification,
-            });
-            return original(notification);
-        };
-    };
-
-    patchNotificationHandler("handleSessionEventNotification");
-    patchNotificationHandler("handleSessionLifecycleNotification");
-
-    return {
-        summary() {
-            return {
-                requestMethods: transcripts
-                    .filter((entry) => entry.direction === "sdk->copilot.request")
-                    .map((entry) =>
-                        entry.message &&
-                        typeof entry.message === "object" &&
-                        "method" in entry.message
-                            ? String(entry.message.method)
-                            : "unknown"
-                    ),
-                notificationKinds: transcripts
-                    .filter((entry) => entry.direction.startsWith("copilot->sdk.notification"))
-                    .map((entry) => entry.direction),
-                transcripts,
-            };
-        },
-    };
-}
-
-async function startClientWithRecorder(client: CopilotClient) {
-    const mutableClient = client as unknown as {
-        connectToServer?: () => Promise<void>;
-    };
-    const originalConnectToServer = mutableClient.connectToServer;
-    if (typeof originalConnectToServer !== "function") {
-        throw new Error("CopilotClient.connectToServer is not available for recorder hook");
-    }
-
-    let recorder: ReturnType<typeof attachClientProtocolRecorder> | undefined;
-
-    mutableClient.connectToServer = async () => {
-        await originalConnectToServer.call(client);
-        recorder = attachClientProtocolRecorder(client);
-        mutableClient.connectToServer = originalConnectToServer;
-    };
-
-    try {
-        await client.start();
-    } catch (error) {
-        mutableClient.connectToServer = originalConnectToServer;
-        throw error;
-    }
-
-    if (!recorder) {
-        recorder = attachClientProtocolRecorder(client);
-    }
-
-    return recorder;
 }
 
 async function runToolProbeWithClient(

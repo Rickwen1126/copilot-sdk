@@ -13,43 +13,18 @@ import {
     type TranscriptEntry,
 } from "../conformance/codexConformanceLedger.js";
 import {
+    buildConformanceReportArtifact,
+    combineStatuses,
+    makeCheck,
+    statusFromBooleans,
+    type ConformanceCheck,
+    type ConformanceReport,
+    type ConformanceStatus,
+} from "../conformance/codexConformanceReport.js";
+import {
     CodexCopilotAdapterServer,
     type CodexAdapterSandboxMode,
 } from "../src/experimental/codexAdapter.js";
-
-type ConformanceStatus = "pass" | "fail" | "not-run";
-
-type ConformanceCheck = {
-    capability: string;
-    profile: "SDK Core Profile" | "Coding Agent Profile";
-    status: ConformanceStatus;
-    backendStatus: {
-        copilotCli: ConformanceStatus;
-        codexAdapter: ConformanceStatus;
-    };
-    traceParity: ConformanceStatus;
-    dataAssertion: ConformanceStatus;
-    intentAssertion: ConformanceStatus;
-    evidence: string[];
-    missing: string[];
-};
-
-type ConformanceReport = {
-    runId: string;
-    generatedAt: string;
-    targetProfiles: string[];
-    verdict: ConformanceStatus;
-    checks: ConformanceCheck[];
-    ledgerCounts: {
-        copilotCli: number;
-        codexAdapter: number;
-    };
-    ledgers: {
-        copilotCli: NormalizedLedgerEntry[];
-        codexAdapter: NormalizedLedgerEntry[];
-    };
-    unsupportedProfiles: string[];
-};
 
 const SPIKE_PHASE = process.env.SPIKE_PHASE ?? "all";
 const PROMPT = process.env.SPIKE_PROMPT ?? "Reply with READY and nothing else.";
@@ -515,33 +490,6 @@ function promptIntentPass(prompt: string, assistantMessage: string | undefined):
         return assistantMessage.trim() === "READY";
     }
     return assistantMessage.trim().length > 0;
-}
-
-function statusFromBooleans(...checks: boolean[]): ConformanceStatus {
-    return checks.every(Boolean) ? "pass" : "fail";
-}
-
-function combineStatuses(...statuses: ConformanceStatus[]): ConformanceStatus {
-    if (statuses.includes("fail")) {
-        return "fail";
-    }
-    if (statuses.includes("not-run")) {
-        return "not-run";
-    }
-    return "pass";
-}
-
-function makeCheck(input: Omit<ConformanceCheck, "status">): ConformanceCheck {
-    return {
-        ...input,
-        status: combineStatuses(
-            input.backendStatus.copilotCli,
-            input.backendStatus.codexAdapter,
-            input.traceParity,
-            input.dataAssertion,
-            input.intentAssertion
-        ),
-    };
 }
 
 function buildCoreNewSessionCheck(
@@ -2064,24 +2012,13 @@ function buildConformanceReport(runId: string, result: Record<string, unknown>):
             adapterLedger
         ),
     ];
-    const verdict = combineStatuses(...checks.map((check) => check.status));
-
-    return {
+    return buildConformanceReportArtifact({
         runId,
         generatedAt: nowIso(),
-        targetProfiles: ["SDK Core Profile", "Coding Agent Profile"],
-        verdict,
         checks,
-        ledgerCounts: {
-            copilotCli: copilotLedger.length,
-            codexAdapter: adapterLedger.length,
-        },
-        ledgers: {
-            copilotCli: copilotLedger,
-            codexAdapter: adapterLedger,
-        },
-        unsupportedProfiles: ["Interactive Profile", "Fidelity Profile", "Extended CLI Profile"],
-    };
+        copilotLedger,
+        adapterLedger,
+    });
 }
 
 function attachClientProtocolRecorder(client: CopilotClient) {

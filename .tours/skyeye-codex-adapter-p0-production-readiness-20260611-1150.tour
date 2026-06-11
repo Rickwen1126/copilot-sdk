@@ -1,0 +1,82 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Sky Eye - Codex Adapter P0 Production Readiness",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 這條 Sky Eye 在看什麼\n\n這條 tour 其實是在看：Codex adapter 的 P0 readiness gate 是怎麼從「還有一串風險清單」收斂成「selected Chatpilot profile 可以關門」的。\n\n如果先記不住細節，先抓住每個 step 只是在回答一個問題：這個 P0 claim 到底靠什麼證據成立，邊界又在哪裡停住？\n\n錨定已知：可以把這裡想成 release gate。不是說整個世界都完美，而是要確認這個 release profile 的入口、資料流、工具行為、auth、觀測方式都有證據；不屬於這次 profile 的能力要明確放到 P2，不可以假裝已經做完。\n\nMental model：P0 closeout 的核心不是 checkbox，而是 claim boundary。Phase 4 證明 lifecycle，Phase 5 證明 live app/data/tool schema，Phase 6 證明 policy/model-behavior 剩餘項；最後 docs/todo 把 active P0 清掉，只留下 P1/P2。"
+    },
+    {
+      "file": "docs/spec.md",
+      "line": 25,
+      "endLine": 40,
+      "ref": "58981b3f3304269377db9e2f23acee69b8931ca8",
+      "title": "Canonical Claim Boundary",
+      "description": "## Insight\n\n機制：`docs/spec.md` 把 P0 closure 升成 repo 的 current-state 入口。真正的 claim 是「selected Chatpilot live runtime profile」通過 Phase 4/5/6，不是說 Codex adapter 已經等於完整 Copilot CLI。\n\n故障模式：如果這裡只寫成泛泛的 production ready，後面的人會誤以為所有 profiles、所有 multimodal、所有 observability 都已經被證明，review 邊界會漂掉。\n\n設計取捨：把 boundary 寫在 spec 比只放在 todo 更重，因為 spec 是下一個 session 的第一入口；代價是每次 gate 改變都要回來更新它。\n\n白話解析：這段是在替整個 repo 宣告「我們現在能相信什麼」。它其實就是把 P0 的成功範圍鎖在 Chatpilot 這條 lane。之後如果有人問能不能拿去做別的 runtime profile，要先回到這裡看範圍。"
+    },
+    {
+      "file": "docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md",
+      "line": 36,
+      "endLine": 48,
+      "ref": "58981b3f3304269377db9e2f23acee69b8931ca8",
+      "title": "P0 Closure Addendum",
+      "description": "## Insight\n\n機制：這個 addendum 是 readiness inventory 的收口層：Phase 4、Phase 5、Phase 6 各自解掉什麼，B7/D3 為什麼不是 P0 blocker，都在同一個地方講清楚。\n\n故障模式：如果只把 Phase 6 artifact 丟進 docs，讀者要自己把 A/B/C/D issue 對回 gate，容易把 deferred 看成 missing。\n\n設計取捨：這裡不刪掉原始 issue inventory，而是在前面加 closure addendum。好處是保留歷史風險清單，壞處是文件會比較長，但 review trace 比短文件更重要。\n\n白話解析：這段像是總驗收單。它其實就是說哪些門已經過、哪些門被正式移到 P2。review 時先讀這裡，可以避免在舊 issue table 裡迷路。"
+    },
+    {
+      "file": "docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md",
+      "line": 143,
+      "endLine": 168,
+      "ref": "58981b3f3304269377db9e2f23acee69b8931ca8",
+      "title": "Evidence Index",
+      "description": "## Insight\n\n機制：conformance index 是 durable evidence map。它記 raw artifact path、sha256、summary artifact、結果和 verification command，讓 P0 closure 可以被重查，不只是一句口頭通過。\n\n故障模式：如果 raw auth smoke 被整包 commit，帳號資訊可能進 git；如果只留口頭摘要，下一個 session 又得重跑高成本 live proof。\n\n設計取捨：repo 保存 sanitized summary 和 hash，不保存 raw auth smoke。好處是可追溯又不洩漏身份資料；代價是要保留 `/tmp` raw path 作為本機證據線索。\n\n白話解析：這段是在告訴你證據放哪裡、怎麼驗。它其實就是 P0 的證據目錄。看到 hash 和 pass criteria，才知道這不是靠記憶收尾。"
+    },
+    {
+      "file": "nodejs/conformance/codexConformanceProof.ts",
+      "line": 250,
+      "endLine": 356,
+      "ref": "58981b3f3304269377db9e2f23acee69b8931ca8",
+      "title": "Policy Readiness Helper",
+      "description": "## Insight\n\n機制：`buildToolPolicyReadinessReport` 把 Phase 6 policy gate 變成純資料檢查：namespace collision、description quality、prompt coverage、side-effect safety、multimodal decision 都要有 explicit assertion。\n\n故障模式：如果這些只靠人工讀文件，最容易漏的是「某個 tool 沒 prompt case」或「side-effecting tool 被 live benchmark 執行」。這個 helper 會把漏項變成 fail。\n\n設計取捨：它沒有真的呼叫 26 個工具，這是刻意的。好處是避免 WorkProof/browser/web/search/schedule/media side effects；壞處是 selection quality 是 safe surrogate，不是全量 live benchmark。\n\n白話解析：這段是在把政策檢查變成機器可以判斷的報表。它其實就是一張安全版工具清單檢查器。日後新增工具時，漏填 prompt 或碰到 Codex native 名稱會直接冒出來。"
+    },
+    {
+      "file": "nodejs/examples/codex-adapter-phase6-policy-audit.ts",
+      "line": 77,
+      "endLine": 218,
+      "ref": "58981b3f3304269377db9e2f23acee69b8931ca8",
+      "title": "Phase 6 Audit Runner",
+      "description": "## Insight\n\n機制：這支 runner 從 Phase 5 live acceptance artifact 抽出真實 26-tool schema，再套上 Phase 6 prompt matrix、native tool names、side-effect tool names、multimodal decisions 和 auth smoke summary，最後輸出 issueStatuses。\n\n故障模式：如果 prompt matrix 是自己手寫一份和 production schema 無關的假清單，就會變成文件劇場。這裡至少從 live Phase 5 artifact 取 tool descriptors，讓 Phase 6 policy 對到實際暴露給 Codex 的工具。\n\n設計取捨：prompt matrix 裡的高風險工具用 `dry-run-only`。這犧牲了一部分 live execution 強度，但保住了 P0 不能亂推播、亂瀏覽、亂排程、亂寫外部狀態的邊界。\n\n白話解析：這段是在把 Phase 6 的判斷做成一個可重跑的生成器。它其實就是拿上一階段真的工具清單，逐一確認每個工具該怎麼安全測。"
+    },
+    {
+      "file": "docs/integrations/codex-sdk-runtime-profile/artifacts/refactor-phase6-policy-cleanup@2026-06-11-1143.summary.json",
+      "line": 19,
+      "endLine": 88,
+      "ref": "58981b3f3304269377db9e2f23acee69b8931ca8",
+      "title": "Machine Verdict",
+      "description": "## Insight\n\n機制：summary artifact 是 Phase 6 的機器可讀 verdict：26 tools、26 prompt cases、zero collisions、zero description issues、zero uncovered tools、zero unsafe prompt cases。\n\n故障模式：如果 P0 close 只寫在 markdown，reviewer 要相信作者；這個 JSON 讓 reviewer 可以直接看 assertions 與 issueStatuses。\n\n設計取捨：artifact 保存 boolean/hash evidence，不保存 raw auth identity。這讓 repo 能保存足夠證據，同時避免把帳號細節 commit 進來。\n\n白話解析：這段就是機器版驗收單。它其實在說：每個 Phase 6 檢查項都有 pass 或 explicit deferral，不是只靠文件手動勾選。"
+    },
+    {
+      "file": "docs/integrations/codex-sdk-runtime-profile/production-runbook.md",
+      "line": 51,
+      "endLine": 91,
+      "ref": "58981b3f3304269377db9e2f23acee69b8931ca8",
+      "title": "Operational Contract",
+      "description": "## Insight\n\n機制：runbook 把 P0 closure 轉成 operator 要遵守的 runtime contract：26-tool catalog、side-effect benchmark 必須 dry-run 或 safe fake、media policy、summary-path observability。\n\n故障模式：如果實作 pass 但 runbook 沒寫，下一個人可能用 live WorkProof push 或 browser/search 去做 benchmark，也可能誤以為 direct multimodal tool result 已經支援。\n\n設計取捨：runbook 對 selected Chatpilot lane 保守，尤其是 side effects 和 native tool prior。代價是想做 coding-agent profile 時要另開 profile 證據，不能偷吃這條 lane 的 P0 claim。\n\n白話解析：這段是在把測試證據翻成操作規則。它其實就是告訴 operator：可以怎麼跑，哪些事情現在還不能當成已支援。"
+    },
+    {
+      "file": "docs/todo-finished.md",
+      "line": 9,
+      "endLine": 30,
+      "ref": "58981b3f3304269377db9e2f23acee69b8931ca8",
+      "title": "P0 Archived With Trace",
+      "description": "## Insight\n\n機制：completed archive 保存 P0 的來源、artifact、runbook、code surface、raw local artifact path，以及每個 checkbox 的 completion evidence。\n\n故障模式：如果只在 active todo 打勾，下一個 session 會失去為什麼關閉、用什麼證據關閉、哪些能力被 defer 的上下文。\n\n設計取捨：archive 比短 checkbox verbose，但它是 future audit 的入口。代價是文檔稍重，換來可追溯性。\n\n白話解析：這段是在把完成事項封存成可回查紀錄。它其實就是 P0 的收據：誰關、靠什麼關、哪些東西沒硬塞進 P0。"
+    },
+    {
+      "file": "docs/todo.md",
+      "line": 1,
+      "endLine": 20,
+      "ref": "58981b3f3304269377db9e2f23acee69b8931ca8",
+      "title": "Active Work Starts At P1",
+      "description": "## Insight\n\n機制：active todo 現在從 P1 graduation 開始，表示 P0 readiness queue 已經不再是 active work。這是 todo 層面的 closure proof。\n\n故障模式：如果 P0 殘留在 active todo，agent 會在下一輪誤以為還在 gate cleanup，甚至重開已關閉的 phase。\n\n設計取捨：P1 graduation 被保留，因為它是 API/product surface decision，不是 P0 readiness blocker。這讓下一步討論更乾淨：要不要從 experimental 畢業，是另一個 review milestone。\n\n白話解析：這段是在清空工作台。它其實就是說：P0 已收，下一件事不是補 P0，而是決定 adapter 專案/路徑怎麼正式化。"
+    }
+  ]
+}

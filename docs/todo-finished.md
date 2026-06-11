@@ -1,10 +1,32 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 23:32
+Last Updated: 2026-06-11 23:36
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Codex Adapter P1 Audit And Canonical Closeout Phase 7 @2026-06-11-2336
+
+Section source:
+
+- Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
+- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md), Phase 7
+- Canonical spec: [docs/spec.md](./spec.md)
+- Code map: [docs/architecture/runtime-backend-code-map.md](./architecture/runtime-backend-code-map.md)
+- Conformance index: [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md)
+- Audit: [.audit/AUDIT-codex-adapter-p1-closeout-v1@2026-06-11-2336.md](../.audit/AUDIT-codex-adapter-p1-closeout-v1@2026-06-11-2336.md)
+- Review tour: [.tours/audit-codex-adapter-p1-closeout-20260611-2336.tour](../.tours/audit-codex-adapter-p1-closeout-20260611-2336.tour)
+- Source: active todo `P1: Runtime Adapter Refactor Architecture Guard` Phase 7
+
+- [x] Completed the post-audit P1 review scope.
+      Completion evidence: the audit covers implementation after the previous audit coverage point through `6c0a8db`, including report assembly, optional probe status, tool/approval probes, tool factory, protocol recorder, scenario state, selected-profile comparison closeout, and dynamic-tool policy extraction.
+- [x] Preserved public boundary checks.
+      Completion evidence: `nodejs/test/codex-adapter.test.ts` still checks that root SDK exports do not expose experimental adapter internals, the experimental subpath does not expose raw gateway classes, and internal runtime implementation subpaths are not published.
+- [x] Updated canonical documentation.
+      Completion evidence: [docs/spec.md](./spec.md) and [runtime-backend-code-map.md](./architecture/runtime-backend-code-map.md) now point to `nodejs/conformance/` and `nodejs/src/experimental/codexAdapterToolPolicy.ts` as current module surfaces.
+- [x] Produced CodeTour-backed audit closeout.
+      Completion evidence: [.tours/audit-codex-adapter-p1-closeout-20260611-2336.tour](../.tours/audit-codex-adapter-p1-closeout-20260611-2336.tour) walks the policy helper, live adapter insertion, harness ownership split, and conformance verdict gate.
 
 ## Completed: Codex Adapter Conditional Policy Extraction Phase 6 @2026-06-11-2332
 

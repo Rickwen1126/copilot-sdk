@@ -1,7 +1,7 @@
 # Runtime Backend Code Map
 
 Created: 2026-06-01 14:05
-Last Updated: 2026-06-11 15:34
+Last Updated: 2026-06-11 23:36
 Status: Active
 
 This code map describes the current Codex replacement path for the selected `SDK Core Profile + Coding Agent Profile`.
@@ -12,9 +12,10 @@ This code map describes the current Codex replacement path for the selected `SDK
 2. [Codex SDK runtime profile plan](../integrations/codex-sdk-runtime-profile/plan.md) defines the conformance gate.
 3. [Codex adapter graduation decision](../integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md) explains why the adapter intentionally remains under the experimental package/source boundary for the next P1 slice.
 4. [Codex adapter module](../../nodejs/src/experimental/codexAdapter.ts) implements the Copilot-protocol facade over Codex app-server.
-5. [Codex adapter server runner](../../nodejs/src/experimental/codexAdapterServer.ts) exposes the adapter as a long-running TCP server for downstream SDK clients.
-6. [Adapter conformance harness](../../nodejs/examples/copilot-codex-adapter-spike.ts) proves selected profile parity against `Copilot SDK + Copilot CLI`.
-7. [Chatpilot runtime acceptance harness](../../nodejs/examples/chatpilot-runtime-acceptance.ts) proves app-level new-session and run-session behavior through real Chatpilot `/cli/chat`.
+5. [Dynamic tool policy helper](../../nodejs/src/experimental/codexAdapterToolPolicy.ts) keeps the protocol-v2/protocol-v3 custom-tool routing split explicit.
+6. [Codex adapter server runner](../../nodejs/src/experimental/codexAdapterServer.ts) exposes the adapter as a long-running TCP server for downstream SDK clients.
+7. [Adapter conformance harness](../../nodejs/examples/copilot-codex-adapter-spike.ts), backed by [nodejs/conformance](../../nodejs/conformance), proves selected profile parity against `Copilot SDK + Copilot CLI`.
+8. [Chatpilot runtime acceptance harness](../../nodejs/examples/chatpilot-runtime-acceptance.ts) proves app-level new-session and run-session behavior through real Chatpilot `/cli/chat`.
 
 ## Copilot SDK Repo Surfaces
 
@@ -40,6 +41,7 @@ Key behavior:
 - protocol v2 is supported for Chatpilot's current Python SDK.
 - `system_message.mode=replace` maps to Codex `thread/start.baseInstructions`.
 - SDK custom tools map to Codex `thread/start.experimental.dynamicTools`.
+- protocol-version dynamic-tool routing is planned by [nodejs/src/experimental/codexAdapterToolPolicy.ts](../../nodejs/src/experimental/codexAdapterToolPolicy.ts), not by a generic runtime framework policy.
 - Codex `item/tool/call` maps to SDK tool handling:
   - protocol v3: `external_tool.requested` plus `session.tools.handlePendingToolCall`
   - protocol v2: `tool.call` request/response
@@ -67,6 +69,16 @@ Operational behavior:
 - writes optional shutdown summary with adapter and Codex transcripts
 - is exposed through package bin `copilot-codex-adapter`
 
+### `nodejs/src/experimental/codexAdapterToolPolicy.ts`
+
+Primary responsibility: express the only current Strategy/Policy variation axis in the adapter source path.
+
+Current policy:
+
+- protocol v2 returns SDK `tool.call` request params;
+- protocol v3 returns stable pending-tool request ids and `external_tool.requested` event payloads;
+- gateway IO, timeout handling, transcript recording, and session mutation stay in `CodexCopilotAdapterServer`.
+
 ### `nodejs/examples/copilot-codex-adapter-spike.ts`
 
 Primary responsibility: adapter-module conformance gate.
@@ -85,6 +97,21 @@ The harness runs the same profile against both:
 
 - `Copilot SDK + Copilot CLI`
 - `Copilot SDK + Codex adapter + Codex app-server`
+
+### `nodejs/conformance/`
+
+Primary responsibility: reusable conformance support for the selected-profile harness.
+
+Current ownership split:
+
+- `codexConformanceLedger.ts`: transcript-to-ledger normalization, baseline/adapter ledger collection, and hop matching.
+- `codexConformanceReport.ts`: conformance status aggregation, status triplets, report artifact envelope, and unsupported profile defaults.
+- `codexConformanceApprovalProbe.ts`: command/file approval probe fixture naming, prompt contracts, permission request validation, and read-back summaries.
+- `codexConformanceToolProbe.ts`: custom-tool and tool-failure probe data/intent assertions.
+- `codexConformanceToolFactory.ts`: deterministic custom-tool prompts, handlers, lookup/failure/denied tool definitions.
+- `codexConformanceProtocolRecorder.ts`: SDK request/response and notification capture around client connections.
+- `codexConformanceScenarioState.ts`: live runner event buckets and observed event type summaries.
+- `codexConformanceProof.ts`: Chatpilot acceptance proof helpers for schema round-trip and tool-call compliance.
 
 ### `nodejs/examples/chatpilot-runtime-acceptance.ts`
 

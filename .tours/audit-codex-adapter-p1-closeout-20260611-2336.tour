@@ -1,0 +1,42 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Audit: Codex Adapter P1 Closeout",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 這條 tour 在看什麼\n\n這條 tour 其實是在看：P1 architecture guard 最後有沒有真的把 spike gravity 收乾淨，而不是只把大檔案拆成更多小檔案。\n\n如果先記不住細節，先抓住每個 step 都在回答同一件事：這個責任現在是不是有清楚主人，而且行為有沒有被 conformance 證據保護。\n\n## 錨定已知\n\n可以把這次 closeout 想成海關櫃台分工：adapter 是櫃台，gateway 是後台通道，mapper/policy 是表單規則，conformance harness 是查驗紀錄。好的分工不是每個人都有新職稱，而是每張表單、每個判斷、每份查驗紀錄都知道該找誰。\n\n## Mental Model\n\nPhase 5 把 conformance harness 按 evidence ownership 拆開；Phase 6 只抽真正有變體的 protocol dynamic-tool policy；Phase 7 要確認 canonical docs、tests、selected-profile artifacts 都對上這個形狀。"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterToolPolicy.ts",
+      "line": 1,
+      "endLine": 62,
+      "ref": "6c0a8dbb91b0becf0629d6acd849a093fa0c8499",
+      "title": "Step 1: Real Policy Variant",
+      "description": "## Insight\n\n機制：這個 helper 只處理一個真變體：protocol v2 和 protocol v3 的 dynamic tool routing 形狀不同。\n\n故障模式：如果把它抽成泛用 runtime policy，會把單一 backend 的想像包成框架；如果完全不抽，v2/v3 的差異會繼續散在 adapter handler 裡。\n\n設計取捨：它回傳純資料 plan，不碰 IO。代價是 adapter 仍然要執行 timeout、transcript、respond，但好處是 policy 不會假裝擁有 runtime lifecycle。\n\n## 白話解析\n\n這段在整條鏈上扮演判斷表的角色。它其實就是在說：同樣是 Codex dynamic tool call，v2 要直接問 SDK `tool.call`，v3 要先丟一個 pending event 給 SDK。讀者會在 adapter 收到 `item/tool/call` 時看到這個差異被套用。\n\n## Code Detail\n\n這段在幹嘛：用 discriminated union 回傳兩種 routing plan，並固定 v3 的 request id 形狀為 `codex-dynamic-tool:<callId>`。\n\n為什麼這樣寫：好處是 variant test 可以直接 assert 輸出；adapter 不需要知道如何拼 event payload；未來若 protocol 形狀變，變更點集中。壞處是它只適合 routing shape，不適合藏 gateway respond 或 timeout。\n\n思考問題：為什麼這是 policy，而 approval mapping 仍只是 mapper？如果 v3 request id 不穩定，哪個 downstream request 會先壞？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 1210,
+      "endLine": 1288,
+      "ref": "6c0a8dbb91b0becf0629d6acd849a093fa0c8499",
+      "title": "Step 2: Live Adapter Insertion",
+      "description": "## Insight\n\n機制：adapter 先驗證 session/tool ownership，再用 policy plan 決定 v2 或 v3 路徑。\n\n故障模式：如果 policy helper 接錯，selected-profile 的 custom tool 或 tool failure probe 會在 transcript/data/intent assertion 其中一層失敗。\n\n設計取捨：adapter 仍保留 timeout、pending map、transcript、Codex response，因為這些是 runtime IO 和 session state，不是純 policy。\n\n## 白話解析\n\n這段是新 policy 真正進 live path 的地方。它其實就是在把「判斷路線」和「真的開車」分開：helper 決定走 v2/v3，adapter 繼續負責把事件送出去、等結果、逾時時回失敗。失敗時會表現在 SDK pending tool call 沒完成，或 Codex response 收到 failed result。\n\n## Code Detail\n\n這段在幹嘛：`planDynamicToolCallRouting()` 建出 routing plan；v2 直接進 `handleCodexDynamicToolCallV2()`；v3 建 pending timeout 並 emit `external_tool.requested`。\n\n為什麼這樣寫：好處是 v2/v3 差異集中，但不把 side effect 偷搬進 helper；timeout 邏輯保持接近 pending map。壞處是 adapter handler 仍偏長，Phase 7 audit 只能確認責任變清楚，不能宣稱 adapter 已完全瘦身。\n\n思考問題：哪幾行證明 v3 還是 session event flow？如果 SDK 永遠不回 pending tool result，哪幾行負責讓 Codex 不無限等待？"
+    },
+    {
+      "file": "nodejs/examples/copilot-codex-adapter-spike.ts",
+      "line": 5,
+      "endLine": 74,
+      "ref": "6c0a8dbb91b0becf0629d6acd849a093fa0c8499",
+      "title": "Step 3: Harness Ownership Split",
+      "description": "## Insight\n\n機制：selected-profile harness 仍是 entrypoint，但 approval, ledger, protocol recording, report, scenario state, tool probe, and tool factory 都有各自 conformance module。\n\n故障模式：如果 harness 只是換檔名而沒有 ownership split，這裡會看到大段 assertion/helper 邏輯仍塞在 spike entrypoint。\n\n設計取捨：entrypoint 保留 scenario orchestration，support modules 擁有可測的 evidence bricks。代價是 import list 變長；好處是每種 evidence 有 dedicated tests。\n\n## 白話解析\n\n這段是拆分後的總控台。它其實就是把原本一整包測試劇本拆成幾個專職人員：有人管 approval probe，有人管 ledger，有人管 report，有人管 tool probe。review 時不用再從 4k 行裡猜哪段是證據規則。\n\n## Code Detail\n\n這段在幹嘛：從 `nodejs/conformance/*` 匯入各責任模組，讓 spike file 主要保留 scenario setup 和 orchestration。\n\n為什麼這樣寫：好處是 module tests 可以針對 evidence ownership；selected-profile artifact 仍由同一 entrypoint 產出；舊 inline minimal harness 已不再是 active oracle。壞處是 conformance folder 現在成為真正維護 surface，Phase 7 docs 必須把它列入 code map。\n\n思考問題：哪個 import family 負責「結果判斷」而不是「收集事件」？如果 optional probe 沒跑，哪個 module 應該決定 fail 還是 not-run？"
+    },
+    {
+      "file": "nodejs/conformance/codexConformanceReport.ts",
+      "line": 45,
+      "endLine": 159,
+      "ref": "6c0a8dbb91b0becf0629d6acd849a093fa0c8499",
+      "title": "Step 4: Verdict Gate",
+      "description": "## Insight\n\n機制：report module 把 backend status、trace parity、data assertion、intent assertion 合成 machine-readable verdict。\n\n故障模式：如果 missing optional probe 被錯判，可能出現「其實 probe 沒跑，但報表 pass」或「probe 沒配置卻把 run 判 fail」的假訊號。\n\n設計取捨：status aggregation 是純函式，容易測；但它不應該知道每個 scenario 的 runtime 細節，scenario-specific evidence 留在 probe modules。\n\n## 白話解析\n\n這段是整個 conformance 的判官。它其實就是在把各路證據收成 pass/fail/not-run，而不是靠人眼看 transcript。你會在 raw summary artifact 裡看到它產生 ledger counts、unsupported profiles、每個 check 的 status triplet。\n\n## Code Detail\n\n這段在幹嘛：`combineStatuses()` 定義 fail 優先，其次 not-run；`statusFromOptionalProbe()` 處理 optional probe 缺席；`buildConformanceReportArtifact()` 產生最終 report envelope。\n\n為什麼這樣寫：好處是 artifact verdict 不靠散落條件；每個 selected-profile run 能比較同一組 checks。壞處是它只保證狀態合成正確，仍需要 probe modules 和 live artifacts 證明資料來源正確。\n\n思考問題：為什麼 `fail` 要比 `not-run` 優先？如果 adapter ledger 沒有 tool call evidence，哪一層應該先把它轉成 missing evidence？"
+    }
+  ]
+}

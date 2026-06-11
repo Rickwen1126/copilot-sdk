@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 23:32
+Last Updated: 2026-06-11 23:36
 Status: Active
 
 ## P1: Runtime Adapter Refactor Architecture Guard @2026-06-03-1141
@@ -14,12 +14,7 @@ Section source:
 - References: [runtime adapter architecture boundary](./reference/runtime-adapter-architecture-boundary.md), [runtime adapter design patterns](./reference/runtime-adapter-design-patterns.md), [runtime adapter testing evidence](./reference/runtime-adapter-testing-evidence.md), [SHIP](../.ship/SHIP-codex-adapter-module-cleanup@2026-06-01.md), [learning packet](./integrations/codex-sdk-runtime-profile/learning-design-patterns-architecture-testing.md), [prior cleanup draft](./integrations/codex-sdk-runtime-profile/module-cleanup-plan.md), and [runtime backend code map](./architecture/runtime-backend-code-map.md)
 - Source: user request to consolidate side-thread learning/refactor context into canonical spec/plan before implementation
 
-- [ ] Phase 7: Audit and canonical closeout.
-  - Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
-  - Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md)
-  - Code/Surface: final adapter modules, harness modules, [docs/architecture/runtime-backend-code-map.md](./architecture/runtime-backend-code-map.md), [docs/spec.md](./spec.md), [docs/todo-finished.md](./todo-finished.md)
-  - Source: refactor plan Phase 7
-  - Completion evidence: before/after conformance artifacts compared, public export/import boundary checks pass, new modules have dedicated tests plus composed conformance/E2E evidence, stale active todos are archived, and canonical docs/code map reflect final module surfaces.
+No active P1 Runtime Adapter Refactor Architecture Guard phases remain. Completed Phase 5-7 work has been moved to [docs/todo-finished.md](./todo-finished.md).
 
 Current milestone state:
 

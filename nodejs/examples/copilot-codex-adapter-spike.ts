@@ -23,6 +23,17 @@ import {
     type ConformanceReport,
 } from "../conformance/codexConformanceReport.js";
 import {
+    customToolProbeDataPass,
+    customToolProbeFinalMessageUsesResult,
+    customToolProbeHandlerCallSummary,
+    customToolProbeIntentPass,
+    toolFailureHandlerCallSummary,
+    toolFailureProbeDataPass,
+    toolFailureProbeIntentPass,
+    type CustomToolProbeExpectation,
+    type ToolFailureProbeExpectation,
+} from "../conformance/codexConformanceToolProbe.js";
+import {
     CodexCopilotAdapterServer,
     type CodexAdapterSandboxMode,
 } from "../src/experimental/codexAdapter.js";
@@ -54,6 +65,18 @@ const TOOL_FAILURE_NAME = "fail_runtime_fact";
 const TOOL_FAILURE_ERROR = "CUSTOM_TOOL_FAILURE_EXPECTED_8C2B";
 const TOOL_DENIED_NAME = "deny_runtime_fact";
 const TOOL_DENIED_RESULT = "CUSTOM_TOOL_DENIED_EXPECTED_4D91";
+const CUSTOM_TOOL_PROBE_EXPECTATION: CustomToolProbeExpectation = {
+    topic: TOOL_PROBE_TOPIC,
+    toolName: TOOL_PROBE_NAME,
+    expectedResult: TOOL_PROBE_RESULT,
+};
+const TOOL_FAILURE_PROBE_EXPECTATION: ToolFailureProbeExpectation = {
+    topic: TOOL_PROBE_TOPIC,
+    failureToolName: TOOL_FAILURE_NAME,
+    deniedToolName: TOOL_DENIED_NAME,
+    expectedFailureError: TOOL_FAILURE_ERROR,
+    expectedDeniedResult: TOOL_DENIED_RESULT,
+};
 
 mkdirSync(WORKDIR, { recursive: true });
 
@@ -1354,56 +1377,6 @@ function buildFileApprovalCheck(
     });
 }
 
-function toolProbeDataPass(probe: Record<string, unknown> | undefined): boolean {
-    if (!probe) {
-        return false;
-    }
-    const handlerCalls = Array.isArray(probe.handlerCalls) ? probe.handlerCalls : [];
-    const assertionFailures = stringArray(probe.assertionFailures);
-    const firstHandlerCall = isRecord(handlerCalls[0]) ? handlerCalls[0] : undefined;
-    const args = isRecord(firstHandlerCall?.args) ? firstHandlerCall.args : {};
-    const invocation = isRecord(firstHandlerCall?.invocation) ? firstHandlerCall.invocation : {};
-    return (
-        handlerCalls.length === 1 &&
-        assertionFailures.length === 0 &&
-        getNestedString(probe, "expectedResult") === TOOL_PROBE_RESULT &&
-        args.topic === TOOL_PROBE_TOPIC &&
-        invocation.toolName === TOOL_PROBE_NAME &&
-        typeof invocation.toolCallId === "string" &&
-        invocation.toolCallId.length > 0 &&
-        firstHandlerCall?.result === TOOL_PROBE_RESULT
-    );
-}
-
-function toolProbeIntentPass(probe: Record<string, unknown> | undefined): boolean {
-    const assistantMessage = getNestedString(probe, "assistantMessage");
-    return toolProbeDataPass(probe) && !!assistantMessage && assistantMessage.trim().length > 0;
-}
-
-function toolProbeFinalMessageUsesResult(probe: Record<string, unknown> | undefined): boolean {
-    return (getNestedString(probe, "assistantMessage") ?? "").includes(TOOL_PROBE_RESULT);
-}
-
-function toolProbeHandlerCallSummary(probe: Record<string, unknown> | undefined): string {
-    const handlerCalls = Array.isArray(probe?.handlerCalls) ? probe.handlerCalls : [];
-    return handlerCalls
-        .map((call) => {
-            if (!isRecord(call)) {
-                return "invalid";
-            }
-            const args = isRecord(call.args) ? call.args : {};
-            const invocation = isRecord(call.invocation) ? call.invocation : {};
-            return [
-                `topic=${String(args.topic ?? "")}`,
-                `toolName=${String(invocation.toolName ?? "")}`,
-                `toolCallId=${String(invocation.toolCallId ?? "")}`,
-                `resultHash=${typeof call.result === "string" ? hashString(call.result) : ""}`,
-                `error=${typeof call.error === "string" ? call.error : ""}`,
-            ].join(";");
-        })
-        .join("|");
-}
-
 function buildCustomToolCallCheck(
     protocolRecording: unknown,
     adapterValidation: unknown,
@@ -1501,10 +1474,16 @@ function buildCustomToolCallCheck(
         adapterHandlerCalls.length === 1 &&
         adapterFailures.length === 0;
 
-    const baselineData = toolProbeDataPass(baselineToolProbe);
-    const adapterData = toolProbeDataPass(adapterToolProbe);
-    const baselineIntent = toolProbeIntentPass(baselineToolProbe);
-    const adapterIntent = toolProbeIntentPass(adapterToolProbe);
+    const baselineData = customToolProbeDataPass(baselineToolProbe, CUSTOM_TOOL_PROBE_EXPECTATION);
+    const adapterData = customToolProbeDataPass(adapterToolProbe, CUSTOM_TOOL_PROBE_EXPECTATION);
+    const baselineIntent = customToolProbeIntentPass(
+        baselineToolProbe,
+        CUSTOM_TOOL_PROBE_EXPECTATION
+    );
+    const adapterIntent = customToolProbeIntentPass(
+        adapterToolProbe,
+        CUSTOM_TOOL_PROBE_EXPECTATION
+    );
 
     const baselineStatuses = statusTripletFromOptionalProbe({
         probePresent: !!baselineToolProbe,
@@ -1535,15 +1514,15 @@ function buildCustomToolCallCheck(
         intentAssertion: combineStatuses(baselineStatuses.intent, adapterStatuses.intent),
         evidence: [
             `baselineToolProbe.toolName=${getNestedString(baselineToolProbe, "toolName") ?? ""}`,
-            `baselineToolProbe.handlerCalls=${toolProbeHandlerCallSummary(baselineToolProbe)}`,
+            `baselineToolProbe.handlerCalls=${customToolProbeHandlerCallSummary(baselineToolProbe)}`,
             `baselineToolProbe.assertionFailures=${baselineFailures.join("|")}`,
             `baselineToolProbe.assistantHash=${hashString(getNestedString(baselineToolProbe, "assistantMessage") ?? "")}`,
-            `baselineToolProbe.finalUsesResult=${String(toolProbeFinalMessageUsesResult(baselineToolProbe))}`,
+            `baselineToolProbe.finalUsesResult=${String(customToolProbeFinalMessageUsesResult(baselineToolProbe, CUSTOM_TOOL_PROBE_EXPECTATION))}`,
             `adapterToolProbe.toolName=${getNestedString(adapterToolProbe, "toolName") ?? ""}`,
-            `adapterToolProbe.handlerCalls=${toolProbeHandlerCallSummary(adapterToolProbe)}`,
+            `adapterToolProbe.handlerCalls=${customToolProbeHandlerCallSummary(adapterToolProbe)}`,
             `adapterToolProbe.assertionFailures=${adapterFailures.join("|")}`,
             `adapterToolProbe.assistantHash=${hashString(getNestedString(adapterToolProbe, "assistantMessage") ?? "")}`,
-            `adapterToolProbe.finalUsesResult=${String(toolProbeFinalMessageUsesResult(adapterToolProbe))}`,
+            `adapterToolProbe.finalUsesResult=${String(customToolProbeFinalMessageUsesResult(adapterToolProbe, CUSTOM_TOOL_PROBE_EXPECTATION))}`,
         ],
         missing: [
             ...(!RUN_TOOL_PROBE ? ["custom tool probe is not enabled"] : []),
@@ -1587,102 +1566,6 @@ function buildCustomToolCallCheck(
                 : []),
         ],
     });
-}
-
-function firstProbeHandlerCall(
-    probe: Record<string, unknown> | undefined,
-    key: string
-): Record<string, unknown> | undefined {
-    const calls = Array.isArray(probe?.[key]) ? probe[key] : [];
-    const first = calls[0];
-    return isRecord(first) ? first : undefined;
-}
-
-function probeHandlerCallMatches(
-    call: Record<string, unknown> | undefined,
-    expectedToolName: string,
-    expectedField: "result" | "error",
-    expectedValue: string
-): boolean {
-    if (!call) {
-        return false;
-    }
-    const args = isRecord(call.args) ? call.args : {};
-    const invocation = isRecord(call.invocation) ? call.invocation : {};
-    return (
-        args.topic === TOOL_PROBE_TOPIC &&
-        invocation.toolName === expectedToolName &&
-        typeof invocation.toolCallId === "string" &&
-        invocation.toolCallId.length > 0 &&
-        call[expectedField] === expectedValue
-    );
-}
-
-function toolFailureProbeDataPass(probe: Record<string, unknown> | undefined): boolean {
-    if (!probe) {
-        return false;
-    }
-    const failureHandlerCalls = Array.isArray(probe.failureHandlerCalls)
-        ? probe.failureHandlerCalls
-        : [];
-    const deniedHandlerCalls = Array.isArray(probe.deniedHandlerCalls)
-        ? probe.deniedHandlerCalls
-        : [];
-    const assertionFailures = stringArray(probe.assertionFailures);
-    return (
-        failureHandlerCalls.length === 1 &&
-        deniedHandlerCalls.length === 1 &&
-        assertionFailures.length === 0 &&
-        getNestedString(probe, "expectedFailureError") === TOOL_FAILURE_ERROR &&
-        getNestedString(probe, "expectedDeniedResult") === TOOL_DENIED_RESULT &&
-        probeHandlerCallMatches(
-            firstProbeHandlerCall(probe, "failureHandlerCalls"),
-            TOOL_FAILURE_NAME,
-            "error",
-            TOOL_FAILURE_ERROR
-        ) &&
-        probeHandlerCallMatches(
-            firstProbeHandlerCall(probe, "deniedHandlerCalls"),
-            TOOL_DENIED_NAME,
-            "result",
-            TOOL_DENIED_RESULT
-        )
-    );
-}
-
-function toolFailureProbeIntentPass(probe: Record<string, unknown> | undefined): boolean {
-    const failureAssistantMessage = getNestedString(probe, "failureAssistantMessage");
-    const deniedAssistantMessage = getNestedString(probe, "deniedAssistantMessage");
-    return (
-        toolFailureProbeDataPass(probe) &&
-        !!failureAssistantMessage &&
-        failureAssistantMessage.trim().length > 0 &&
-        !!deniedAssistantMessage &&
-        deniedAssistantMessage.trim().length > 0
-    );
-}
-
-function toolFailureHandlerCallSummary(
-    probe: Record<string, unknown> | undefined,
-    key: string
-): string {
-    const handlerCalls = Array.isArray(probe?.[key]) ? probe[key] : [];
-    return handlerCalls
-        .map((call) => {
-            if (!isRecord(call)) {
-                return "invalid";
-            }
-            const args = isRecord(call.args) ? call.args : {};
-            const invocation = isRecord(call.invocation) ? call.invocation : {};
-            return [
-                `topic=${String(args.topic ?? "")}`,
-                `toolName=${String(invocation.toolName ?? "")}`,
-                `toolCallId=${String(invocation.toolCallId ?? "")}`,
-                `resultHash=${typeof call.result === "string" ? hashString(call.result) : ""}`,
-                `errorHash=${typeof call.error === "string" ? hashString(call.error) : ""}`,
-            ].join(";");
-        })
-        .join("|");
 }
 
 function buildToolDenyOrFailureCheck(
@@ -1771,10 +1654,22 @@ function buildToolDenyOrFailureCheck(
         adapterDeniedCalls.length === 1 &&
         adapterFailures.length === 0;
 
-    const baselineData = toolFailureProbeDataPass(baselineToolFailureProbe);
-    const adapterData = toolFailureProbeDataPass(adapterToolFailureProbe);
-    const baselineIntent = toolFailureProbeIntentPass(baselineToolFailureProbe);
-    const adapterIntent = toolFailureProbeIntentPass(adapterToolFailureProbe);
+    const baselineData = toolFailureProbeDataPass(
+        baselineToolFailureProbe,
+        TOOL_FAILURE_PROBE_EXPECTATION
+    );
+    const adapterData = toolFailureProbeDataPass(
+        adapterToolFailureProbe,
+        TOOL_FAILURE_PROBE_EXPECTATION
+    );
+    const baselineIntent = toolFailureProbeIntentPass(
+        baselineToolFailureProbe,
+        TOOL_FAILURE_PROBE_EXPECTATION
+    );
+    const adapterIntent = toolFailureProbeIntentPass(
+        adapterToolFailureProbe,
+        TOOL_FAILURE_PROBE_EXPECTATION
+    );
 
     const baselineStatuses = statusTripletFromOptionalProbe({
         probePresent: !!baselineToolFailureProbe,

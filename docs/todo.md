@@ -1,22 +1,8 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 11:43
+Last Updated: 2026-06-11 15:34
 Status: Active
-
-## P1: Codex Adapter Experimental Path Graduation @2026-06-05-1121
-
-Section source:
-
-- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md), Phase 7
-- Current package surface: [nodejs/package.json](../nodejs/package.json), `./experimental/codex-adapter`
-- Current source surface: [nodejs/src/experimental](../nodejs/src/experimental)
-- Source: user noticed the cleaned adapter modules still live under `experimental/`
-
-- [ ] Decide and execute the adapter graduation path after Phase 4/5 production evidence.
-  - Current decision: keep `nodejs/src/experimental/` and `./experimental/codex-adapter` while the Codex backend is still an incubating runtime lane.
-  - Graduation trigger: the P0 production readiness gate is closed for the selected Chatpilot profile; this decision is now unblocked but remains an independent P1 product/API-surface decision.
-  - Completion evidence: either document why the adapter intentionally remains experimental, or move implementation to a stable source path, add a stable package export, keep `./experimental/codex-adapter` as an explicit compatibility/deprecation alias if needed, and update tests/docs/code map together.
 
 ## P1: Runtime Adapter Refactor Architecture Guard @2026-06-03-1141
 

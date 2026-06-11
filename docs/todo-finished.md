@@ -1,10 +1,30 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 11:43
+Last Updated: 2026-06-11 15:34
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Codex Adapter Experimental Path Graduation Decision @2026-06-11-1534
+
+Section source:
+
+- Decision: [docs/integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md](./integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md)
+- Canonical spec: [docs/spec.md](./spec.md)
+- Code map: [docs/architecture/runtime-backend-code-map.md](./architecture/runtime-backend-code-map.md)
+- Plan source: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md), Phase 7
+- Package surface: [nodejs/package.json](../nodejs/package.json), `./experimental/codex-adapter`
+- Source surface: [nodejs/src/experimental](../nodejs/src/experimental)
+- Test guards: [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts)
+- Source: user noticed the cleaned adapter modules still live under `experimental/`
+
+- [x] Decided and executed the adapter graduation path after Phase 4/5 production evidence.
+      Completion evidence: the adapter intentionally remains under `nodejs/src/experimental/` and `./experimental/codex-adapter` for the next P1 refactor slice. The rationale is recorded in the adapter graduation decision, linked from `docs/spec.md` and the runtime backend code map, and the active todo has been removed from `docs/todo.md`.
+- [x] Preserved the stable API boundary.
+      Completion evidence: no package exports, source paths, bins, or runtime code were moved. Existing tests still guard that root SDK exports do not expose Codex adapter internals, the experimental subpath does not expose raw gateway classes, and no internal runtime subpaths are published.
+- [x] Defined the future graduation trigger.
+      Completion evidence: graduation should be revisited only after architecture guard closeout: stale inline harness residue deleted or archived, harness responsibilities split by evidence ownership, policy extraction justified by real variants, before/after conformance artifacts preserved, and canonical docs/code map pointing to final module surfaces.
 
 ## Completed: Codex Adapter P0 Production Readiness Gate @2026-06-11-1143
 

@@ -1,7 +1,7 @@
 # Copilot SDK Canonical Spec
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 11:43
+Last Updated: 2026-06-11 15:34
 Status: Active
 
 ## Purpose
@@ -15,6 +15,7 @@ This repo provides the Copilot SDK and the surrounding docs, examples, tests, an
 - The current experimental direction is the `RuntimeBackend` abstraction described in [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md).
 - Runtime replacement targets SDK runtime-profile parity for the selected app path, not full Copilot CLI parity.
 - Codex replacement work now has a reusable experimental Node module boundary at [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), exposed through the package subpath `./experimental/codex-adapter`.
+- The adapter intentionally remains experimental for the next P1 refactor slice. The graduation decision and future trigger are recorded in [docs/integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md](./integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md).
 - The adapter can also run as a long-lived Copilot-protocol server through [nodejs/src/experimental/codexAdapterServer.ts](../nodejs/src/experimental/codexAdapterServer.ts), exposed as the package bin `copilot-codex-adapter`.
 - The first downstream Chatpilot integration uses the existing SDK transport seam: Chatpilot keeps its runtime/session/app routing code stable and points its Python Copilot SDK client at the adapter with `CHATPILOT_COPILOT_CLI_URL`.
 - Protocol compatibility is versioned at the adapter boundary. Node SDK conformance stays on protocol v3 by default; current Chatpilot Python SDK compatibility uses `CODEX_ADAPTER_PROTOCOL_VERSION=2`, including v2 `tool.call` custom tool handling.
@@ -29,6 +30,7 @@ This repo provides the Copilot SDK and the surrounding docs, examples, tests, an
 - Active todo: [docs/todo.md](./todo.md)
 - Completed todo archive: [docs/todo-finished.md](./todo-finished.md)
 - Runtime backend guide: [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md)
+- Adapter graduation decision: [docs/integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md](./integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md)
 - Production readiness gate: [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md)
 - Production capability spike evidence: [docs/integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json)
 - Session continuity: [.progress/progress.md](../.progress/progress.md)

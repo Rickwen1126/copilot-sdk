@@ -1,7 +1,7 @@
 # Runtime Backend Code Map
 
 Created: 2026-06-01 14:05
-Last Updated: 2026-06-01 14:05
+Last Updated: 2026-06-11 15:34
 Status: Active
 
 This code map describes the current Codex replacement path for the selected `SDK Core Profile + Coding Agent Profile`.
@@ -10,10 +10,11 @@ This code map describes the current Codex replacement path for the selected `SDK
 
 1. [Runtime backend guide](../integrations/runtime-backends.md) defines the app-vs-runtime boundary and the supported/deferred profile split.
 2. [Codex SDK runtime profile plan](../integrations/codex-sdk-runtime-profile/plan.md) defines the conformance gate.
-3. [Codex adapter module](../../nodejs/src/experimental/codexAdapter.ts) implements the Copilot-protocol facade over Codex app-server.
-4. [Codex adapter server runner](../../nodejs/src/experimental/codexAdapterServer.ts) exposes the adapter as a long-running TCP server for downstream SDK clients.
-5. [Adapter conformance harness](../../nodejs/examples/copilot-codex-adapter-spike.ts) proves selected profile parity against `Copilot SDK + Copilot CLI`.
-6. [Chatpilot runtime acceptance harness](../../nodejs/examples/chatpilot-runtime-acceptance.ts) proves app-level new-session and run-session behavior through real Chatpilot `/cli/chat`.
+3. [Codex adapter graduation decision](../integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md) explains why the adapter intentionally remains under the experimental package/source boundary for the next P1 slice.
+4. [Codex adapter module](../../nodejs/src/experimental/codexAdapter.ts) implements the Copilot-protocol facade over Codex app-server.
+5. [Codex adapter server runner](../../nodejs/src/experimental/codexAdapterServer.ts) exposes the adapter as a long-running TCP server for downstream SDK clients.
+6. [Adapter conformance harness](../../nodejs/examples/copilot-codex-adapter-spike.ts) proves selected profile parity against `Copilot SDK + Copilot CLI`.
+7. [Chatpilot runtime acceptance harness](../../nodejs/examples/chatpilot-runtime-acceptance.ts) proves app-level new-session and run-session behavior through real Chatpilot `/cli/chat`.
 
 ## Copilot SDK Repo Surfaces
 
@@ -24,9 +25,14 @@ Primary responsibility: translate between the Copilot SDK protocol shape and Cod
 Important exports:
 
 - `CODEX_ADAPTER_CAPABILITIES`: explicit supported and deferred profile/capability claims.
-- `CodexAppServerClient`: process and JSON-RPC client wrapper for Codex app-server.
 - `CodexCopilotAdapterServer`: TCP server that accepts Copilot SDK client connections.
 - `createCodexCopilotClientOptions`: helper for SDK clients that want to connect to the adapter server.
+
+Important boundary:
+
+- the adapter remains intentionally exposed through `./experimental/codex-adapter`;
+- raw gateway / JSON-RPC implementation classes are internal and must not leak through the package subpath;
+- root SDK exports must stay free of Codex adapter internals until a future stable graduation decision changes the public contract.
 
 Key behavior:
 
@@ -136,4 +142,5 @@ Relevant behavior:
 - Chatpilot route identity, memory ownership, and tool registration remain app-substrate concerns.
 - Runtime backends do not define Chatpilot route IDs or memory partitioning.
 - Adapter conformance claims are profile-scoped; unsupported Copilot CLI escape hatches are not silently claimed.
+- The Codex adapter remains under the experimental package/source boundary until the graduation trigger in the adapter graduation decision is met.
 - Logs alone are evidence, not verdict. Verdicts require data-level assertions and machine-readable reports.

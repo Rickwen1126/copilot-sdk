@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import process from "node:process";
 import { type MessageConnection } from "vscode-jsonrpc/node.js";
-import { CopilotClient, approveAll, defineTool } from "../dist/index.js";
+import { CopilotClient, approveAll } from "../dist/index.js";
 import {
     approvalProbePathForBackend,
     approvalProbePrompt,
@@ -51,6 +51,16 @@ import {
     type ToolFailureProbeExpectation,
 } from "../conformance/codexConformanceToolProbe.js";
 import {
+    createDenyRuntimeFactTool,
+    createFailRuntimeFactTool,
+    createLookupRuntimeFactTool,
+    toolDeniedPrompt,
+    toolFailurePrompt,
+    toolProbePrompt,
+    type ToolHandlerCall,
+    type ToolProbeToolConfig,
+} from "../conformance/codexConformanceToolFactory.js";
+import {
     CodexCopilotAdapterServer,
     type CodexAdapterSandboxMode,
 } from "../src/experimental/codexAdapter.js";
@@ -94,6 +104,15 @@ const TOOL_FAILURE_PROBE_EXPECTATION: ToolFailureProbeExpectation = {
     expectedFailureError: TOOL_FAILURE_ERROR,
     expectedDeniedResult: TOOL_DENIED_RESULT,
 };
+const TOOL_PROBE_TOOL_CONFIG: ToolProbeToolConfig = {
+    topic: TOOL_PROBE_TOPIC,
+    lookupToolName: TOOL_PROBE_NAME,
+    lookupResult: TOOL_PROBE_RESULT,
+    failureToolName: TOOL_FAILURE_NAME,
+    failureError: TOOL_FAILURE_ERROR,
+    deniedToolName: TOOL_DENIED_NAME,
+    deniedResult: TOOL_DENIED_RESULT,
+};
 const APPROVAL_PROBE_PATH_OPTIONS = {
     basePath: APPROVAL_PROBE_BASE_PATH,
     phase: SPIKE_PHASE,
@@ -105,13 +124,6 @@ const FILE_PROBE_NAME_OPTIONS = {
 };
 
 mkdirSync(WORKDIR, { recursive: true });
-
-type ToolHandlerCall = {
-    args: unknown;
-    invocation: unknown;
-    result?: string;
-    error?: string;
-};
 
 type ToolProbeResult = {
     prompt: string;
@@ -202,163 +214,6 @@ function getNestedRecord(
     key: string
 ): Record<string, unknown> | undefined {
     return record ? nestedRecord(record, key) : undefined;
-}
-
-function toolProbePrompt(): string {
-    return [
-        `Call the custom tool ${TOOL_PROBE_NAME} exactly once with topic "${TOOL_PROBE_TOPIC}".`,
-        "The tool returns a copy-sensitive token.",
-        "After the tool returns, reply with the exact token and no extra prose.",
-        "Do not transform casing, punctuation, spacing, or word order.",
-    ].join("\n");
-}
-
-function toolFailurePrompt(): string {
-    return [
-        `Call the custom tool ${TOOL_FAILURE_NAME} exactly once with topic "${TOOL_PROBE_TOPIC}".`,
-        "This tool is expected to fail.",
-        "After the failure is reported, acknowledge that the tool failed.",
-        "Do not retry and do not call any other tool.",
-    ].join("\n");
-}
-
-function toolDeniedPrompt(): string {
-    return [
-        `Call the custom tool ${TOOL_DENIED_NAME} exactly once with topic "${TOOL_PROBE_TOPIC}".`,
-        "This tool is expected to return a denied result.",
-        "After the denial is reported, acknowledge that the tool was denied.",
-        "Do not retry and do not call any other tool.",
-    ].join("\n");
-}
-
-function validateToolHandlerCall(
-    args: unknown,
-    invocation: unknown,
-    expectedToolName = TOOL_PROBE_NAME
-): string[] {
-    const failures: string[] = [];
-    if (!isRecord(args)) {
-        failures.push("tool args are not an object");
-    } else if (args.topic !== TOOL_PROBE_TOPIC) {
-        failures.push(`tool args.topic is ${String(args.topic)}, expected ${TOOL_PROBE_TOPIC}`);
-    }
-
-    if (!isRecord(invocation)) {
-        failures.push("tool invocation metadata is not an object");
-    } else {
-        if (invocation.toolName !== expectedToolName) {
-            failures.push(
-                `tool invocation.toolName is ${String(invocation.toolName)}, expected ${expectedToolName}`
-            );
-        }
-        if (typeof invocation.toolCallId !== "string" || invocation.toolCallId.length === 0) {
-            failures.push("tool invocation.toolCallId is missing");
-        }
-        if (typeof invocation.sessionId !== "string" || invocation.sessionId.length === 0) {
-            failures.push("tool invocation.sessionId is missing");
-        }
-    }
-
-    return failures;
-}
-
-function createLookupRuntimeFactTool(handlerCalls: ToolHandlerCall[], assertionFailures: string[]) {
-    return defineTool(TOOL_PROBE_NAME, {
-        description: "Returns a deterministic copy-sensitive token for conformance testing.",
-        parameters: {
-            type: "object",
-            properties: {
-                topic: {
-                    type: "string",
-                    description: `Must be "${TOOL_PROBE_TOPIC}".`,
-                },
-            },
-            required: ["topic"],
-            additionalProperties: false,
-        },
-        skipPermission: true,
-        handler: (args: unknown, invocation: unknown) => {
-            const failures = validateToolHandlerCall(args, invocation);
-            assertionFailures.push(...failures);
-            const call: ToolHandlerCall = {
-                args,
-                invocation,
-                result: failures.length === 0 ? TOOL_PROBE_RESULT : undefined,
-                error: failures.length > 0 ? failures.join("; ") : undefined,
-            };
-            handlerCalls.push(call);
-            if (failures.length > 0) {
-                throw new Error(failures.join("; "));
-            }
-            return TOOL_PROBE_RESULT;
-        },
-    });
-}
-
-function createFailRuntimeFactTool(handlerCalls: ToolHandlerCall[], assertionFailures: string[]) {
-    return defineTool(TOOL_FAILURE_NAME, {
-        description: "Always throws a deterministic error for conformance testing.",
-        parameters: {
-            type: "object",
-            properties: {
-                topic: {
-                    type: "string",
-                    description: `Must be "${TOOL_PROBE_TOPIC}".`,
-                },
-            },
-            required: ["topic"],
-            additionalProperties: false,
-        },
-        skipPermission: true,
-        handler: (args: unknown, invocation: unknown) => {
-            const failures = validateToolHandlerCall(args, invocation, TOOL_FAILURE_NAME);
-            assertionFailures.push(...failures);
-            const error = failures.length > 0 ? failures.join("; ") : TOOL_FAILURE_ERROR;
-            handlerCalls.push({
-                args,
-                invocation,
-                error,
-            });
-            throw new Error(error);
-        },
-    });
-}
-
-function createDenyRuntimeFactTool(handlerCalls: ToolHandlerCall[], assertionFailures: string[]) {
-    return defineTool(TOOL_DENIED_NAME, {
-        description: "Returns a deterministic denied tool result for conformance testing.",
-        parameters: {
-            type: "object",
-            properties: {
-                topic: {
-                    type: "string",
-                    description: `Must be "${TOOL_PROBE_TOPIC}".`,
-                },
-            },
-            required: ["topic"],
-            additionalProperties: false,
-        },
-        skipPermission: true,
-        handler: (args: unknown, invocation: unknown) => {
-            const failures = validateToolHandlerCall(args, invocation, TOOL_DENIED_NAME);
-            assertionFailures.push(...failures);
-            const result = failures.length > 0 ? failures.join("; ") : TOOL_DENIED_RESULT;
-            handlerCalls.push({
-                args,
-                invocation,
-                result,
-                error: failures.length > 0 ? failures.join("; ") : undefined,
-            });
-            if (failures.length > 0) {
-                throw new Error(failures.join("; "));
-            }
-            return {
-                textResultForLlm: result,
-                resultType: "denied",
-                error: result,
-            };
-        },
-    });
 }
 
 function buildCoreNewSessionCheck(
@@ -1789,12 +1644,18 @@ async function runToolProbeWithClient(
     stepTrace: string[],
     tracePrefix: string
 ): Promise<ToolProbeResult> {
-    const prompt = toolProbePrompt();
+    const prompt = toolProbePrompt(TOOL_PROBE_TOOL_CONFIG);
     const handlerCalls: ToolHandlerCall[] = [];
     const assertionFailures: string[] = [];
     const session = await client.createSession({
         onPermissionRequest: approveAll,
-        tools: [createLookupRuntimeFactTool(handlerCalls, assertionFailures)],
+        tools: [
+            createLookupRuntimeFactTool({
+                config: TOOL_PROBE_TOOL_CONFIG,
+                handlerCalls,
+                assertionFailures,
+            }),
+        ],
         model: MODEL,
         workingDirectory: WORKDIR,
         onEvent: (event) => observedEvents.push({ type: event.type, data: event.data }),
@@ -1822,15 +1683,21 @@ async function runToolFailureProbeWithClient(
     stepTrace: string[],
     tracePrefix: string
 ): Promise<ToolFailureProbeResult> {
-    const failurePrompt = toolFailurePrompt();
-    const deniedPrompt = toolDeniedPrompt();
+    const failurePrompt = toolFailurePrompt(TOOL_PROBE_TOOL_CONFIG);
+    const deniedPrompt = toolDeniedPrompt(TOOL_PROBE_TOOL_CONFIG);
     const failureHandlerCalls: ToolHandlerCall[] = [];
     const deniedHandlerCalls: ToolHandlerCall[] = [];
     const assertionFailures: string[] = [];
 
     const failureSession = await client.createSession({
         onPermissionRequest: approveAll,
-        tools: [createFailRuntimeFactTool(failureHandlerCalls, assertionFailures)],
+        tools: [
+            createFailRuntimeFactTool({
+                config: TOOL_PROBE_TOOL_CONFIG,
+                handlerCalls: failureHandlerCalls,
+                assertionFailures,
+            }),
+        ],
         model: MODEL,
         workingDirectory: WORKDIR,
         onEvent: (event) => observedEvents.push({ type: event.type, data: event.data }),
@@ -1846,7 +1713,13 @@ async function runToolFailureProbeWithClient(
 
     const deniedSession = await client.createSession({
         onPermissionRequest: approveAll,
-        tools: [createDenyRuntimeFactTool(deniedHandlerCalls, assertionFailures)],
+        tools: [
+            createDenyRuntimeFactTool({
+                config: TOOL_PROBE_TOOL_CONFIG,
+                handlerCalls: deniedHandlerCalls,
+                assertionFailures,
+            }),
+        ],
         model: MODEL,
         workingDirectory: WORKDIR,
         onEvent: (event) => observedEvents.push({ type: event.type, data: event.data }),

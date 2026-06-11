@@ -1,6 +1,6 @@
 {
   "artifactType": "refactor-phase5-production-proof",
-  "generatedAt": "2026-06-11T10:44:00+08:00",
+  "generatedAt": "2026-06-11T10:38:00+08:00",
   "phase": "Phase 5: Production proof expansion",
   "status": "pass",
   "scope": {
@@ -20,10 +20,10 @@
   "rawArtifacts": [
     {
       "purpose": "A6+B5+C2 codex-adapter live concurrent proof",
-      "path": "/tmp/chatpilot-codex-phase5-live-20260611-1042.json",
-      "sha256": "b045b8c29231faadf7c13a57c4e4ee0a260d1bf968a03468a2469e00992ccb15",
-      "sizeBytes": 244007,
-      "command": "CHATPILOT_ACCEPTANCE_BACKENDS=codex-adapter CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=2 CHATPILOT_ACCEPTANCE_RUN_ID=phase5-live-20260611-1042 CHATPILOT_ACCEPTANCE_OUT=/tmp/chatpilot-codex-phase5-live-20260611-1042.json npx tsx examples/chatpilot-runtime-acceptance.ts",
+      "path": "/tmp/chatpilot-codex-phase5-live-20260611-1037.json",
+      "sha256": "ccff597a01cb24ef4c6becd250376f5bdcf12e55f40581641c0097af5c4fdbf8",
+      "sizeBytes": 243780,
+      "command": "CHATPILOT_ACCEPTANCE_BACKENDS=codex-adapter CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=2 CHATPILOT_ACCEPTANCE_RUN_ID=phase5-live-20260611-1037 CHATPILOT_ACCEPTANCE_OUT=/tmp/chatpilot-codex-phase5-live-20260611-1037.json npx tsx examples/chatpilot-runtime-acceptance.ts",
       "result": {
         "status": "pass",
         "toolset": "all-chatbot",
@@ -56,10 +56,10 @@
     },
     {
       "purpose": "C2 cross-backend comparison plus B5 codex schema proof",
-      "path": "/tmp/chatpilot-codex-phase5-all-backends-20260611-1044.json",
-      "sha256": "7c9fea5c2dbca576120abef809e0115a5c578fb529f8a45b9ff93aa37e8d660f",
-      "sizeBytes": 208988,
-      "command": "CHATPILOT_ACCEPTANCE_BACKENDS=all CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=1 CHATPILOT_ACCEPTANCE_RUN_ID=phase5-all-backends-20260611-1044 CHATPILOT_ACCEPTANCE_OUT=/tmp/chatpilot-codex-phase5-all-backends-20260611-1044.json npx tsx examples/chatpilot-runtime-acceptance.ts",
+      "path": "/tmp/chatpilot-codex-phase5-all-backends-20260611-1038.json",
+      "sha256": "751317ac53ceff2c8e1ded28cf754ab838207b3145b7ff3b5a97d3dddbb3e941",
+      "sizeBytes": 209258,
+      "command": "CHATPILOT_ACCEPTANCE_BACKENDS=all CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=1 CHATPILOT_ACCEPTANCE_RUN_ID=phase5-all-backends-20260611-1038 CHATPILOT_ACCEPTANCE_OUT=/tmp/chatpilot-codex-phase5-all-backends-20260611-1038.json npx tsx examples/chatpilot-runtime-acceptance.ts",
       "result": {
         "status": "pass",
         "toolset": "all-chatbot",

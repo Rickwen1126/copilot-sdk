@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 10:34
+Last Updated: 2026-06-11 10:38
 Status: Active
 
 ## P0: Codex Adapter Production Readiness Queue @2026-06-04-2016
@@ -15,8 +15,8 @@ Section source:
 - Source: production-readiness issue inventory split into spike-required and direct implementation phases
 
 - [ ] Phase 6 production policy and model-behavior cleanup.
-  - Assigned issues: B6, B7, C3, C4, D2, D3.
-  - Completion evidence: namespace/policy decisions are explicit, model-selection prompt/tool-description audits are backed by benchmark evidence, auth inheritance has production-like proof, and lower-priority multimodal/observability gaps are closed or explicitly deferred.
+  - Assigned issues: C2 residual, B6, B7, C3, C4, D2, D3.
+  - Completion evidence: namespace/policy decisions are explicit, the full 26-tool selection benchmark or an explicitly safer equivalent is backed by evidence, model-selection prompt/tool-description audits are backed by benchmark evidence, auth inheritance has production-like proof, and lower-priority multimodal/observability gaps are closed or explicitly deferred.
 
 ## P1: Codex Adapter Experimental Path Graduation @2026-06-05-1121
 

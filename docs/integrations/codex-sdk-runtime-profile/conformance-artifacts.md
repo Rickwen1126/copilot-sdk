@@ -1,7 +1,7 @@
 # Conformance Artifacts
 
 Created: 2026-06-01 14:05
-Last Updated: 2026-06-11 10:44
+Last Updated: 2026-06-11 10:38
 Status: Active
 
 This index records the current evidence for Codex adapter parity in the selected profile.
@@ -112,16 +112,16 @@ Verification:
 
 ## Phase 5 Production Proof Expansion
 
-Summary artifact: [artifacts/refactor-phase5-production-proof@2026-06-11-1044.summary.json](./artifacts/refactor-phase5-production-proof@2026-06-11-1044.summary.json)
+Summary artifact: [artifacts/refactor-phase5-production-proof@2026-06-11-1038.summary.json](./artifacts/refactor-phase5-production-proof@2026-06-11-1038.summary.json)
 
 Raw live artifacts:
 
-- `/tmp/chatpilot-codex-phase5-live-20260611-1042.json`
-  - sha256: `b045b8c29231faadf7c13a57c4e4ee0a260d1bf968a03468a2469e00992ccb15`
+- `/tmp/chatpilot-codex-phase5-live-20260611-1037.json`
+  - sha256: `ccff597a01cb24ef4c6becd250376f5bdcf12e55f40581641c0097af5c4fdbf8`
   - status: `pass`
   - scope: codex-adapter, `CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot`, `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=2`
-- `/tmp/chatpilot-codex-phase5-all-backends-20260611-1044.json`
-  - sha256: `7c9fea5c2dbca576120abef809e0115a5c578fb529f8a45b9ff93aa37e8d660f`
+- `/tmp/chatpilot-codex-phase5-all-backends-20260611-1038.json`
+  - sha256: `751317ac53ceff2c8e1ded28cf754ab838207b3145b7ff3b5a97d3dddbb3e941`
   - status: `pass`
   - scope: copilot-cli and codex-adapter, `CHATPILOT_ACCEPTANCE_TOOLSET=all-chatbot`, `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS=1`
 

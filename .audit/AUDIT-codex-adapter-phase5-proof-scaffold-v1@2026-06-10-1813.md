@@ -34,13 +34,13 @@ Tags: [audit, codex-adapter, phase5, testing, conformance]
 |---|---|---|---|---|---|
 | non-blocking | `docs/todo.md:17` | Phase 5 remains open even though the scaffold exists. | `docs/todo.md:20-21` explicitly marks partial evidence and remaining live artifacts. | Correctly prevents over-claiming production readiness. | Produce live A6/B5/C2 artifacts before moving todo to finished. |
 | non-blocking | `nodejs/examples/chatpilot-runtime-acceptance.ts:859` | Native-tool detection is conservative and report-level, not prompt-local. | `extractKnownNativeToolCalls()` scans the adapter summary and attaches matches to both save/list observations. | Good enough as a first safety alarm; not enough for final C2 benchmark attribution. | C2 runner should record prompt-local native tool calls from structured ledger entries. |
-| non-blocking | `nodejs/examples/conformance/codexConformanceProof.ts:67` | Schema round-trip helper is ready but not yet wired to a real Chatpilot 26-tool manifest. | Unit tests cover two synthetic tools, missing tools, mutation, and unexpected tools. | B5 is not closed until the real descriptor source feeds this report. | Build/choose manifest extraction, then run `buildToolSchemaRoundTripReport()` over all Chatpilot tools. |
+| non-blocking | `nodejs/conformance/codexConformanceProof.ts:67` | Schema round-trip helper is ready but not yet wired to a real Chatpilot 26-tool manifest. | Unit tests cover two synthetic tools, missing tools, mutation, and unexpected tools. | B5 is not closed until the real descriptor source feeds this report. | Build/choose manifest extraction, then run `buildToolSchemaRoundTripReport()` over all Chatpilot tools. |
 
 ### Learning Findings
 
 | Location | Pattern | Exit question | Gap | Next action |
 |---|---|---|---|---|
-| `nodejs/examples/conformance/codexConformanceProof.ts:137` | Proof helpers separate evidence interpretation from live process orchestration. | Why is this safer than putting pass/fail logic directly inside the acceptance runner? | A | Bank after live evidence confirms the shape holds. |
+| `nodejs/conformance/codexConformanceProof.ts:137` | Proof helpers separate evidence interpretation from live process orchestration. | Why is this safer than putting pass/fail logic directly inside the acceptance runner? | A | Bank after live evidence confirms the shape holds. |
 | `nodejs/examples/chatpilot-runtime-acceptance.ts:236` | Multi-session acceptance should prove isolation by session evidence, not just process success. | Which assertion would fail first if two concurrent routes reused the same SDK session id? | B | Run live A6 artifact and inspect per-session `sessions[]`. |
 
 ## 3. SHIP Contract Check
@@ -66,7 +66,7 @@ Tags: [audit, codex-adapter, phase5, testing, conformance]
 
 | Question | Type | Expected anchor | User answer | Status | Follow-up |
 |---|---|---|---|---|---|
-| Where does a tool-call benchmark observation become a failing assertion? | mechanism | `nodejs/examples/conformance/codexConformanceProof.ts:155` and `:187` | pending | pending | Review tour steps 2-3. |
+| Where does a tool-call benchmark observation become a failing assertion? | mechanism | `nodejs/conformance/codexConformanceProof.ts:155` and `:187` | pending | pending | Review tour steps 2-3. |
 | If a multi-session run silently reuses the same SDK session id, which assertion catches it? | failure | `nodejs/examples/chatpilot-runtime-acceptance.ts:310` | pending | pending | Run A6 live artifact and inspect report. |
 | Why is this audit result not "Passed"? | trade-off | `docs/todo.md:20-21` and `conformance-artifacts.md:100-103` | pending | pending | Keep Phase 5 todo open until live evidence lands. |
 
@@ -76,7 +76,7 @@ Tags: [audit, codex-adapter, phase5, testing, conformance]
   - `npx vitest run test/codex-conformance-proof.test.ts test/codex-adapter-mappers.test.ts` -> pass, 22 tests
   - `npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck examples/chatpilot-runtime-acceptance.ts` -> pass
   - prior scaffold run: `npx tsc --noEmit` -> pass
-  - prior scaffold run: `npx prettier --check examples/conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts` -> pass
+  - prior scaffold run: `npx prettier --check conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts` -> pass
   - prior scaffold run: `npm run build` -> pass
 - Data-level verification: not run in this audit; A6 live artifact still needed.
 - Logs / traces: not run in this audit; C2 prompt-local structured ledger still needed.

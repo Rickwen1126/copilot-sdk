@@ -97,7 +97,7 @@ Summary artifact: [artifacts/refactor-phase5-proof-language-scaffold@2026-06-10-
 
 Result:
 
-- `nodejs/examples/conformance/codexConformanceProof.ts` now owns pure schema round-trip and tool-call compliance assertion helpers.
+- `nodejs/conformance/codexConformanceProof.ts` now owns pure schema round-trip and tool-call compliance assertion helpers.
 - `nodejs/examples/chatpilot-runtime-acceptance.ts` now emits per-backend and aggregate `toolCallCompliance` report sections for the existing `save_memo` / `list_memos` app-level flow.
 - `CHATPILOT_ACCEPTANCE_CONCURRENT_SESSIONS` now lets the Chatpilot acceptance harness produce per-session evidence for multi-session runs.
 - This is a Phase 5 scaffold, not a production-readiness completion claim: A6 still needs a live multi-session artifact, B5 full Chatpilot tool manifest coverage remains active, and C2 representative compliance benchmark remains active.
@@ -107,5 +107,5 @@ Verification:
 - `npx vitest run test/codex-conformance-proof.test.ts test/codex-adapter-mappers.test.ts` -> pass, 22 tests
 - `npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck examples/chatpilot-runtime-acceptance.ts` -> pass
 - `npx tsc --noEmit` -> pass
-- `npx prettier --check examples/conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts` -> pass
-- `npx eslint examples/conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts` -> pass
+- `npx prettier --check conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts` -> pass
+- `npx eslint conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts` -> pass

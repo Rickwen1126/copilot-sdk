@@ -7,7 +7,7 @@
       "description": "## What this audit tour is looking at\n\nThis tour is about a small but important Phase 5 step: turning proof ideas into reusable report machinery before we scale into live benchmark runs.\n\nThe core question is: how do we avoid saying \"Phase 5 passed\" just because a scaffold exists?\n\nMental model: the new helper is a scoreboard, not the game. It can judge observations cleanly, but A6/B5/C2 still need real observations from live multi-session runs, a real 26-tool schema source, and prompt-local compliance benchmarks.\n\nThis matters because conformance work can quietly degrade into smoke tests. The useful pattern here is to separate evidence collection from evidence interpretation, then keep docs honest about what has and has not been proven."
     },
     {
-      "file": "nodejs/examples/conformance/codexConformanceProof.ts",
+      "file": "nodejs/conformance/codexConformanceProof.ts",
       "line": 67,
       "endLine": 135,
       "ref": "fac582b92e58902dea35511ea14bc7a720d58b26",
@@ -15,7 +15,7 @@
       "description": "## Insight\n\nMechanism: this function compares expected SDK tool descriptors with observed Codex dynamic tools and preserves three failure shapes: missing tool, description mismatch, and schema mismatch.\n\nFailure mode: if the real Chatpilot manifest later loses a required schema field or Codex sees a mutated schema, this report should fail with a named issue instead of only saying \"acceptance failed\".\n\nDesign trade-off: this is pure and easy to test, but it does not discover tools by itself. B5 still needs the real 26-tool manifest source.\n\n## Plain Read\n\nThis step is the schema scoreboard. It does not start Chatpilot or Codex; it only checks whether a list of expected tools survived translation into observed dynamic tools.\n\n## Code Detail\n\nThe important design is that missing and mutated evidence stays explicit in `issues`, and the final report exposes both per-tool items and aggregate assertions.\n\nGood: stable unit-testable contract, no runtime IO, clear failure names.\n\nCost: it can only be as complete as the manifest fed into it.\n\nReview question: when we wire B5, where should the expected 26-tool descriptor source come from so this helper is judging production reality?"
     },
     {
-      "file": "nodejs/examples/conformance/codexConformanceProof.ts",
+      "file": "nodejs/conformance/codexConformanceProof.ts",
       "line": 137,
       "endLine": 219,
       "ref": "fac582b92e58902dea35511ea14bc7a720d58b26",

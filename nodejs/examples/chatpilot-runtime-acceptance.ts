@@ -10,7 +10,7 @@ import {
     buildToolCallComplianceReport,
     type ToolCallComplianceObservation,
     type ToolCallComplianceReport,
-} from "./conformance/codexConformanceProof.js";
+} from "../conformance/codexConformanceProof.js";
 
 type BackendName = "copilot-cli" | "codex-adapter";
 type AssertionStatus = "pass" | "fail";

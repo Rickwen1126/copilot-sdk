@@ -54,7 +54,7 @@ Section source:
   - Code/Surface: [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), future scenario/runner/ledger/assertion/report/fixture modules
   - Source: refactor plan Phase 5; subagent review finding about stale inline harness code
   - Completion evidence: stale inline minimal harness code is deleted or archived as non-active reference, harness responsibilities are split by evidence ownership, production proof expansion issues are covered or explicitly re-planned, and selected-profile artifacts remain semantically equivalent or intentionally improved.
-  - Current partial evidence: [nodejs/examples/conformance/codexConformanceProof.ts](../nodejs/examples/conformance/codexConformanceProof.ts) owns proof assertions for schema round-trip and tool-call compliance; [nodejs/test/codex-conformance-proof.test.ts](../nodejs/test/codex-conformance-proof.test.ts) covers pass/fail/not-run evidence states.
+  - Current partial evidence: [nodejs/conformance/codexConformanceProof.ts](../nodejs/conformance/codexConformanceProof.ts) owns proof assertions for schema round-trip and tool-call compliance; [nodejs/test/codex-conformance-proof.test.ts](../nodejs/test/codex-conformance-proof.test.ts) covers pass/fail/not-run evidence states.
 
 - [ ] Phase 6: Conditional Strategy / Policy extraction.
   - Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)

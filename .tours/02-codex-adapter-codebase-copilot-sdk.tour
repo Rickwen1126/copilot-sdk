@@ -1,0 +1,130 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "02 - Codebase Map: Copilot SDK Codex Adapter",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 這條 tour 其實在看什麼\n\n這條 tour 其實是在看：Copilot SDK 怎麼保留原本 app-facing 的 SDK 協議，同時把後端 runtime 換成 Codex app-server。\n\n如果先記不住細節，先抓住每個 step 都在回答同一個問題：SDK client 說的是 Copilot protocol，Codex runtime 說的是 thread / turn / dynamic tool / approval，那中間的翻譯層到底放在哪裡、怎麼驗證、哪裡不能假裝相容？\n\n## Copilot SDK 是什麼\n\n這個 repo 的 primary surface 是 TypeScript SDK：讓 app 用 JSON-RPC 形狀控制 Copilot CLI / runtime。這次看的 Codex adapter 不是把整個 SDK 變成 Codex 專案，而是在 SDK 和 runtime 中間插一個 adapter，讓 app 不必重寫自己的 session、tool、routing substrate。\n\n這裡不靠 npm download 數字判斷價值；這條 tour 的價值來自 repo-local milestone：Codex adapter 已經有 experimental package boundary、server runner、session persistence、protocol-version tool routing、conformance harness 和 Chatpilot acceptance proof。\n\n## 錨定已知\n\n可以把它想成 VS Code LSP 的 adapter：editor 端仍然講 LSP 的 request / notification，language server 端有自己的內部模型。adapter 的工作不是讓兩邊變成同一個東西，而是讓邊界上的語意對齊，並且把不能對齊的地方明確暴露出來。\n\n## 這條路徑解決什麼問題\n\nChatpilot 這類 app 已經建立在 Copilot SDK 的 session + tool seam 上。若要換成 Codex backend，最危險的不是「能不能回一句話」，而是 session resume、dynamic tool schema、tool result、command/file approval、SQLite side effect 這些跨層語意會不會靜默漂移。\n\n## Mental Model\n\n走完後你應該能用一句話描述這個 codebase：SDK protocol 是外層契約，Codex app-server 是內層 runtime，adapter 是雙向翻譯器，proof harness 是防止翻譯器只在 happy path 看起來成功的保險絲。\n\n## 為什麼值得讀\n\n這不是單一 bugfix tour，而是完整 runtime replacement 的收斂地圖：哪裡是 public surface、哪裡是 process gateway、哪裡保存跨 restart identity、哪裡是純 mapping、哪裡保留 protocol 版本差異、哪裡用 conformance 和 downstream app 來驗真。"
+    },
+    {
+      "file": "docs/spec.md",
+      "line": 11,
+      "endLine": 27,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Canonical Contract: Adapter Is Profile-Scoped",
+      "description": "## Insight\n\n**機制**：這段是整個 milestone 的契約入口。它把 SDK primary surface、experimental adapter boundary、server runner、Chatpilot seam、protocol v2/v3 差異、conformance harness 和 acceptance evidence 全部放在同一個 current-state spec 裡。\n\n**故障模式**：如果沒有這層 spec，後續 reviewer 很容易把 adapter 誤讀成 full Copilot CLI parity，或把 Chatpilot 的 selected runtime profile 成功誤擴大成所有 runtime profile 都已可替換。\n\n**設計取捨**：它選擇保守地 claim selected profile parity，而不是急著宣告穩定 package surface。好處是誠實、可驗；壞處是讀者要接受這仍是 experimental graduation 前的狀態。\n\n## 白話解析\n\n這段是地圖的標題頁。它其實就是在說：這個 repo 現在承諾的不是「Codex 完全取代 Copilot CLI」，而是「在指定 Chatpilot runtime profile 裡，SDK 可以透過 adapter 跑到 Codex」。你之後看到任何 code，都要回頭用這個邊界判斷它是不是過度宣稱。\n\n## Code Detail\n\n**這段在幹嘛**：列出目前 adapter 的 repo-local source of truth：`codexAdapter.ts`、server bin、Chatpilot seam、protocol policy、conformance entrypoint、acceptance harness 與 artifact index。\n\n**為什麼這樣寫**：\n- 好處：把長期維護入口集中到 `docs/spec.md`，不需要從零散 progress 或 audit 猜現在狀態。\n- 好處：明講 protocol v2/v3 的 custom tool routing 差異，避免把 Python SDK 兼容性藏在 implementation detail。\n- 壞處：spec 很容易落後，所以 milestone closeout 必須把 code reality 回寫到這裡。\n\n**思考問題**：\n- 哪些句子是「已完成承諾」，哪些句子是「仍保持 experimental」？\n- 如果要把 adapter graduate 成 stable surface，這段最先需要改哪幾句？"
+    },
+    {
+      "file": "nodejs/package.json",
+      "line": 8,
+      "endLine": 44,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Public Boundary: Bin And Experimental Subpath",
+      "description": "## Insight\n\n**機制**：package boundary 把 adapter 暴露成兩種可用入口：`copilot-codex-adapter` CLI bin 給外部 process 長跑，`./experimental/codex-adapter` subpath 給 Node app / tests 直接 import。\n\n**故障模式**：如果只藏在 internal source file，Chatpilot 或 harness 只能靠 repo-relative path，adapter 會像 spike code；如果直接塞進 root export，又會過早暗示 stable API。\n\n**設計取捨**：experimental subpath 是中間狀態。它讓使用者可以穩定引用這個能力，但名字提醒 reviewer：這不是一般 SDK surface 的永久承諾。\n\n## 白話解析\n\n這段是使用者拿到 adapter 的門牌。它其實就是在說：你可以把 adapter 當成一個可執行服務，也可以在 Node 裡 import，但它還住在 experimental 門牌下。真正看到效果的地方，是 downstream app 可以用正式 package artifact，而不是偷連 source file。\n\n## Code Detail\n\n**這段在幹嘛**：`bin` 指向 build 後的 adapter server，`exports` 增加 root、extension、experimental codex adapter 三個入口。\n\n**為什麼這樣寫**：\n- 好處：server deployment 和 test harness 共享同一個 package artifact。\n- 好處：experimental path 讓 graduation decision 有明確位置，而不是散在 docs 裡。\n- 壞處：一旦外部開始引用 experimental path，未來改 API 仍要負責 migration 訊號。\n\n**思考問題**：\n- 如果 adapter 明天要 graduate，package boundary 會從哪裡移到哪裡？\n- 為什麼 bin 比 source import 更適合 Chatpilot 這種 Python downstream？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterServer.ts",
+      "line": 50,
+      "endLine": 118,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Server Runner: Env Becomes Runtime Options",
+      "description": "## Insight\n\n**機制**：server runner 是 process-level contract。它把 `CODEX_ADAPTER_*` env 轉成 `CodexAdapterOptions`，啟動 `CodexCopilotAdapterServer`，並用一行 readiness JSON 告訴外部 supervisor 目前 cliUrl、port 和 target profiles。\n\n**故障模式**：如果 env parsing 分散在 adapter core，核心 class 會同時承擔 protocol translation 和 deployment policy；如果沒有 readiness event，下游只能用 sleep 或猜 port 判斷服務是否可用。\n\n**設計取捨**：runner 保持薄，所有 business behavior 留在 adapter class。好處是易測、易部署；壞處是 env contract 變多時，runner 仍需要同步 docs 和 smoke tests。\n\n## 白話解析\n\n這段是 adapter 從 library 變成服務的開關。它其實就是在把 shell 環境整理成一包 options，然後告訴外面「我已經聽在這個 cliUrl」。如果 Chatpilot 啟動失敗或等不到 adapter，多半會從這條 readiness path 開始查。\n\n## Code Detail\n\n**這段在幹嘛**：`buildOptions()` 對每個 env var 做型別轉換，`main()` 啟動 server，成功後輸出 `codex-adapter.listening`，失敗則 stderr + exit 1。\n\n**為什麼這樣寫**：\n- 好處：deployment knobs 明確，和 adapter implementation 解耦。\n- 好處：summary path 與 signal shutdown 讓 proof harness 可以讀回 adapter 狀態。\n- 壞處：env var 是字串世界，錯誤型別要靠這層 guard 才能早爆。\n\n**思考問題**：\n- 哪些 env 是 runtime identity，哪些只是 request policy？\n- 如果 readiness JSON 格式改了，哪個 downstream harness 最可能先壞？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAppServerGateway.ts",
+      "line": 77,
+      "endLine": 216,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Gateway: Codex App-Server As A Child Runtime",
+      "description": "## Insight\n\n**機制**：gateway 將 Codex app-server 包成可 request / subscribe 的 runtime object。它準備隔離的 `CODEX_HOME`、移除 `OPENAI_API_KEY`、spawn `codex app-server`，再把 stdout JSON line 分流成 request、notification、response。\n\n**故障模式**：如果不隔離 home，test / acceptance run 可能污染使用者 live Codex state；如果不清掉 API key，runtime auth source 可能和預期 profile 不一致；如果 stdout 分流錯，adapter 會把 request 當 notification 或讓 pending request 永遠不 resolve。\n\n**設計取捨**：這裡選擇 process gateway，而不是把 Codex runtime 內嵌成 library。好處是貼近真實 Codex app-server；壞處是要承擔 child process lifecycle、stdout parsing、timeout 和 transcript ring buffer。\n\n## 白話解析\n\n這段是 adapter 面向 Codex 的耳朵和嘴巴。它其實就是在開一個 Codex 子程序，然後把每一行輸出分類：這是 Codex 要我處理的事、這是 Codex 通知我的事、這是我剛剛 request 的答案。你看到 adapter transcript 或 app-server 掛掉時，第一層現場就在這裡。\n\n## Code Detail\n\n**這段在幹嘛**：`prepareCodexHome()` 複製必要 auth/config 到 temp home，`createCodexEnv()` 設定環境，`start()` spawn child 並註冊 stdout parser、pending request resolver 和 exit cleanup。\n\n**為什麼這樣寫**：\n- 好處：測試和 acceptance 可以用接近 production 的 subprocess boundary。\n- 好處：transcript 記錄讓 conformance 可以回看 runtime 對話。\n- 壞處：JSON line protocol 的容錯要很小心，raw stderr/stdout 也可能影響 diagnosis。\n\n**思考問題**：\n- 這層和 `CodexCopilotAdapterServer` 的責任邊界在哪裡？\n- 為什麼 `CODEX_HOME` identity 會影響 session resume？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 250,
+      "endLine": 380,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Adapter Core: SDK Socket Meets Codex Gateway",
+      "description": "## Insight\n\n**機制**：`CodexCopilotAdapterServer` 是雙向翻譯器的中心。它同時持有 SDK-side JSON-RPC TCP server、Codex gateway、session maps、connection maps、pending dynamic tool calls、file-change snapshots 和 transcript ring buffer。\n\n**故障模式**：如果這些 state 混在 gateway 裡，Codex process lifecycle 會污染 SDK protocol lifecycle；如果沒有 thread-to-session map，Codex notification 回來時會不知道該送到哪個 SDK session。\n\n**設計取捨**：核心 class 仍然偏 orchestration-heavy，但 mapper、gateway、session store、tool policy 已經被抽出去。好處是核心保留跨層協調視野；壞處是未來新增 capability 時，容易又把純轉換邏輯塞回 class 裡。\n\n## 白話解析\n\n這段是總機。它其實就是一邊接 SDK client 的電話，一邊接 Codex app-server 的電話，然後記住哪通電話對應哪個 thread、session、connection。當 app 說 `session.send`，或 Codex 回 `item/completed`，最後都會穿過這個總機分派。\n\n## Code Detail\n\n**這段在幹嘛**：constructor 建立 options、gateway、session store；`start()` 啟動 Codex、訂閱 notification/request、開 TCP server；`bindSocket()` 對每條 SDK socket 建立 JSON-RPC connection。\n\n**為什麼這樣寫**：\n- 好處：adapter 的 runtime state 集中，summary/debug transcript 有完整視角。\n- 好處：gateway 可替換成 fake，tests 不需要真的啟動 Codex。\n- 壞處：class 還是很大，新增路由時要警覺是不是該先抽 mapper 或 policy。\n\n**思考問題**：\n- `sessions`、`threadToSession`、`connections` 分別回答哪個 routing 問題？\n- 如果 Codex notification 比 SDK connection 建立更早到，這裡需要什麼保護？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapter.ts",
+      "line": 588,
+      "endLine": 835,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Session Lifecycle: SDK Session Becomes Codex Thread",
+      "description": "## Insight\n\n**機制**：SDK `session.create` 對應 Codex `thread/start`，SDK `session.resume` 對應 `thread/resume`，SDK `session.send` 對應 `turn/start`。這段還把 cwd、model、base instructions、dynamic tools、sandbox、approval policy 一起帶入 Codex thread/turn。\n\n**故障模式**：resume 最容易靜默錯。若 adapter restart 後沒有 persisted mapping，SDK session id 會找不到原本 Codex thread；若 tool set 改了卻繼續 resume，Codex thread 不一定能可靠 hot-update dynamicTools，可能讓 app 以為工具存在但 runtime 沒有。\n\n**設計取捨**：這裡選擇嚴格 tool fingerprint policy：工具不相容就拒絕 resume。好處是錯誤早爆；壞處是開發期間調工具會需要開新 session，比原生 Copilot CLI 的某些多 client 行為更保守。\n\n## 白話解析\n\n這段是 session 翻譯的主幹。它其實就是在把 SDK 世界的 session 變成 Codex 世界的 thread，把使用者輸入變成 turn。你會在 session reuse、tool schema 改動、cwd identity 改動時看到它的效果；最常見症狀是 resume 被拒絕，而不是讓錯誤藏到工具呼叫時才爆。\n\n## Code Detail\n\n**這段在幹嘛**：create 時抽出 tools 並轉 dynamicTools，啟動 thread 後建立 `SessionState` 和 persisted record；resume 時檢查 persisted store 與 tool fingerprint；send 時 emit `user.message` 並呼叫 `turn/start`。\n\n**為什麼這樣寫**：\n- 好處：SDK event stream 還是維持 app 熟悉的 `session.start` / `session.resume` / `user.message`。\n- 好處：工具相容性 policy 在入口被檢查，避免 runtime drift。\n- 壞處：session identity 同時依賴 SDK id、Codex thread id、cwd、tool fingerprint，debug 時要看多個欄位。\n\n**思考問題**：\n- 為什麼 `session.send` 使用 `sandboxPolicy`，而 `thread/start` 使用 `sandbox`？\n- 如果 Chatpilot route 改了 toolset，這裡會怎麼保護舊 session？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterSessionStore.ts",
+      "line": 4,
+      "endLine": 115,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Session Store: Durable Identity Across Restarts",
+      "description": "## Insight\n\n**機制**：session store 保存 SDK session id 到 Codex thread id 的 durable mapping，並把 cwd、model、tool fingerprint、Codex home identity 一起寫入 JSON payload。它是 adapter restart 後還能 resume 的最低狀態。\n\n**故障模式**：如果只靠 memory map，adapter process 一重啟就失去 SDK session 到 Codex thread 的橋；如果 store 接受 malformed records，resume 可能指向半壞資料，造成難追的 runtime mismatch。\n\n**設計取捨**：這裡用簡單 JSON file + atomic rename，而不是引入 SQLite 或 DB。好處是 deployment 輕；壞處是多 process 同寫不是目標，未來若有 HA / clustered adapter 需求要換 persistence model。\n\n## 白話解析\n\n這段是 adapter 的通訊錄。它其實就是記下「這個 SDK session 對應那個 Codex thread」，並記下當時的工作目錄和工具指紋。當服務重開後還能接回舊對話，就是靠這本通訊錄沒有丟。\n\n## Code Detail\n\n**這段在幹嘛**：定義 `CodexRuntimeSessionRecord`，讀取 store 時只保留 parse 通過的 records，`upsert/delete` 後用 tmp file + rename flush。\n\n**為什麼這樣寫**：\n- 好處：atomic rename 降低半寫入造成 JSON 壞檔的風險。\n- 好處：parseRecord 是 schema guard，舊或壞資料不會直接進 memory map。\n- 壞處：沒有 lock；它假設同一個 store path 主要由單一 adapter process 使用。\n\n**思考問題**：\n- `toolFingerprint` 為什麼屬於 durable identity，而不是 transient option？\n- `codexHomeIdentity` 缺失時，resume 還有什麼風險？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterMappers.ts",
+      "line": 20,
+      "endLine": 178,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Pure Mappers: Tools, Results, Models, Sandbox",
+      "description": "## Insight\n\n**機制**：mapper layer 把 SDK request shapes 轉成 Codex dynamic tools、把 SDK tool result 轉成 Codex dynamic tool response、把 Codex model metadata 轉成 SDK model list、把 sandbox mode 字串 normalize 成 thread/turn 需要的格式。\n\n**故障模式**：如果 tool schema 在這裡被 mutate，Codex 看到的 tool 就不是 app 宣告的 tool；如果 tool result 沒有 `textResultForLlm` 時直接 stringify 內部 object，可能把不該給模型的欄位塞回 LLM context。\n\n**設計取捨**：純函式讓這些轉換可單元測試、可 conformance proof。好處是 adapter core 不必背所有細節；壞處是 mapper 名稱和型別要清楚，否則讀者不知道哪個 shape 屬於 SDK、哪個屬於 Codex。\n\n## 白話解析\n\n這段是字典。它其實就是把同一件事翻成另一邊聽得懂的格式：工具描述變 dynamic tool、工具結果變文字回覆、sandbox 名稱變 Codex policy。當工具沒被呼叫、schema 不見、或 sandbox 權限怪怪的，第一個要查的就是這本字典。\n\n## Code Detail\n\n**這段在幹嘛**：`toolDescriptorsFromSessionCreateParams()` 抽 SDK tools；`dynamicToolsFromDescriptors()` 產 Codex `inputSchema`；`mapSdkToolResultToCodexDynamicToolResponse()` 保守處理 tool result；sandbox helpers 將 mode 映射成 Codex thread/turn 需要的值。\n\n**為什麼這樣寫**：\n- 好處：tool schema round-trip 可以直接驗這層，不需要完整啟動 runtime。\n- 好處：缺 `textResultForLlm` 時採低資訊 fallback，避免意外洩漏 object internals。\n- 壞處：fallback 可能讓模型拿不到有用工具結果，tool author 仍需修自己的 result contract。\n\n**思考問題**：\n- 哪些 mapper 是 lossless translation，哪些是 deliberate lossy fallback？\n- `readOnly` / `workspaceWrite` 為什麼要同時支援 camelCase 和 kebab-case？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterMappers.ts",
+      "line": 224,
+      "endLine": 358,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Approval Mapping: Codex Requests Become SDK Permissions",
+      "description": "## Insight\n\n**機制**：Codex 的 command / file-change approval request 被轉成 SDK permission request；SDK reviewer 回傳 approved / denied 後，再映射回 Codex 能接受的 decision，例如 `accept`、`acceptWithExecpolicyAmendment`、`acceptForSession` 或 `decline`。\n\n**故障模式**：approval mapping 一旦太粗，安全語意會掉地上。例如把所有 approved 都回 `accept`，就可能忽略 Codex 提供的 exec policy amendment；把所有 denied 當成功，則會讓 dangerous action 穿過邊界。\n\n**設計取捨**：這裡不把 approval 當 boolean，而是保留 available decisions 和 proposed amendments。好處是貼近 Codex 原生安全模型；壞處是 SDK permission UI 必須理解更多 metadata 才能提供完整選項。\n\n## 白話解析\n\n這段是安全閘門的翻譯。它其實就是在問 SDK client：「Codex 想跑這個 command 或套這些 file changes，可以嗎？」然後把人的答案翻回 Codex 的決策格式。你會在 shell approval、file write approval、session approval 這些互動裡看到它。\n\n## Code Detail\n\n**這段在幹嘛**：command approval 會抽 command text、decision ids、command actions；file-change approval 會抽 paths/changes；permission result 再轉成 Codex decision。\n\n**為什麼這樣寫**：\n- 好處：保留 `availableDecisions`，不同 Codex request 能選不同 acceptance path。\n- 好處：file changes snapshot 可支援 SDK write permission UI 顯示具體 path。\n- 壞處：Codex approval payload 若新增欄位，mapper 需要同步更新才能保留新語意。\n\n**思考問題**：\n- 為什麼 command approval 需要知道 `hasWriteFileRedirection`？\n- 哪些 approval decision 是一次性，哪些可能改變整個 session 的安全邊界？"
+    },
+    {
+      "file": "nodejs/src/experimental/codexAdapterToolPolicy.ts",
+      "line": 1,
+      "endLine": 62,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Policy Axis: Protocol V2 And V3 Tool Routing",
+      "description": "## Insight\n\n**機制**：這是 P1 抽出的真正策略軸。protocol v2 走 SDK `tool.call` request；protocol v3 走 session event + pending tool call request id。兩者都是 custom tool call，但 SDK protocol surface 不同。\n\n**故障模式**：如果把 v2/v3 routing 寫成 scattered ifs，Chatpilot Python SDK compatibility 和 Node SDK conformance 會互相干擾；改一邊可能不小心讓另一邊工具呼叫失效。\n\n**設計取捨**：抽成 policy function，而不是抽成大 Strategy class。好處是剛好封住真實變體；壞處是如果未來 protocol v4 有更多 lifecycle 差異，這個小 policy 可能需要升級成更完整的 adapter strategy。\n\n## 白話解析\n\n這段是工具呼叫路線表。它其實就是在決定：Codex 說要叫工具時，要用舊 SDK 的 `tool.call` 形式通知 client，還是用新 protocol 的 session event 形式掛起 pending tool call。當 Python SDK 和 Node SDK 對工具事件期待不同時，差別就在這裡。\n\n## Code Detail\n\n**這段在幹嘛**：輸入 protocolVersion、sessionId、toolCallId、toolName、arguments；v2 回傳 `protocol-v2-sdk-request` plan，v3 回傳 `protocol-v3-session-event` plan 和 deterministic sdkRequestId。\n\n**為什麼這樣寫**：\n- 好處：policy 可單獨測，adapter core 只執行 plan。\n- 好處：命名直接呈現 protocol compatibility，而不是藏在 generic abstraction。\n- 壞處：目前只封 routing，不封 tool result 回寫的整條 lifecycle。\n\n**思考問題**：\n- 這裡為什麼是 policy，而不是 mapper？\n- 如果某個 SDK client 只支援 v2，你會在哪裡設定 protocol version？"
+    },
+    {
+      "file": "nodejs/conformance/codexConformanceProof.ts",
+      "line": 96,
+      "endLine": 220,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Proof Language: Schema Round Trip And Tool Compliance",
+      "description": "## Insight\n\n**機制**：conformance proof helpers 把 runtime evidence 轉成 machine-readable assertions。schema round-trip 檢查 expected SDK tools 是否原樣出現在 Codex dynamic tools；tool-call compliance 檢查 prompt 是否選到 expected SDK tool，並且沒有繞去 native tool。\n\n**故障模式**：如果只看 HTTP 200 或 final text，工具可能根本沒被呼叫、schema 可能被改壞、native tool 可能偷偷接管結果。這些都是「看起來有回答，但 runtime contract 已經漂移」的失敗。\n\n**設計取捨**：helpers 保持 pure，不自己啟動 Chatpilot 或 Codex。好處是能被 unit test、acceptance harness、artifact builder 重用；壞處是它只判讀輸入 evidence，evidence collection 仍要由 harness 負責做真。\n\n## 白話解析\n\n這段是驗收語言。它其實就是把「到底有沒有真的照 SDK tool contract 跑」變成一組 pass/fail/not-run assertion。你會在 audit artifact 或 acceptance JSON 裡看到它的結果，而不是只聽 agent 說測過。\n\n## Code Detail\n\n**這段在幹嘛**：`buildToolSchemaRoundTripReport()` 對 expected/observed tools 做 description/inputSchema 比對；`buildToolCallComplianceReport()` 對每個 prompt observation 算 issues、backend accuracy 和 assertions。\n\n**為什麼這樣寫**：\n- 好處：把 proof vocabulary 收斂成固定型別，audit 能直接引用。\n- 好處：`not-run` 是一等狀態，不會把缺 evidence 偽裝成 pass。\n- 壞處：pure helper 不能保證 evidence 沒被假造，所以仍需要 live harness 和 artifact provenance。\n\n**思考問題**：\n- schema round-trip 和 tool-call compliance 分別抓哪一種 drift？\n- 為什麼 `nativeToolCalls` 不為空會是 failure signal？"
+    },
+    {
+      "file": "nodejs/examples/copilot-codex-adapter-spike.ts",
+      "line": 1,
+      "endLine": 74,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Conformance Entrypoint: Spike Script Became Regression Gate",
+      "description": "## Insight\n\n**機制**：這個 examples entrypoint 匯入一整組 `nodejs/conformance/*` helpers，並直接啟動 `CodexCopilotAdapterServer`。它保留 spike 名稱，但實際角色已經是 adapter regression harness 的入口。\n\n**故障模式**：如果把 proof logic 都寫在這個 script 裡，A/B/C probe 會變成不可重用的大腳本；如果沒有這個 entrypoint，又缺少一個端到端 driver 去串 SDK client、fake/real probes、ledger 和 report。\n\n**設計取捨**：保留 executable harness 在 `examples/`，把 reusable proof modules 移到 `nodejs/conformance/`。好處是命令入口穩定；壞處是檔名仍有 spike 歷史感，讀者要靠 docs/spec 理解它現在是 regression gate。\n\n## 白話解析\n\n這段是實驗台的開關。它其實就是把 adapter server、SDK client、approval probe、tool probe、ledger recorder、report builder 串在一起。當你想知道 adapter 改動有沒有破壞核心 contract，這個入口就是第一個會跑的地方之一。\n\n## Code Detail\n\n**這段在幹嘛**：宣告 prompt/model/probe/env knobs，匯入 approval、ledger、protocol recorder、report、scenario state、tool probe factory 與 adapter server。\n\n**為什麼這樣寫**：\n- 好處：probe 可以用 env 控制，單一入口可跑不同 proof phase。\n- 好處：conformance modules 不再藏在 examples 底下，意圖更清楚。\n- 壞處：entrypoint 仍承載大量 orchestration，新增 probe 時要避免再膨脹。\n\n**思考問題**：\n- 哪些 helper 是 evidence collection，哪些 helper 是 evidence evaluation？\n- 如果你要新增一個 permission edge-case probe，應該改 entrypoint 還是先加 conformance helper？"
+    },
+    {
+      "file": "nodejs/examples/chatpilot-runtime-acceptance.ts",
+      "line": 150,
+      "endLine": 195,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Acceptance Report: Downstream Runtime Verdict",
+      "description": "## Insight\n\n**機制**：Chatpilot acceptance runner 對指定 backends 跑完後，聚合每個 backend report、cross-backend assertions、tool-call compliance 和 schema round-trip，最後寫出一份 status-bearing JSON artifact。\n\n**故障模式**：如果 acceptance 只停在 process exit code 或 UI text，就抓不到 DB side effect、tool intent、session reuse 和 backend accuracy 的分歧；如果 artifact 沒有 status，reviewer 只能人工猜整體 verdict。\n\n**設計取捨**：這裡把 downstream app proof 留在 repo-local script，而不是只存在 Chatpilot repo。好處是 SDK repo 能自證 adapter 對 app seam 的效果；壞處是 harness 需要知道 Chatpilot repo path 和 app 啟動方式。\n\n## 白話解析\n\n這段是下游驗收的總結器。它其實就是跑完 Chatpilot 後，把所有證據收斂成一份 JSON：這次 run 是 pass 還是 fail、跑了哪些 backend、工具和 schema 檢查怎麼樣。你想 review「不是只會講話，而是真的讓 Chatpilot 存資料」，就看這份 artifact。\n\n## Code Detail\n\n**這段在幹嘛**：`main()` 逐一跑 backend，建立 cross-backend assertions，聚合 tool proof，決定 overall status，寫到 `CHATPILOT_ACCEPTANCE_OUT` 或 tmp path。\n\n**為什麼這樣寫**：\n- 好處：artifact 有固定 schema，audit 可以引用而不是引用 console log。\n- 好處：status 由 assertions 和 proof reports 共同決定，避免 happy-path 假 pass。\n- 壞處：跨 repo acceptance 對環境敏感，失敗時要區分 app 啟動問題和 adapter contract 問題。\n\n**思考問題**：\n- 哪些 assertion 是 app-level，哪些是 adapter-level？\n- 為什麼 acceptance artifact 要同時保留 per-backend 和 aggregate report？"
+    },
+    {
+      "file": "nodejs/examples/chatpilot-runtime-acceptance.ts",
+      "line": 230,
+      "endLine": 399,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Acceptance Body: Logs, DB Rows, Tool Proof, Sessions",
+      "description": "## Insight\n\n**機制**：這段是 live acceptance 的資料平面。它啟動 adapter 和 Chatpilot、跑多個 `/cli/chat` conversations、停止 processes、讀 log/adapter trace/SQLite rows，然後為每個 session 建 assertions，再檢查 concurrency、distinct SDK sessions 和 distinct route markers。\n\n**故障模式**：沒有 DB row 驗證時，模型可以回 SAVED 但根本沒存；沒有 log/tool proof 時，可能是 native tool 或 fallback path 回答；沒有 multi-session assertion 時，session reuse 或 route isolation 可能靜默串線。\n\n**設計取捨**：runner 使用 ephemeral temp dirs 和 free ports，避免碰固定服務。好處是 acceptance 可以隔離跑；壞處是每次失敗現場在 tmp artifact 裡，需要保存 output path 才好追。\n\n## 白話解析\n\n這段是把驗收從「有回應」拉到「真的改了資料」。它其實就是讓 Chatpilot 存一個 marker、再列出來，然後去 log 和 DB 裡確認 marker 真的走過 SDK tool、真的落到 SQLite。你看到 pass 時，才比較能相信 adapter 不是只做文字假象。\n\n## Code Detail\n\n**這段在幹嘛**：backend 是 codex-adapter 時先啟動 adapter；Chatpilot ready 後平行跑 conversations；結束後讀 log、adapter summary、DB rows，建 session reports、tool compliance、schema report 和 final assertions。\n\n**為什麼這樣寫**：\n- 好處：data-level side effect 是 L3/L4 等級證據，不只是 status code。\n- 好處：concurrent sessions 檢查能抓 routing/session isolation 問題。\n- 壞處：live run 成本較高，也依賴 Chatpilot repo 和 Codex auth 狀態。\n\n**思考問題**：\n- `marker` 在這個 harness 裡扮演什麼角色？\n- 如果 final response 包含 marker，但 DB rows 沒有，這個 runner 會怎麼判？"
+    },
+    {
+      "file": "nodejs/test/codex-adapter.test.ts",
+      "line": 187,
+      "endLine": 220,
+      "ref": "183bb66bed1a9afd99c62371038fab8aac8d8904",
+      "title": "Unit Boundary: Capabilities Stay Explicit",
+      "description": "## Insight\n\n**機制**：unit tests 不只測 happy path response，也鎖住 adapter 宣告的 target profiles 和 supported capability flags。這是避免 adapter 默默 claim 更多 capability 的低成本 guard。\n\n**故障模式**：如果 capabilities 只是 docs 文字，code 改動可能讓 adapter 表面上支援新 method，但沒有 conformance evidence；或反過來，刪掉 capability 卻沒有更新 docs/audit。\n\n**設計取捨**：unit test 只鎖宣告邊界，不取代 live acceptance。好處是快、穩、能在 PR 早期爆；壞處是它證明不了 Codex runtime 真的完成那些 capability，只證明 adapter 沒亂改承諾清單。\n\n## 白話解析\n\n這段是小而硬的護欄。它其實就是檢查 adapter 自稱支援哪些 profile 和 capability，不能偷偷多說或少說。真正 runtime 有沒有做到還要靠 conformance 和 acceptance，但承諾清單先在這裡被釘住。\n\n## Code Detail\n\n**這段在幹嘛**：測 `CODEX_ADAPTER_CAPABILITIES.targetProfiles` 和 supported flag set，包含 session lifecycle、approval、custom tool call、tool failure/denial 等已驗能力。\n\n**為什麼這樣寫**：\n- 好處：capability drift 會在單元測試階段被抓到。\n- 好處：測試內容對 reviewer 直接顯示 adapter 的 scoped contract。\n- 壞處：flag list 需要和 docs/spec、conformance artifacts 同步維護。\n\n**思考問題**：\n- capability flag 是 implementation truth，還是 claim boundary？\n- 新增一個 supported flag 前，你會要求哪種 evidence？"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -22,12 +22,15 @@
         --red: #a02f2f;
         --red-bg: rgba(218, 88, 88, 0.14);
         --shadow: 0 24px 60px rgba(66, 43, 12, 0.12);
-        --display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        --display:
+          "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
         --body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
         --mono: "SFMono-Regular", Menlo, Consolas, monospace;
       }
 
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
 
       body {
         margin: 0;
@@ -35,7 +38,11 @@
         font-family: var(--body);
         color: var(--ink);
         background:
-          radial-gradient(circle at top left, rgba(255, 255, 255, 0.85), transparent 32%),
+          radial-gradient(
+            circle at top left,
+            rgba(255, 255, 255, 0.85),
+            transparent 32%
+          ),
           linear-gradient(180deg, #fdf9f2 0%, var(--paper) 100%);
       }
 
@@ -110,7 +117,10 @@
         font-size: 14px;
         padding: 10px 16px;
         cursor: pointer;
-        transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+        transition:
+          transform 160ms ease,
+          box-shadow 160ms ease,
+          border-color 160ms ease;
         box-shadow: 0 10px 18px rgba(34, 24, 10, 0.06);
       }
 
@@ -134,8 +144,15 @@
         background:
           linear-gradient(rgba(120, 95, 60, 0.06) 1px, transparent 1px),
           linear-gradient(90deg, rgba(120, 95, 60, 0.06) 1px, transparent 1px),
-          linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 250, 242, 0.94));
-        background-size: 32px 32px, 32px 32px, auto;
+          linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.76),
+            rgba(255, 250, 242, 0.94)
+          );
+        background-size:
+          32px 32px,
+          32px 32px,
+          auto;
         overflow: auto;
       }
 
@@ -164,11 +181,26 @@
         background: rgba(255, 252, 246, 0.94);
       }
 
-      .frame.orange { color: var(--orange); background: var(--orange-bg); }
-      .frame.blue { color: var(--blue); background: var(--blue-bg); }
-      .frame.green { color: var(--green); background: var(--green-bg); }
-      .frame.gray { color: var(--gray); background: rgba(124, 131, 145, 0.08); }
-      .frame.red { color: var(--red); background: var(--red-bg); }
+      .frame.orange {
+        color: var(--orange);
+        background: var(--orange-bg);
+      }
+      .frame.blue {
+        color: var(--blue);
+        background: var(--blue-bg);
+      }
+      .frame.green {
+        color: var(--green);
+        background: var(--green-bg);
+      }
+      .frame.gray {
+        color: var(--gray);
+        background: rgba(124, 131, 145, 0.08);
+      }
+      .frame.red {
+        color: var(--red);
+        background: var(--red-bg);
+      }
 
       .node {
         position: absolute;
@@ -181,7 +213,9 @@
         border: 2px solid currentColor;
         background: white;
         box-shadow: 0 18px 32px rgba(52, 38, 18, 0.08);
-        transition: transform 180ms ease, box-shadow 180ms ease;
+        transition:
+          transform 180ms ease,
+          box-shadow 180ms ease;
       }
 
       .node:hover,
@@ -200,16 +234,41 @@
         padding: 14px 18px;
       }
 
-      .node.orange { color: var(--orange); background: rgba(255, 248, 238, 0.96); }
-      .node.orange .node-body { background: var(--orange-bg); }
-      .node.blue { color: var(--blue); background: rgba(245, 250, 255, 0.96); }
-      .node.blue .node-body { background: var(--blue-bg); }
-      .node.green { color: var(--green); background: rgba(247, 255, 248, 0.96); }
-      .node.green .node-body { background: var(--green-bg); }
-      .node.gray { color: var(--gray); background: rgba(249, 250, 252, 0.96); }
-      .node.gray .node-body { background: var(--gray-bg); }
-      .node.red { color: var(--red); background: rgba(255, 248, 248, 0.96); }
-      .node.red .node-body { background: var(--red-bg); }
+      .node.orange {
+        color: var(--orange);
+        background: rgba(255, 248, 238, 0.96);
+      }
+      .node.orange .node-body {
+        background: var(--orange-bg);
+      }
+      .node.blue {
+        color: var(--blue);
+        background: rgba(245, 250, 255, 0.96);
+      }
+      .node.blue .node-body {
+        background: var(--blue-bg);
+      }
+      .node.green {
+        color: var(--green);
+        background: rgba(247, 255, 248, 0.96);
+      }
+      .node.green .node-body {
+        background: var(--green-bg);
+      }
+      .node.gray {
+        color: var(--gray);
+        background: rgba(249, 250, 252, 0.96);
+      }
+      .node.gray .node-body {
+        background: var(--gray-bg);
+      }
+      .node.red {
+        color: var(--red);
+        background: rgba(255, 248, 248, 0.96);
+      }
+      .node.red .node-body {
+        background: var(--red-bg);
+      }
 
       .node-title {
         font-family: var(--display);
@@ -236,7 +295,10 @@
         stroke: #433b30;
         stroke-width: 2.4;
         opacity: 0.72;
-        transition: opacity 180ms ease, stroke-width 180ms ease, stroke 180ms ease;
+        transition:
+          opacity 180ms ease,
+          stroke-width 180ms ease,
+          stroke 180ms ease;
       }
 
       .wire.highlight {
@@ -250,7 +312,11 @@
         top: 24px;
         border-radius: 24px;
         padding: 18px 18px 20px;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(248, 243, 234, 0.96));
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.78),
+          rgba(248, 243, 234, 0.96)
+        );
         border: 1px solid rgba(120, 95, 60, 0.14);
         box-shadow: 0 18px 36px rgba(34, 24, 10, 0.08);
       }
@@ -297,8 +363,12 @@
       }
 
       @media (max-width: 1500px) {
-        .layout { grid-template-columns: 1fr; }
-        .note-panel { position: static; }
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .note-panel {
+          position: static;
+        }
       }
     </style>
   </head>
@@ -311,7 +381,9 @@
           <p class="lede" id="diagram-subtitle"></p>
         </div>
         <div class="controls">
-          <button type="button" id="highlight-flow">Highlight active path</button>
+          <button type="button" id="highlight-flow">
+            Highlight active path
+          </button>
           <button type="button" id="reset-flow">Reset</button>
           <button type="button" id="export-svg">Export SVG</button>
         </div>
@@ -322,7 +394,15 @@
           <div class="canvas" id="diagram-canvas">
             <svg class="wires" id="wire-layer" aria-hidden="true">
               <defs>
-                <marker id="arrow-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <marker
+                  id="arrow-head"
+                  viewBox="0 0 10 10"
+                  refX="8"
+                  refY="5"
+                  markerWidth="8"
+                  markerHeight="8"
+                  orient="auto-start-reverse"
+                >
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#433b30"></path>
                 </marker>
               </defs>
@@ -340,21 +420,205 @@
     </main>
 
     <script>
-      const spec = {"title":"Copilot SDK Runtime Backend Sky Eye","subtitle":"How Chatpilot keeps its app substrate stable while Copilot CLI and Codex app-server swap behind the SDK seam","kind":"skyeye","name":"skyeye","groups":[{"id":"app","label":"Chatpilot app substrate","x":40,"y":130,"w":360,"h":460,"color":"green"},{"id":"sdk","label":"Copilot SDK protocol seam","x":430,"y":130,"w":250,"h":460,"color":"blue"},{"id":"runtime","label":"Swappable runtime backends","x":710,"y":130,"w":450,"h":460,"color":"orange"},{"id":"evidence","label":"Phase 6 acceptance evidence","x":40,"y":640,"w":1120,"h":170,"color":"gray"}],"nodes":[{"id":"cli","label":"<code>/cli/chat</code><br/>route + hub entry","x":78,"y":190,"w":250,"h":86,"color":"green"},{"id":"manager","label":"ChatbotManager<br/>route identity + session reuse","x":78,"y":325,"w":250,"h":96,"color":"green"},{"id":"tools","label":"ToolFactory + MemoryStore<br/><code>save_memo</code> / <code>list_memos</code>","x":78,"y":465,"w":250,"h":110,"color":"green"},{"id":"py-sdk","label":"Python Copilot SDK<br/>cli_url seam","x":455,"y":260,"w":190,"h":104,"color":"blue"},{"id":"tool-lane","label":"Tool handler lane<br/>SDK tool.call","x":455,"y":435,"w":190,"h":92,"color":"blue"},{"id":"copilot-cli","label":"Copilot CLI<br/>baseline","x":748,"y":190,"w":178,"h":96,"color":"orange"},{"id":"adapter","label":"Codex adapter<br/>Copilot-protocol facade","x":748,"y":335,"w":190,"h":100,"color":"orange"},{"id":"codex","label":"Codex app-server<br/>dynamicTools","x":975,"y":335,"w":150,"h":100,"color":"orange"},{"id":"acceptance","label":"Acceptance harness<br/><code>chatpilot-runtime-acceptance.ts</code>","x":78,"y":690,"w":290,"h":82,"color":"gray"},{"id":"logs","label":"Machine evidence<br/>logs + SQLite + adapter transcript","x":458,"y":690,"w":290,"h":82,"color":"gray"},{"id":"verdict","label":"Parity verdict<br/>baseline pass + adapter pass","x":838,"y":690,"w":250,"h":82,"color":"gray"}],"arrows":[{"from":"cli","to":"manager","mode":"vertical"},{"from":"manager","to":"py-sdk"},{"from":"py-sdk","to":"copilot-cli"},{"from":"py-sdk","to":"adapter"},{"from":"adapter","to":"codex"},{"from":"py-sdk","to":"tool-lane","mode":"vertical"},{"from":"tools","to":"tool-lane"},{"from":"tool-lane","to":"logs","mode":"vertical"},{"from":"acceptance","to":"logs"},{"from":"logs","to":"verdict"}],"active_path":["cli","manager","py-sdk","adapter","codex","tool-lane","tools","logs","verdict"],"notes":["Chatpilot owns route identity, memory ownership, and tool registration. Runtime backends only execute turns behind the SDK seam.","Copilot CLI remains the baseline oracle. Codex app-server is reachable through a Copilot-protocol adapter, not by changing Chatpilot app nouns.","Phase 6 acceptance verifies the behavior through real /cli/chat requests, SQLite side effects, SDK-visible tool logs, and adapter transcript evidence."]};
-      const meta = {"kind":"skyeye","path":"/Users/rickwen/code/copilot-sdk/docs/architecture/skyeye.html","export_name":"skyeye.svg"};
+      const spec = {
+        title: "Copilot SDK Runtime Backend Sky Eye",
+        subtitle:
+          "How Chatpilot keeps its app substrate stable while Copilot CLI and Codex app-server swap behind the SDK seam",
+        kind: "skyeye",
+        name: "skyeye",
+        groups: [
+          {
+            id: "app",
+            label: "Chatpilot app substrate",
+            x: 40,
+            y: 130,
+            w: 360,
+            h: 460,
+            color: "green",
+          },
+          {
+            id: "sdk",
+            label: "Copilot SDK protocol seam",
+            x: 430,
+            y: 130,
+            w: 250,
+            h: 460,
+            color: "blue",
+          },
+          {
+            id: "runtime",
+            label: "Swappable runtime backends",
+            x: 710,
+            y: 130,
+            w: 450,
+            h: 460,
+            color: "orange",
+          },
+          {
+            id: "evidence",
+            label: "P0 readiness evidence",
+            x: 40,
+            y: 640,
+            w: 1120,
+            h: 170,
+            color: "gray",
+          },
+        ],
+        nodes: [
+          {
+            id: "cli",
+            label: "<code>/cli/chat</code><br/>route + hub entry",
+            x: 78,
+            y: 190,
+            w: 250,
+            h: 86,
+            color: "green",
+          },
+          {
+            id: "manager",
+            label: "ChatbotManager<br/>route identity + session reuse",
+            x: 78,
+            y: 325,
+            w: 250,
+            h: 96,
+            color: "green",
+          },
+          {
+            id: "tools",
+            label:
+              "ToolFactory + MemoryStore<br/><code>save_memo</code> / <code>list_memos</code>",
+            x: 78,
+            y: 465,
+            w: 250,
+            h: 110,
+            color: "green",
+          },
+          {
+            id: "py-sdk",
+            label: "Python Copilot SDK<br/>cli_url seam",
+            x: 455,
+            y: 260,
+            w: 190,
+            h: 104,
+            color: "blue",
+          },
+          {
+            id: "tool-lane",
+            label: "Tool handler lane<br/>SDK tool.call",
+            x: 455,
+            y: 435,
+            w: 190,
+            h: 92,
+            color: "blue",
+          },
+          {
+            id: "copilot-cli",
+            label: "Copilot CLI<br/>baseline",
+            x: 748,
+            y: 190,
+            w: 178,
+            h: 96,
+            color: "orange",
+          },
+          {
+            id: "adapter",
+            label: "Codex adapter<br/>Copilot-protocol facade",
+            x: 748,
+            y: 335,
+            w: 190,
+            h: 100,
+            color: "orange",
+          },
+          {
+            id: "codex",
+            label: "Codex app-server<br/>dynamicTools",
+            x: 975,
+            y: 335,
+            w: 150,
+            h: 100,
+            color: "orange",
+          },
+          {
+            id: "acceptance",
+            label:
+              "Acceptance harness<br/><code>chatpilot-runtime-acceptance.ts</code>",
+            x: 78,
+            y: 690,
+            w: 290,
+            h: 82,
+            color: "gray",
+          },
+          {
+            id: "logs",
+            label: "Machine evidence<br/>logs + SQLite + adapter transcript",
+            x: 458,
+            y: 690,
+            w: 290,
+            h: 82,
+            color: "gray",
+          },
+          {
+            id: "verdict",
+            label: "P0 verdict<br/>readiness gate closed",
+            x: 838,
+            y: 690,
+            w: 250,
+            h: 82,
+            color: "gray",
+          },
+        ],
+        arrows: [
+          { from: "cli", to: "manager", mode: "vertical" },
+          { from: "manager", to: "py-sdk" },
+          { from: "py-sdk", to: "copilot-cli" },
+          { from: "py-sdk", to: "adapter" },
+          { from: "adapter", to: "codex" },
+          { from: "py-sdk", to: "tool-lane", mode: "vertical" },
+          { from: "tools", to: "tool-lane" },
+          { from: "tool-lane", to: "logs", mode: "vertical" },
+          { from: "acceptance", to: "logs" },
+          { from: "logs", to: "verdict" },
+        ],
+        active_path: [
+          "cli",
+          "manager",
+          "py-sdk",
+          "adapter",
+          "codex",
+          "tool-lane",
+          "tools",
+          "logs",
+          "verdict",
+        ],
+        notes: [
+          "Chatpilot owns route identity, memory ownership, and tool registration. Runtime backends only execute turns behind the SDK seam.",
+          "Copilot CLI remains the baseline oracle. Codex app-server is reachable through a Copilot-protocol adapter, not by changing Chatpilot app nouns.",
+          "P0 evidence combines Phase 4 lifecycle hardening, Phase 5 live acceptance, Phase 6 policy audit, auth smoke, and explicit P2 deferrals.",
+        ],
+      };
+      const meta = {
+        kind: "skyeye",
+        path: "/Users/rickwen/code/copilot-sdk/docs/architecture/skyeye.html",
+        export_name: "skyeye.svg",
+      };
       const canvas = document.getElementById("diagram-canvas");
       const wireLayer = document.getElementById("wire-layer");
       const nodeMap = new Map();
       const arrowMap = new Map();
 
-      document.getElementById("diagram-title").textContent = spec.title || "Architecture diagram";
-      document.getElementById("diagram-subtitle").textContent = spec.subtitle || "HTML-first diagram";
+      document.getElementById("diagram-title").textContent =
+        spec.title || "Architecture diagram";
+      document.getElementById("diagram-subtitle").textContent =
+        spec.subtitle || "HTML-first diagram";
 
       const noteList = document.getElementById("diagram-notes");
-      const notes = Array.isArray(spec.notes) && spec.notes.length ? spec.notes : [
-        "HTML is the canonical architecture artifact.",
-        "Use Export SVG only when a downstream whiteboard surface is needed."
-      ];
+      const notes =
+        Array.isArray(spec.notes) && spec.notes.length
+          ? spec.notes
+          : [
+              "HTML is the canonical architecture artifact.",
+              "Use Export SVG only when a downstream whiteboard surface is needed.",
+            ];
       for (const note of notes) {
         const li = document.createElement("li");
         li.textContent = note;
@@ -364,14 +628,32 @@
         `Kind: <code>${meta.kind}</code><br />Path: <code>${meta.path}</code>`;
 
       function measureCanvas() {
-        const nodeMaxX = Math.max(...spec.nodes.map((node) => node.x + node.w), 980);
-        const nodeMaxY = Math.max(...spec.nodes.map((node) => node.y + node.h), 640);
-        const groupMaxX = Math.max(...(spec.groups || []).map((group) => group.x + group.w), nodeMaxX);
-        const groupMaxY = Math.max(...(spec.groups || []).map((group) => group.y + group.h), nodeMaxY);
+        const nodeMaxX = Math.max(
+          ...spec.nodes.map((node) => node.x + node.w),
+          980,
+        );
+        const nodeMaxY = Math.max(
+          ...spec.nodes.map((node) => node.y + node.h),
+          640,
+        );
+        const groupMaxX = Math.max(
+          ...(spec.groups || []).map((group) => group.x + group.w),
+          nodeMaxX,
+        );
+        const groupMaxY = Math.max(
+          ...(spec.groups || []).map((group) => group.y + group.h),
+          nodeMaxY,
+        );
         const width = Math.max(nodeMaxX, groupMaxX) + 80;
         const height = Math.max(nodeMaxY, groupMaxY) + 80;
-        document.documentElement.style.setProperty("--canvas-width", String(width));
-        document.documentElement.style.setProperty("--canvas-height", String(height));
+        document.documentElement.style.setProperty(
+          "--canvas-width",
+          String(width),
+        );
+        document.documentElement.style.setProperty(
+          "--canvas-height",
+          String(height),
+        );
         canvas.style.width = `${width}px`;
         canvas.style.height = `${height}px`;
         wireLayer.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -381,11 +663,31 @@
       }
 
       const palette = {
-        orange: { stroke: "#b95a00", fill: "#fff8ee", inner: "rgba(245, 167, 78, 0.14)" },
-        blue: { stroke: "#1c5ba2", fill: "#f5faff", inner: "rgba(77, 145, 217, 0.16)" },
-        green: { stroke: "#2a6f48", fill: "#f7fff8", inner: "rgba(88, 170, 110, 0.14)" },
-        gray: { stroke: "#5a616e", fill: "#f9fafc", inner: "rgba(138, 146, 161, 0.16)" },
-        red: { stroke: "#a02f2f", fill: "#fff8f8", inner: "rgba(218, 88, 88, 0.14)" }
+        orange: {
+          stroke: "#b95a00",
+          fill: "#fff8ee",
+          inner: "rgba(245, 167, 78, 0.14)",
+        },
+        blue: {
+          stroke: "#1c5ba2",
+          fill: "#f5faff",
+          inner: "rgba(77, 145, 217, 0.16)",
+        },
+        green: {
+          stroke: "#2a6f48",
+          fill: "#f7fff8",
+          inner: "rgba(88, 170, 110, 0.14)",
+        },
+        gray: {
+          stroke: "#5a616e",
+          fill: "#f9fafc",
+          inner: "rgba(138, 146, 161, 0.16)",
+        },
+        red: {
+          stroke: "#a02f2f",
+          fill: "#fff8f8",
+          inner: "rgba(218, 88, 88, 0.14)",
+        },
       };
 
       function renderFrames() {
@@ -427,7 +729,7 @@
           right: node.x + node.w,
           bottom: node.y + node.h,
           cx: node.x + node.w / 2,
-          cy: node.y + node.h / 2
+          cy: node.y + node.h / 2,
         };
       }
 
@@ -447,7 +749,10 @@
 
       function renderArrows() {
         for (const arrow of spec.arrows || []) {
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          const path = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "path",
+          );
           path.setAttribute("class", "wire");
           path.setAttribute("marker-end", "url(#arrow-head)");
           path.setAttribute("d", arrowPath(arrow));
@@ -460,7 +765,8 @@
 
       function clearHighlight() {
         for (const node of nodeMap.values()) node.classList.remove("is-active");
-        for (const path of arrowMap.values()) path.classList.remove("highlight");
+        for (const path of arrowMap.values())
+          path.classList.remove("highlight");
       }
 
       function highlightNode(nodeId) {
@@ -469,7 +775,9 @@
         if (node) node.classList.add("is-active");
         for (const arrow of spec.arrows || []) {
           if (arrow.from === nodeId || arrow.to === nodeId) {
-            arrowMap.get(`${arrow.from}:${arrow.to}`)?.classList.add("highlight");
+            arrowMap
+              .get(`${arrow.from}:${arrow.to}`)
+              ?.classList.add("highlight");
             nodeMap.get(arrow.from)?.classList.add("is-active");
             nodeMap.get(arrow.to)?.classList.add("is-active");
           }
@@ -479,10 +787,13 @@
       function highlightActivePath() {
         clearHighlight();
         const pathNodes = spec.active_path || spec.nodes.map((node) => node.id);
-        for (const nodeId of pathNodes) nodeMap.get(nodeId)?.classList.add("is-active");
+        for (const nodeId of pathNodes)
+          nodeMap.get(nodeId)?.classList.add("is-active");
         for (const arrow of spec.arrows || []) {
           if (pathNodes.includes(arrow.from) && pathNodes.includes(arrow.to)) {
-            arrowMap.get(`${arrow.from}:${arrow.to}`)?.classList.add("highlight");
+            arrowMap
+              .get(`${arrow.from}:${arrow.to}`)
+              ?.classList.add("highlight");
           }
         }
       }
@@ -490,13 +801,19 @@
       function exportSvg() {
         const { width, height } = measureCanvas();
         const serializer = new XMLSerializer();
-        const exported = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        const exported = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "svg",
+        );
         exported.setAttribute("xmlns", "http://www.w3.org/2000/svg");
         exported.setAttribute("width", String(width));
         exported.setAttribute("height", String(height));
         exported.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
-        const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+        const style = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "style",
+        );
         style.textContent = `
           .frame { fill-opacity: 1; stroke-dasharray: 10 10; stroke-width: 2; rx: 28; ry: 28; }
           .frame-label { font-family: Menlo, Consolas, monospace; font-size: 14px; letter-spacing: 0.05em; }
@@ -509,7 +826,10 @@
         `;
         exported.appendChild(style);
 
-        const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        const defs = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "defs",
+        );
         defs.innerHTML = `
           <marker id="svg-arrow-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="#433b30"></path>
@@ -517,20 +837,29 @@
         `;
         exported.appendChild(defs);
 
-        const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const bg = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "rect",
+        );
         bg.setAttribute("width", String(width));
         bg.setAttribute("height", String(height));
         bg.setAttribute("fill", "#fdf9f2");
         exported.appendChild(bg);
 
-        const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        const title = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "text",
+        );
         title.setAttribute("class", "title");
         title.setAttribute("x", "58");
         title.setAttribute("y", "58");
         title.textContent = spec.title || "Architecture diagram";
         exported.appendChild(title);
 
-        const subtitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        const subtitle = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "text",
+        );
         subtitle.setAttribute("class", "subtitle");
         subtitle.setAttribute("x", "58");
         subtitle.setAttribute("y", "96");
@@ -539,7 +868,10 @@
 
         for (const group of spec.groups || []) {
           const colors = palette[group.color || "gray"];
-          const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          const rect = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "rect",
+          );
           rect.setAttribute("class", "frame");
           rect.setAttribute("x", String(group.x));
           rect.setAttribute("y", String(group.y));
@@ -549,7 +881,10 @@
           rect.setAttribute("stroke", colors.stroke);
           exported.appendChild(rect);
 
-          const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          const label = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "text",
+          );
           label.setAttribute("class", "frame-label");
           label.setAttribute("x", String(group.x + 14));
           label.setAttribute("y", String(group.y - 12));
@@ -559,7 +894,10 @@
         }
 
         for (const arrow of spec.arrows || []) {
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          const path = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "path",
+          );
           path.setAttribute("class", "wire");
           path.setAttribute("marker-end", "url(#svg-arrow-head)");
           path.setAttribute("d", arrowPath(arrow));
@@ -568,7 +906,10 @@
 
         for (const node of spec.nodes) {
           const colors = palette[node.color || "gray"];
-          const outer = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          const outer = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "rect",
+          );
           outer.setAttribute("class", "node");
           outer.setAttribute("x", String(node.x));
           outer.setAttribute("y", String(node.y));
@@ -578,7 +919,10 @@
           outer.setAttribute("stroke", colors.stroke);
           exported.appendChild(outer);
 
-          const inner = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          const inner = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "rect",
+          );
           inner.setAttribute("class", "inner");
           inner.setAttribute("x", String(node.x + 14));
           inner.setAttribute("y", String(node.y + 14));
@@ -588,10 +932,16 @@
           inner.setAttribute("stroke", "transparent");
           exported.appendChild(inner);
 
-          const lines = String(node.label).replace(/<[^>]+>/g, "").split(/<br\s*\/?>/i).flatMap((line) => line.split("\n"));
+          const lines = String(node.label)
+            .replace(/<[^>]+>/g, "")
+            .split(/<br\s*\/?>/i)
+            .flatMap((line) => line.split("\n"));
           const startY = node.y + node.h / 2 - (lines.length - 1) * 13;
           lines.forEach((line, index) => {
-            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            const text = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "text",
+            );
             text.setAttribute("class", "label");
             text.setAttribute("x", String(node.x + node.w / 2));
             text.setAttribute("y", String(startY + index * 28));
@@ -600,7 +950,9 @@
           });
         }
 
-        const blob = new Blob([serializer.serializeToString(exported)], { type: "image/svg+xml;charset=utf-8" });
+        const blob = new Blob([serializer.serializeToString(exported)], {
+          type: "image/svg+xml;charset=utf-8",
+        });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -618,9 +970,15 @@
         node.addEventListener("mouseenter", () => highlightNode(nodeId));
         node.addEventListener("mouseleave", clearHighlight);
       }
-      document.getElementById("highlight-flow").addEventListener("click", highlightActivePath);
-      document.getElementById("reset-flow").addEventListener("click", clearHighlight);
-      document.getElementById("export-svg").addEventListener("click", exportSvg);
+      document
+        .getElementById("highlight-flow")
+        .addEventListener("click", highlightActivePath);
+      document
+        .getElementById("reset-flow")
+        .addEventListener("click", clearHighlight);
+      document
+        .getElementById("export-svg")
+        .addEventListener("click", exportSvg);
     </script>
   </body>
 </html>

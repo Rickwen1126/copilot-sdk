@@ -354,7 +354,10 @@ class RawJsonRpcClient {
                 });
             }
 
-            if (AUTO_APPROVE_COMMAND_REQUESTS && parsed.method === "item/commandExecution/requestApproval") {
+            if (
+                AUTO_APPROVE_COMMAND_REQUESTS &&
+                parsed.method === "item/commandExecution/requestApproval"
+            ) {
                 const response = buildCommandApprovalResponse(parsed.params ?? null);
                 if (this.autoResponses.length < MAX_NOTIFICATION_SAMPLES) {
                     this.autoResponses.push({
@@ -474,7 +477,12 @@ class RawJsonRpcClient {
 }
 
 function summarizeModels(result: unknown): unknown {
-    if (!result || typeof result !== "object" || !("data" in result) || !Array.isArray(result.data)) {
+    if (
+        !result ||
+        typeof result !== "object" ||
+        !("data" in result) ||
+        !Array.isArray(result.data)
+    ) {
         return result;
     }
 
@@ -563,6 +571,7 @@ async function probeRawAppServer() {
         );
 
         const account = await client.sendRequest("account/read", { refreshToken: false });
+        const accountRefresh = await client.sendRequest("account/read", { refreshToken: true });
         const models = await client.sendRequest("model/list", { includeHidden: false, limit: 20 });
         const thread = await client.sendRequest("thread/start", {
             cwd: TURN_CWD,
@@ -576,16 +585,19 @@ async function probeRawAppServer() {
             initialize: initialize.result,
             copilotRpcCompatibility,
             account: account.error ? { error: account.error } : account.result,
+            accountRefresh: accountRefresh.error
+                ? { error: accountRefresh.error }
+                : accountRefresh.result,
             models: models.error ? { error: models.error } : summarizeModels(models.result),
             thread: thread.error ? { error: thread.error } : thread.result,
         };
 
-        const threadStarted = await client.waitForNotification("thread/started", 3_000).catch(
-            (error) => ({
+        const threadStarted = await client
+            .waitForNotification("thread/started", 3_000)
+            .catch((error) => ({
                 method: "thread/started",
                 params: { error: serializeError(error) },
-            })
-        );
+            }));
         report.threadStartedNotification = threadStarted;
 
         const threadId = extractThreadId(thread.result);

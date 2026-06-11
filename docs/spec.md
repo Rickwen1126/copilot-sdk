@@ -1,7 +1,7 @@
 # Copilot SDK Canonical Spec
 
 Created: 2026-05-16
-Last Updated: 2026-06-04 20:28
+Last Updated: 2026-06-11 11:43
 Status: Active
 
 ## Purpose
@@ -22,7 +22,7 @@ This repo provides the Copilot SDK and the surrounding docs, examples, tests, an
 - Downstream Chatpilot acceptance is covered by [nodejs/examples/chatpilot-runtime-acceptance.ts](../nodejs/examples/chatpilot-runtime-acceptance.ts). It runs isolated Chatpilot `/cli/chat` new-session and run-session flows against both `Copilot SDK + Copilot CLI` and `Copilot SDK + Codex adapter + Codex app-server`, then verifies SDK-visible logs, tool intent, session reuse, adapter transcript, and SQLite memory side effects.
 - Current conformance artifacts are indexed in [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md).
 - Deferred and unsupported runtime capabilities are recorded in [docs/integrations/codex-sdk-runtime-profile/unsupported-capabilities.md](./integrations/codex-sdk-runtime-profile/unsupported-capabilities.md).
-- Production readiness gaps for running the Chatpilot live runtime on the Codex backend are tracked in [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md). Phase 3.5 capability spike is complete and summarized in [codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json); Phase 4 implementation now starts from those lifecycle, resume, tool-refresh, sandbox, and auth constraints.
+- Production readiness for running the selected Chatpilot live runtime profile on the Codex backend is tracked in [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md). The P0 gate is closed for the selected profile through Phase 4 lifecycle hardening, Phase 5 production proof, and Phase 6 policy/model-behavior cleanup; current evidence is indexed in [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md).
 
 ## Canonical Entrypoints
 
@@ -37,7 +37,7 @@ This repo provides the Copilot SDK and the surrounding docs, examples, tests, an
 
 Current artifact: [docs/architecture/skyeye.html](./architecture/skyeye.html)
 
-The diagram shows the Chatpilot app substrate, Copilot SDK protocol seam, Copilot CLI baseline, Codex adapter path, and Phase 6 acceptance evidence chain.
+The diagram shows the Chatpilot app substrate, Copilot SDK protocol seam, Copilot CLI baseline, Codex adapter path, and P0 readiness evidence chain.
 
 ## Code Map / CodeTour
 

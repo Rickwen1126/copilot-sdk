@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    buildToolPolicyReadinessReport,
     buildToolCallComplianceReport,
     buildToolSchemaRoundTripReport,
 } from "../conformance/codexConformanceProof.js";
@@ -152,6 +153,95 @@ describe("Codex conformance proof helpers", () => {
                 name: "tool-call compliance benchmark produced observations",
                 status: "not-run",
                 evidence: "observations=0",
+            },
+        ]);
+    });
+
+    it("passes policy readiness when namespace, prompt, description, and multimodal decisions are explicit", () => {
+        const report = buildToolPolicyReadinessReport({
+            nativeToolNames: ["local_shell", "apply_patch"],
+            sideEffectToolNames: ["save_memo"],
+            multimodalToolNames: ["show_image"],
+            tools: [
+                {
+                    name: "save_memo",
+                    description: "Store a durable memo when the user asks to remember something.",
+                },
+                {
+                    name: "show_image",
+                    description:
+                        "Return an already-authorized image back to the user conversation.",
+                },
+            ],
+            promptMatrix: [
+                {
+                    promptId: "save_memo-selection",
+                    expectedToolName: "save_memo",
+                    prompt: "Dry-run: user asks to remember a note.",
+                    executionMode: "dry-run-only",
+                },
+                {
+                    promptId: "show_image-selection",
+                    expectedToolName: "show_image",
+                    prompt: "Show an authorized image URL.",
+                    executionMode: "live-safe",
+                },
+            ],
+            multimodalDecisions: [
+                {
+                    toolName: "show_image",
+                    decision: "user-visible-media",
+                    evidence: "The image is sent to the user channel, not back to the LLM.",
+                },
+            ],
+        });
+
+        expect(report.status).toBe("pass");
+        expect(report.assertions.every((assertion) => assertion.status === "pass")).toBe(true);
+        expect(report.toolCount).toBe(2);
+        expect(report.promptCaseCount).toBe(2);
+    });
+
+    it("fails policy readiness for native collisions, weak descriptions, unsafe side effects, and missing prompt coverage", () => {
+        const report = buildToolPolicyReadinessReport({
+            nativeToolNames: ["shell"],
+            sideEffectToolNames: ["save_memo"],
+            multimodalToolNames: ["show_image"],
+            tools: [
+                { name: "shell", description: "Run shell" },
+                { name: "save_memo", description: "SDK tool save_memo" },
+                { name: "show_image", description: "Show an image to the user." },
+            ],
+            promptMatrix: [
+                {
+                    promptId: "save_memo-live",
+                    expectedToolName: "save_memo",
+                    prompt: "Remember this.",
+                    executionMode: "live-safe",
+                },
+                {
+                    promptId: "unknown-tool",
+                    expectedToolName: "unknown_tool",
+                    prompt: "Call unknown.",
+                    executionMode: "dry-run-only",
+                },
+            ],
+        });
+
+        expect(report.status).toBe("fail");
+        expect(report.namespaceCollisions).toEqual(["shell"]);
+        expect(report.uncoveredTools).toEqual(["shell", "show_image"]);
+        expect(report.unknownPromptTools).toEqual(["unknown_tool"]);
+        expect(report.unsafePromptCases).toEqual(["save_memo-live"]);
+        expect(report.multimodalPolicyMissing).toEqual(["show_image"]);
+        expect(report.descriptionIssues).toEqual([
+            {
+                toolName: "shell",
+                issues: ["description too short for reliable selection"],
+            },
+            {
+                toolName: "save_memo",
+                issues: ["fallback SDK description"],
             },
         ]);
     });

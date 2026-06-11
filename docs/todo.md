@@ -1,22 +1,8 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 10:52
+Last Updated: 2026-06-11 11:43
 Status: Active
-
-## P0: Codex Adapter Production Readiness Queue @2026-06-04-2016
-
-Section source:
-
-- Production readiness inventory: [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md)
-- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md)
-- Phase 3.5 evidence: [codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json)
-- Code/Surface: adapter facade/session workflow, gateway lifecycle, Chatpilot acceptance harness, production runbook docs
-- Source: production-readiness issue inventory split into spike-required and direct implementation phases
-
-- [ ] Phase 6 production policy and model-behavior cleanup.
-  - Assigned issues: C2 residual, B6, B7, C3, C4, D2, D3.
-  - Completion evidence: namespace/policy decisions are explicit, the full 26-tool selection benchmark or an explicitly safer equivalent is backed by evidence, model-selection prompt/tool-description audits are backed by benchmark evidence, auth inheritance has production-like proof, and lower-priority multimodal/observability gaps are closed or explicitly deferred.
 
 ## P1: Codex Adapter Experimental Path Graduation @2026-06-05-1121
 
@@ -29,7 +15,7 @@ Section source:
 
 - [ ] Decide and execute the adapter graduation path after Phase 4/5 production evidence.
   - Current decision: keep `nodejs/src/experimental/` and `./experimental/codex-adapter` while the Codex backend is still an incubating runtime lane.
-  - Graduation trigger: Phase 4 production workflow hardening and Phase 5 production proof expansion have passed without adapter-boundary blockers; this decision is now unblocked, but still intentionally separate from Phase 6 policy/model-behavior cleanup.
+  - Graduation trigger: the P0 production readiness gate is closed for the selected Chatpilot profile; this decision is now unblocked but remains an independent P1 product/API-surface decision.
   - Completion evidence: either document why the adapter intentionally remains experimental, or move implementation to a stable source path, add a stable package export, keep `./experimental/codex-adapter` as an explicit compatibility/deprecation alias if needed, and update tests/docs/code map together.
 
 ## P1: Runtime Adapter Refactor Architecture Guard @2026-06-03-1141

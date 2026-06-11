@@ -1,7 +1,7 @@
 # Unsupported And Deferred Runtime Capabilities
 
 Created: 2026-06-01 14:05
-Last Updated: 2026-06-01 14:05
+Last Updated: 2026-06-11 11:43
 Status: Active
 
 This document records what the current Codex adapter does **not** claim.
@@ -23,6 +23,9 @@ The current evidence proves these profile capabilities for the selected Chatpilo
 - SDK tool failure and denied-result paths
 - Chatpilot `/cli/chat` new-session and run-session app behavior
 - Chatpilot `save_memo` / `list_memos` side effects through SQLite data assertions
+- Chatpilot 26-tool schema round-trip into Codex `dynamicTools`
+- Safe 26-tool selection benchmark surrogate for the selected Chatpilot tool catalog
+- Isolated Codex app-server auth read/refresh/model-list smoke for the ChatGPT subscription lane
 
 ## Deferred Profiles
 
@@ -76,3 +79,8 @@ Not claimed:
 - Full Copilot CLI cloning is not the goal.
 - Matching exact assistant wording is not a protocol gate when the real Copilot CLI baseline transforms final prose after receiving the correct tool result.
 - A behavior becomes required only when the selected SDK runtime profile or Chatpilot app path consumes it.
+
+## Explicit P2 Deferrals After P0 Closure
+
+- Codex dynamic-tool multimodal output is not claimed. Current Chatpilot media paths either return text-to-LLM summaries or send media to the user-facing channel.
+- Live metrics / health endpoint integration is not claimed. The selected P0 observability contract is bounded transcript summary output through `CODEX_ADAPTER_SUMMARY_PATH` plus process logs.

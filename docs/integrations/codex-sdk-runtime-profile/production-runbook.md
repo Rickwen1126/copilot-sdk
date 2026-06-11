@@ -1,8 +1,8 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-09 11:45
-Status: Phase 4 operational contract
+Last Updated: 2026-06-11 11:43
+Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
 
@@ -11,6 +11,8 @@ This runbook is for operating the experimental Codex adapter as a Copilot SDK-co
 Run `codex login` before starting the adapter.
 
 The adapter starts `codex app-server` through the Codex CLI. For the ChatGPT subscription lane, the operator must log in with the intended ChatGPT account first. The adapter strips `OPENAI_API_KEY` from the child app-server environment so API-key mode does not accidentally override the ChatGPT-auth lane.
+
+Phase 6 validation also proved the isolated Codex app-server lane can read the ChatGPT account with both `refreshToken=false` and `refreshToken=true`, and can list models from the copied runtime home. Keep raw auth smoke artifacts out of repo because they can contain account identity details; record only hashes and boolean evidence.
 
 ## Durable Resume Setup
 
@@ -46,6 +48,19 @@ CODEX_ADAPTER_NETWORK_ACCESS=false
 
 These are also the adapter defaults. They prevent the Codex coding-agent prior from turning a chatbot request into native shell/file side effects. If a coding-agent product path needs broader native Codex tools, run it as a separate explicit runtime profile and prove it with its own conformance artifact.
 
+## Tool Selection And Media Policy
+
+The selected Chatpilot lane treats the 26 chatbot-visible SDK tools as the model-facing tool catalog. Phase 6 policy proof checks that tool names do not collide with known Codex native tools and that every tool has a safe selection benchmark prompt case.
+
+External-side-effect tools must be benchmarked as `dry-run-only` unless the test harness replaces their handlers with safe fakes. Do not run WorkProof push, browser control, web search, schedule mutation, media download, document edit, or memory writes as uncontrolled production-like benchmark calls.
+
+Multimodal tool-result output is not required for the selected profile:
+
+- `batch_image_analyze` and `download_media` execute inside Chatpilot and must return text-to-LLM summaries when the model needs a result.
+- `show_image` sends media to the user-facing conversation channel, not back into Codex as dynamic-tool image output.
+
+If a future product path needs Codex to receive image/audio/file content directly as a dynamic-tool result, that is a new capability gate and must not be inferred from this profile.
+
 ## Resume Tool-Set Policy
 
 Codex supports dynamic tools on `thread/start`, not supported hot-update semantics on `thread/resume`.
@@ -72,6 +87,8 @@ CODEX_ADAPTER_SUMMARY_PATH=/tmp/codex-adapter-summary.json
 ```
 
 `CODEX_ADAPTER_REQUEST_TIMEOUT_MS` controls Codex request timeout and protocol-v3 pending dynamic tool timeout. `CODEX_ADAPTER_TRANSCRIPT_LIMIT` keeps adapter and gateway summaries bounded for long-running processes.
+
+For P0 observability, always set `CODEX_ADAPTER_SUMMARY_PATH` in staged/prod-like runs and retain process stdout/stderr. Live metrics or health endpoints remain a P2 follow-up until the deployment environment needs them; bounded transcript summaries are the current evidence contract.
 
 ## Minimal Start Command
 

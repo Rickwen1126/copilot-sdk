@@ -58,6 +58,35 @@ export type ToolCallComplianceReport = {
     assertions: ProofAssertion[];
 };
 
+export type ToolPolicyPromptCase = {
+    promptId: string;
+    expectedToolName: string;
+    prompt: string;
+    executionMode: "live-safe" | "dry-run-only";
+    rationale?: string;
+};
+
+export type MultimodalPolicyDecision = {
+    toolName: string;
+    decision: "text-to-llm" | "user-visible-media" | "explicitly-deferred";
+    evidence: string;
+};
+
+export type ToolPolicyReadinessReport = {
+    status: ProofStatus;
+    toolCount: number;
+    promptCaseCount: number;
+    namespaceCollisions: string[];
+    duplicateToolNames: string[];
+    descriptionIssues: Array<{ toolName: string; issues: string[] }>;
+    uncoveredTools: string[];
+    unknownPromptTools: string[];
+    unsafePromptCases: string[];
+    multimodalPolicyMissing: string[];
+    multimodalDecisions: MultimodalPolicyDecision[];
+    assertions: ProofAssertion[];
+};
+
 const DEFAULT_EMPTY_TOOL_SCHEMA: Record<string, unknown> = {
     type: "object",
     properties: {},
@@ -218,6 +247,115 @@ export function buildToolCallComplianceReport(
     };
 }
 
+export function buildToolPolicyReadinessReport(input: {
+    tools: ToolDescriptorLike[];
+    nativeToolNames: string[];
+    promptMatrix: ToolPolicyPromptCase[];
+    sideEffectToolNames?: string[];
+    multimodalToolNames?: string[];
+    multimodalDecisions?: MultimodalPolicyDecision[];
+    minimumDescriptionLength?: number;
+}): ToolPolicyReadinessReport {
+    const minimumDescriptionLength = input.minimumDescriptionLength ?? 12;
+    const toolNames = input.tools.map((tool) => tool.name);
+    const toolNameSet = new Set(toolNames);
+    const duplicateToolNames = sortedUnique(
+        toolNames.filter((name, index) => toolNames.indexOf(name) !== index)
+    );
+    const nativeToolNameSet = new Set(input.nativeToolNames);
+    const namespaceCollisions = sortedUnique(
+        toolNames.filter((name) => nativeToolNameSet.has(name))
+    );
+    const descriptionIssues = input.tools
+        .map((tool) => {
+            const issues: string[] = [];
+            const description = tool.description?.trim() ?? "";
+            if (description.length === 0) {
+                issues.push("description missing");
+            }
+            if (description === `SDK tool ${tool.name}`) {
+                issues.push("fallback SDK description");
+            }
+            if (description.length > 0 && description.length < minimumDescriptionLength) {
+                issues.push("description too short for reliable selection");
+            }
+            return { toolName: tool.name, issues };
+        })
+        .filter((item) => item.issues.length > 0);
+    const coveredToolNames = new Set(input.promptMatrix.map((item) => item.expectedToolName));
+    const uncoveredTools = sortedUnique(toolNames.filter((name) => !coveredToolNames.has(name)));
+    const unknownPromptTools = sortedUnique(
+        input.promptMatrix
+            .map((item) => item.expectedToolName)
+            .filter((name) => !toolNameSet.has(name))
+    );
+    const sideEffectToolNameSet = new Set(input.sideEffectToolNames ?? []);
+    const unsafePromptCases = input.promptMatrix
+        .filter(
+            (item) =>
+                sideEffectToolNameSet.has(item.expectedToolName) &&
+                item.executionMode !== "dry-run-only"
+        )
+        .map((item) => item.promptId);
+    const multimodalDecisions = input.multimodalDecisions ?? [];
+    const multimodalDecisionNames = new Set(multimodalDecisions.map((item) => item.toolName));
+    const multimodalPolicyMissing = sortedUnique(
+        (input.multimodalToolNames ?? []).filter((name) => !multimodalDecisionNames.has(name))
+    );
+
+    const assertions = [
+        assertion(
+            "no SDK tool name collides with known Codex native tools",
+            namespaceCollisions.length === 0,
+            `collisions=${namespaceCollisions.join(",") || "none"}`
+        ),
+        assertion(
+            "SDK tool names are unique",
+            duplicateToolNames.length === 0,
+            `duplicates=${duplicateToolNames.join(",") || "none"}`
+        ),
+        assertion(
+            "all SDK tools have selection-quality descriptions",
+            descriptionIssues.length === 0,
+            descriptionIssues
+                .map((item) => `${item.toolName}:${item.issues.join("|")}`)
+                .join(";") || "descriptionIssues=none"
+        ),
+        assertion(
+            "all SDK tools have a safe selection benchmark prompt case",
+            uncoveredTools.length === 0 && unknownPromptTools.length === 0,
+            `uncovered=${uncoveredTools.join(",") || "none"} unknown=${
+                unknownPromptTools.join(",") || "none"
+            }`
+        ),
+        assertion(
+            "external-side-effect tools use dry-run-only benchmark cases",
+            unsafePromptCases.length === 0,
+            `unsafePromptCases=${unsafePromptCases.join(",") || "none"}`
+        ),
+        assertion(
+            "multimodal tool-result gaps have explicit policy decisions",
+            multimodalPolicyMissing.length === 0,
+            `missing=${multimodalPolicyMissing.join(",") || "none"}`
+        ),
+    ];
+
+    return {
+        status: assertions.every((item) => item.status === "pass") ? "pass" : "fail",
+        toolCount: input.tools.length,
+        promptCaseCount: input.promptMatrix.length,
+        namespaceCollisions,
+        duplicateToolNames,
+        descriptionIssues,
+        uncoveredTools,
+        unknownPromptTools,
+        unsafePromptCases,
+        multimodalPolicyMissing,
+        multimodalDecisions,
+        assertions,
+    };
+}
+
 function assertion(name: string, condition: boolean, evidence: string): ProofAssertion {
     return {
         name,
@@ -260,6 +398,10 @@ function deepEqualJson(left: unknown, right: unknown): boolean {
         return leftKeys.every((key) => deepEqualJson(left[key], right[key]));
     }
     return false;
+}
+
+function sortedUnique(values: string[]): string[] {
+    return Array.from(new Set(values)).sort();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

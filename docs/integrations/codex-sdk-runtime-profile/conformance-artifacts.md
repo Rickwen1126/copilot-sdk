@@ -1,7 +1,7 @@
 # Conformance Artifacts
 
 Created: 2026-06-01 14:05
-Last Updated: 2026-06-11 10:38
+Last Updated: 2026-06-11 11:43
 Status: Active
 
 This index records the current evidence for Codex adapter parity in the selected profile.
@@ -139,3 +139,30 @@ Verification:
 - `npx prettier --check conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts` -> pass
 - `npx eslint conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/chatpilot-runtime-acceptance.ts` -> pass
 - `npm run build` -> pass
+
+## Phase 6 Policy / Model-Behavior Cleanup
+
+Summary artifact: [artifacts/refactor-phase6-policy-cleanup@2026-06-11-1143.summary.json](./artifacts/refactor-phase6-policy-cleanup@2026-06-11-1143.summary.json)
+
+Raw local artifacts:
+
+- `/tmp/codex-phase6-policy-cleanup-20260611-1143.json`
+  - sha256: `efc7d09a36be0ba528a81fe456e8ecc317c6f28d187f62214118eb2039b38d47`
+  - status: `pass`
+- `/tmp/codex-phase6-auth-smoke-20260611-1143.json`
+  - sha256: `d36baf09b2181bb6503c8c3c7de2d2f47871d59b7490dbc7e0f762c0f34ab727`
+  - note: raw smoke is not copied into repo because it contains account identity details; the repo summary records only boolean auth evidence and hash.
+
+Result:
+
+- C2 residual passes through a safe 26-tool selection benchmark surrogate: every Chatpilot tool has a prompt case, and every side-effecting tool is marked `dry-run-only` to avoid WorkProof/browser/web/search/schedule/media side effects.
+- B6 passes: no Chatpilot SDK tool name collides with known Codex native tools (`apply_patch`, `local_shell`, `read_file`, `shell`, `update_plan`, `write_file`).
+- C3/C4 pass: the Phase 5 live benchmark observed no native Codex tool calls under the locked Chatpilot lane, and all 26 tool descriptions pass the selection-quality audit.
+- D2 passes: isolated Codex app-server smoke validates `account/read` with `refreshToken=false`, `account/read` with `refreshToken=true`, and `model/list`.
+- B7 and D3 are explicitly deferred as non-blocking P2 policy decisions: current Chatpilot media tools return text-to-LLM or user-visible media rather than requiring Codex dynamic-tool multimodal output; bounded transcript summaries remain the P0 observability contract, while live metrics/health endpoint work is deferred until staged deployment needs it.
+
+Verification:
+
+- `npx vitest run test/codex-conformance-proof.test.ts test/codex-adapter-mappers.test.ts` -> pass, 24 tests
+- `npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck examples/codex-adapter-phase6-policy-audit.ts examples/codex-app-server-smoke.ts` -> pass
+- `npx eslint conformance/codexConformanceProof.ts test/codex-conformance-proof.test.ts examples/codex-adapter-phase6-policy-audit.ts examples/codex-app-server-smoke.ts` -> pass

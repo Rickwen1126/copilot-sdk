@@ -1,0 +1,139 @@
+{
+  "artifactType": "refactor-phase6-policy-cleanup",
+  "generatedAt": "2026-06-11T03:43:24.526Z",
+  "status": "pass",
+  "sourceAcceptance": {
+    "path": "/tmp/chatpilot-codex-phase5-all-backends-20260611-1038.json",
+    "sha256": "751317ac53ceff2c8e1ded28cf754ab838207b3145b7ff3b5a97d3dddbb3e941"
+  },
+  "authSmoke": {
+    "status": "pass",
+    "path": "/tmp/codex-phase6-auth-smoke-20260611-1143.json",
+    "sha256": "d36baf09b2181bb6503c8c3c7de2d2f47871d59b7490dbc7e0f762c0f34ab727",
+    "evidence": [
+      "account/read refreshToken=false ok=true",
+      "account/read refreshToken=true ok=true",
+      "model/list ok=true"
+    ]
+  },
+  "policyReadiness": {
+    "status": "pass",
+    "toolCount": 26,
+    "promptCaseCount": 26,
+    "namespaceCollisions": [],
+    "duplicateToolNames": [],
+    "descriptionIssues": [],
+    "uncoveredTools": [],
+    "unknownPromptTools": [],
+    "unsafePromptCases": [],
+    "multimodalPolicyMissing": [],
+    "multimodalDecisions": [
+      {
+        "toolName": "batch_image_analyze",
+        "decision": "text-to-llm",
+        "evidence": "Batch image analysis executes inside Chatpilot and returns a textual result or async user push; the adapter does not need to return image bytes to Codex."
+      },
+      {
+        "toolName": "download_media",
+        "decision": "text-to-llm",
+        "evidence": "Media download is a Chatpilot-side inspection step; any model-facing result must be textResultForLlm, preserving the adapter inputText-only contract."
+      },
+      {
+        "toolName": "show_image",
+        "decision": "user-visible-media",
+        "evidence": "show_image sends media to the user-facing conversation channel; it is not a requirement for Codex dynamic tool multimodal output."
+      }
+    ],
+    "assertions": [
+      {
+        "name": "no SDK tool name collides with known Codex native tools",
+        "status": "pass",
+        "evidence": "collisions=none"
+      },
+      {
+        "name": "SDK tool names are unique",
+        "status": "pass",
+        "evidence": "duplicates=none"
+      },
+      {
+        "name": "all SDK tools have selection-quality descriptions",
+        "status": "pass",
+        "evidence": "descriptionIssues=none"
+      },
+      {
+        "name": "all SDK tools have a safe selection benchmark prompt case",
+        "status": "pass",
+        "evidence": "uncovered=none unknown=none"
+      },
+      {
+        "name": "external-side-effect tools use dry-run-only benchmark cases",
+        "status": "pass",
+        "evidence": "unsafePromptCases=none"
+      },
+      {
+        "name": "multimodal tool-result gaps have explicit policy decisions",
+        "status": "pass",
+        "evidence": "missing=none"
+      }
+    ]
+  },
+  "issueStatuses": [
+    {
+      "issue": "C2 residual",
+      "status": "pass",
+      "evidence": [
+        "26 safe selection prompt cases cover 26 tools",
+        "Side-effecting tools are represented as dry-run-only benchmark cases.",
+        "Phase 5 live save/list benchmark remains the real execution slice."
+      ]
+    },
+    {
+      "issue": "B6",
+      "status": "pass",
+      "evidence": [
+        "native collisions=none",
+        "known native tools=apply_patch,local_shell,read_file,shell,update_plan,write_file"
+      ]
+    },
+    {
+      "issue": "B7",
+      "status": "explicitly-deferred",
+      "evidence": [
+        "No current Chatpilot production path requires Codex dynamic tool multimodal output.",
+        "Image/media tools are classified as text-to-LLM or user-visible media policies."
+      ]
+    },
+    {
+      "issue": "C3",
+      "status": "pass",
+      "evidence": [
+        "Phase 5 live benchmark observed no native Codex tool calls under Chatpilot locked lane.",
+        "Phase 6 prompt matrix keeps coder-prior-sensitive side-effect prompts dry-run-only."
+      ]
+    },
+    {
+      "issue": "C4",
+      "status": "pass",
+      "evidence": [
+        "description issues=0"
+      ]
+    },
+    {
+      "issue": "D2",
+      "status": "pass",
+      "evidence": [
+        "account/read refreshToken=false ok=true",
+        "account/read refreshToken=true ok=true",
+        "model/list ok=true"
+      ]
+    },
+    {
+      "issue": "D3",
+      "status": "explicitly-deferred",
+      "evidence": [
+        "Adapter exposes bounded transcript summaries through CODEX_ADAPTER_SUMMARY_PATH.",
+        "Live metrics/health endpoint remains non-blocking P2 observability work unless a staged deployment requires it."
+      ]
+    }
+  ]
+}

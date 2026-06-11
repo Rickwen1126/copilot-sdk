@@ -1,0 +1,50 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Audit: Codex Adapter P1 Progress 2026-06-11",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## What This Tour Reviews\n\nThis tour audits the P1 progress after the prior formal P0 audit. The scope is three commits: the graduation decision, stale inline harness cleanup, and ledger extraction.\n\nIf you remember only one thing, remember this question: did this slice reduce spike gravity without making a stronger public promise than the adapter can support?\n\nMental model: P0 readiness proved a selected runtime profile. P1 progress is now about making the proof and module boundaries maintainable."
+    },
+    {
+      "file": "docs/integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md",
+      "line": 7,
+      "endLine": 12,
+      "ref": "9e1baa1893d148163316eb8239f2ccdcafc67553",
+      "title": "Graduation Is An API Promise",
+      "description": "## Insight\n\nMechanism: this decision keeps the adapter behind the experimental subpath even though the selected Chatpilot profile passed P0 readiness.\n\nFailure mode: graduating here would turn a profile-scoped runtime lane into a broad SDK API promise before the harness and module boundaries are finished.\n\nTrade-off: users get a runnable adapter and explicit import path now, while stable API compatibility waits for Phase 5/6/7 closeout.\n\n## Plain Reading\n\nThis step is the public-boundary guard. It is saying: readiness for one proven profile is not the same as promising a stable general adapter API.\n\n## Code Detail\n\nThe key line is the decision to keep `nodejs/src/experimental/` and `./experimental/codex-adapter`. The audit accepts this because it limits compatibility risk while still preserving the selected-profile runtime path."
+    },
+    {
+      "file": "nodejs/examples/copilot-codex-adapter-spike.ts",
+      "line": 7,
+      "endLine": 18,
+      "ref": "9e1baa1893d148163316eb8239f2ccdcafc67553",
+      "title": "Example Script Now Imports Ledger Ownership",
+      "description": "## Insight\n\nMechanism: the spike script now imports ledger collection and hop matching instead of owning transcript normalization inline.\n\nFailure mode: if this import boundary is wrong, report checks could still pass for the wrong observation shape or duplicate old helper behavior.\n\nTrade-off: the example remains the composed harness for now, but the observation layer has a dedicated module and test file.\n\n## Plain Reading\n\nThis step is where the big script gets thinner. It still builds the report, but it no longer decides how raw transcripts become normalized ledger entries.\n\n## Code Detail\n\nThe import list is the visible ownership transfer: `collectAdapterLedger`, `collectCopilotLedger`, `countLedgerHops`, and `hasLedgerHop` come from `nodejs/conformance/codexConformanceLedger.ts`."
+    },
+    {
+      "file": "nodejs/conformance/codexConformanceLedger.ts",
+      "line": 45,
+      "endLine": 78,
+      "ref": "9e1baa1893d148163316eb8239f2ccdcafc67553",
+      "title": "Ledger Normalization Owns Observation Shape",
+      "description": "## Insight\n\nMechanism: `normalizeTranscript` converts raw transcript entries into a stable ledger shape with endpoints, method, ids, payload shape, sanitized payload, result shape, timestamp, and status.\n\nFailure mode: if this layer drops errors, ids, or endpoint direction, later report assertions may produce a false sense of parity.\n\nTrade-off: keeping this pure makes it easy to test, but it also means live side-effect proof still belongs to later assertion/report layers.\n\n## Plain Reading\n\nThis function is the translator between noisy runtime messages and the evidence table the harness can reason about.\n\n## Code Detail\n\nThe audit accepts this extraction because tests cover normalized payload evidence, direct/nested errors, hop matching, and recording collection."
+    },
+    {
+      "file": "nodejs/test/codex-conformance-ledger.test.ts",
+      "line": 11,
+      "endLine": 96,
+      "ref": "9e1baa1893d148163316eb8239f2ccdcafc67553",
+      "title": "Tests Lock The Evidence Shape",
+      "description": "## Insight\n\nMechanism: the tests assert specific normalized fields instead of only checking that a ledger has entries.\n\nFailure mode: a weak test could pass while losing request ids, session ids, endpoint direction, or sanitized payload evidence.\n\nTrade-off: these are unit-level tests, not live conformance evidence. They are appropriate for the pure ledger brick but not enough to close all of Phase 5.\n\n## Plain Reading\n\nThis is the safety net for the extraction. It proves the new module kept the meaning of the old transcript normalization layer.\n\n## Code Detail\n\nThe first test covers endpoint mapping, ids, result shape, and sanitized payload. Later tests cover error status, hop counts, and baseline/adapter recording collection."
+    },
+    {
+      "file": "docs/todo.md",
+      "line": 17,
+      "endLine": 23,
+      "ref": "9e1baa1893d148163316eb8239f2ccdcafc67553",
+      "title": "Phase 5 Correctly Stays Open",
+      "description": "## Insight\n\nMechanism: the todo records completed partial evidence while keeping Phase 5 open for scenario, runner, assertion, report, and fixture decomposition.\n\nFailure mode: marking Phase 5 complete here would overclaim. The full selected-profile conformance comparison has not been rerun for closeout.\n\nTrade-off: the project gets durable progress without pretending the architecture guard is finished.\n\n## Plain Reading\n\nThis step is the audit boundary. It says the ledger brick is real progress, but the whole harness is not decomposed yet.\n\n## Code Detail\n\nThe current partial evidence mentions both `codexConformanceProof.ts` and the new `codexConformanceLedger.ts`, then explicitly names the remaining responsibilities."
+    }
+  ]
+}

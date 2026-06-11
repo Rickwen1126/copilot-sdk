@@ -1,7 +1,7 @@
 # Conformance Artifacts
 
 Created: 2026-06-01 14:05
-Last Updated: 2026-06-11 23:24
+Last Updated: 2026-06-11 23:32
 Status: Active
 
 This index records the current evidence for Codex adapter parity in the selected profile.
@@ -213,3 +213,32 @@ Comparison:
 - The post-decomposition run keeps every check at `traceParity = "pass"`, `dataAssertion = "pass"`, `intentAssertion = "pass"`, and `missing = []`.
 - Ledger counts differ from the June 1 artifact because recorder/report internals and live runtime behavior changed; no selected-profile capability regressed.
 - First non-escalated attempt `/tmp/copilot-codex-selected-profile-20260611-2317.json` failed only because the Copilot CLI baseline could not create `/Users/rickwen/.copilot/session-state/...` under sandbox EPERM. The escalated run above is the valid comparison artifact.
+
+## Refactor Phase 6 Conditional Policy Extraction
+
+Summary artifact: [artifacts/refactor-phase6-conditional-policy@2026-06-11-2330.summary.json](./artifacts/refactor-phase6-conditional-policy@2026-06-11-2330.summary.json)
+
+Result:
+
+- `nodejs/src/experimental/codexAdapterToolPolicy.ts` now owns the real protocol-version dynamic-tool routing policy.
+- Protocol v2 routes Codex dynamic tool calls through SDK `tool.call` requests.
+- Protocol v3 routes Codex dynamic tool calls through `external_tool.requested` session events plus `session.tools.handlePendingToolCall` completion.
+- Approval request/decision mapping and tool deny/failure result mapping remain mapper contracts, not Strategy/Policy objects, because they do not yet have a second live runtime strategy.
+- No generic runtime framework policy was introduced.
+
+Verification:
+
+- `npx vitest run test/codex-adapter-tool-policy.test.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts` -> pass, 36 tests
+- `npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck src/experimental/codexAdapterToolPolicy.ts src/experimental/codexAdapter.ts test/codex-adapter-tool-policy.test.ts` -> pass
+- `npx prettier --check src/experimental/codexAdapterToolPolicy.ts src/experimental/codexAdapter.ts test/codex-adapter-tool-policy.test.ts` -> pass
+- `npm run build` -> pass
+
+Selected-profile comparison:
+
+- raw artifact: `/tmp/copilot-codex-phase6-policy-20260611-2330.json`
+- sha256: `3095a406a55a2211b0fc312f6a1f7ec606579412b8d639b4d79f0faf947935c1`
+- run id: `1024a103-364b-4b94-ac54-6de5e808ddf1`
+- `conformanceReport.verdict = "pass"`
+- `ledgerCounts.copilotCli = 396`
+- `ledgerCounts.codexAdapter = 1146`
+- all seven selected-profile checks passed for both backends with `traceParity`, `dataAssertion`, and `intentAssertion` all passing and `missing = []`

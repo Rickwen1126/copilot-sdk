@@ -34,6 +34,10 @@ import {
     CodexAdapterSessionStore,
     type CodexRuntimeSessionRecord,
 } from "./codexAdapterSessionStore.js";
+import {
+    planDynamicToolCallRouting,
+    type DynamicToolCallRoutingPlan,
+} from "./codexAdapterToolPolicy.js";
 
 export type CodexAdapterSandboxMode =
     | "dangerFullAccess"
@@ -1203,18 +1207,23 @@ export class CodexCopilotAdapterServer {
             return;
         }
 
-        if (this.options.protocolVersion === 2) {
+        const routingPlan = planDynamicToolCallRouting({
+            protocolVersion: this.options.protocolVersion,
+            sessionId: session.sessionId,
+            toolCallId,
+            toolName,
+            argumentsPayload: params.arguments,
+        });
+
+        if (routingPlan.mode === "protocol-v2-sdk-request") {
             return this.handleCodexDynamicToolCallV2(
                 request,
-                params,
-                session,
                 primaryConnection,
-                toolName,
-                toolCallId
+                routingPlan.toolCallParams
             );
         }
 
-        const sdkRequestId = `codex-dynamic-tool:${toolCallId}`;
+        const sdkRequestId = routingPlan.sdkRequestId;
         const timeout = setTimeout(() => {
             const pending = this.pendingDynamicToolCalls.get(sdkRequestId);
             if (!pending) {
@@ -1252,32 +1261,20 @@ export class CodexCopilotAdapterServer {
             createSessionEvent(
                 session,
                 "external_tool.requested",
-                {
-                    requestId: sdkRequestId,
-                    sessionId: session.sessionId,
-                    toolCallId,
-                    toolName,
-                    arguments: params.arguments,
-                },
-                true
+                routingPlan.eventData,
+                routingPlan.ephemeral
             )
         );
     }
 
     private async handleCodexDynamicToolCallV2(
         request: JsonRpcRequest,
-        params: Record<string, unknown>,
-        session: SessionState,
         primaryConnection: { connectionId: string; connection: MessageConnection },
-        toolName: string,
-        toolCallId: string
+        toolCallParams: Extract<
+            DynamicToolCallRoutingPlan,
+            { mode: "protocol-v2-sdk-request" }
+        >["toolCallParams"]
     ): Promise<void> {
-        const toolCallParams = {
-            sessionId: session.sessionId,
-            toolCallId,
-            toolName,
-            arguments: params.arguments,
-        };
         this.recordTranscript({
             at: nowIso(),
             direction: "adapter->sdk.request",

@@ -1,10 +1,33 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 23:24
+Last Updated: 2026-06-11 23:32
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Codex Adapter Conditional Policy Extraction Phase 6 @2026-06-11-2332
+
+Section source:
+
+- Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
+- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md), Phase 6
+- Conformance index: [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md)
+- Evidence artifact: [refactor-phase6-conditional-policy@2026-06-11-2330.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/refactor-phase6-conditional-policy@2026-06-11-2330.summary.json)
+- Code/Surface: [nodejs/src/experimental/codexAdapterToolPolicy.ts](../nodejs/src/experimental/codexAdapterToolPolicy.ts), [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/test/codex-adapter-tool-policy.test.ts](../nodejs/test/codex-adapter-tool-policy.test.ts)
+- Raw comparison artifact: `/tmp/copilot-codex-phase6-policy-20260611-2330.json`
+- Source: active todo `P1: Runtime Adapter Refactor Architecture Guard` Phase 6
+
+- [x] Extracted only the real Strategy/Policy variation axis.
+      Completion evidence: [codexAdapterToolPolicy.ts](../nodejs/src/experimental/codexAdapterToolPolicy.ts) owns protocol-version dynamic-tool routing. Protocol v2 returns SDK `tool.call` request params; protocol v3 returns stable `codex-dynamic-tool:<callId>` request ids plus `external_tool.requested` event payloads.
+- [x] Inserted the policy helper into the live adapter path.
+      Completion evidence: [codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts) now uses `planDynamicToolCallRouting()` before dispatching protocol-v2 `tool.call` or protocol-v3 pending event flow, while gateway IO, timeout, transcript, and session mutation stay in the adapter.
+- [x] Added dedicated variant tests.
+      Completion evidence: [codex-adapter-tool-policy.test.ts](../nodejs/test/codex-adapter-tool-policy.test.ts) asserts both protocol-v2 and protocol-v3 routing shapes.
+- [x] Avoided pattern theater for non-variant candidates.
+      Completion evidence: approval request/decision behavior remains mapper functions because no second live approval strategy exists; tool deny/failure remains a result mapper because deny/failure are data variants; generic runtime framework policy is deferred until another backend or concrete conformance need exists.
+- [x] Preserved selected-profile behavior after policy extraction.
+      Completion evidence: selected-profile comparison run `1024a103-364b-4b94-ac54-6de5e808ddf1` passed with `copilotCli=396` and `codexAdapter=1146` ledger entries; all seven selected-profile checks passed for both backends with `traceParity`, `dataAssertion`, and `intentAssertion` all passing and `missing=[]`.
 
 ## Completed: Codex Adapter Conformance Harness Decomposition Phase 5 @2026-06-11-2324
 

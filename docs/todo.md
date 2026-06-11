@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 23:24
+Last Updated: 2026-06-11 23:32
 Status: Active
 
 ## P1: Runtime Adapter Refactor Architecture Guard @2026-06-03-1141
@@ -13,13 +13,6 @@ Section source:
 - Code/Surface: [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/src/experimental/codexAdapterServer.ts](../nodejs/src/experimental/codexAdapterServer.ts), [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), [nodejs/examples/chatpilot-runtime-acceptance.ts](../nodejs/examples/chatpilot-runtime-acceptance.ts), [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts)
 - References: [runtime adapter architecture boundary](./reference/runtime-adapter-architecture-boundary.md), [runtime adapter design patterns](./reference/runtime-adapter-design-patterns.md), [runtime adapter testing evidence](./reference/runtime-adapter-testing-evidence.md), [SHIP](../.ship/SHIP-codex-adapter-module-cleanup@2026-06-01.md), [learning packet](./integrations/codex-sdk-runtime-profile/learning-design-patterns-architecture-testing.md), [prior cleanup draft](./integrations/codex-sdk-runtime-profile/module-cleanup-plan.md), and [runtime backend code map](./architecture/runtime-backend-code-map.md)
 - Source: user request to consolidate side-thread learning/refactor context into canonical spec/plan before implementation
-
-- [ ] Phase 6: Conditional Strategy / Policy extraction.
-  - Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
-  - Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md)
-  - Code/Surface: adapter mapper/facade/gateway modules after Phase 2-5
-  - Source: refactor plan Phase 6
-  - Completion evidence: every Strategy/Policy brick has at least two meaningful variants or documented near-term conformance need, production policy/model-behavior issues are closed or explicitly deferred with rationale, with dedicated variant tests and no pattern theater.
 
 - [ ] Phase 7: Audit and canonical closeout.
   - Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)

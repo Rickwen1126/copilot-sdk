@@ -1,0 +1,81 @@
+{
+  "createdAt": "2026-06-11 23:30",
+  "status": "pass",
+  "scope": "Phase 6 conditional Strategy / Policy extraction",
+  "branch": "codex-adapter-phase5-proof-20260611",
+  "baseHead": "fcaa5e1f171bc4b8bd3ec1b0449684641b6ed2de",
+  "implementation": [
+    "Added nodejs/src/experimental/codexAdapterToolPolicy.ts as a pure dynamic-tool routing policy helper.",
+    "Extracted the real protocol-version variation axis: protocol-v2 routes Codex dynamic tool calls through SDK tool.call requests, while protocol-v3 routes through external_tool.requested session events plus session.tools.handlePendingToolCall completion.",
+    "Kept gateway IO, timeout handling, transcript recording, and session mutation in CodexCopilotAdapterServer instead of hiding them inside the policy helper.",
+    "Added nodejs/test/codex-adapter-tool-policy.test.ts with dedicated protocol-v2 and protocol-v3 variant assertions.",
+    "Integrated planDynamicToolCallRouting() into the live adapter dynamic tool path."
+  ],
+  "noPatternTheaterDecisions": [
+    {
+      "candidate": "approval policy modes",
+      "decision": "do-not-extract",
+      "reason": "Current approval behavior is already expressed as mapper functions from Codex command/file approval requests to SDK permission requests and from SDK permission results back to Codex decisions. There is no second live approval strategy object beyond the existing request/decision mapping contracts."
+    },
+    {
+      "candidate": "tool deny/failure result behavior",
+      "decision": "do-not-extract",
+      "reason": "Current SDK tool result handling is a single mapper contract that turns textResultForLlm/resultType or explicit errors into Codex dynamic tool responses. Deny/failure are data variants inside the mapper, not separate runtime policies."
+    },
+    {
+      "candidate": "generic runtime framework policy",
+      "decision": "deferred",
+      "reason": "The selected profile still has one non-Copilot runtime backend, Codex. A generic runtime framework interface would be speculative until another backend or concrete conformance need exists."
+    }
+  ],
+  "verification": [
+    {
+      "command": "npx vitest run test/codex-adapter-tool-policy.test.ts test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts",
+      "cwd": "nodejs",
+      "result": "pass",
+      "details": "3 files, 36 tests"
+    },
+    {
+      "command": "npx tsc --noEmit --target ES2022 --module ES2022 --moduleResolution node --strict --esModuleInterop --skipLibCheck src/experimental/codexAdapterToolPolicy.ts src/experimental/codexAdapter.ts test/codex-adapter-tool-policy.test.ts",
+      "cwd": "nodejs",
+      "result": "pass"
+    },
+    {
+      "command": "npx prettier --check src/experimental/codexAdapterToolPolicy.ts src/experimental/codexAdapter.ts test/codex-adapter-tool-policy.test.ts",
+      "cwd": "nodejs",
+      "result": "pass"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "nodejs",
+      "result": "pass"
+    }
+  ],
+  "selectedProfileComparison": {
+    "command": "SPIKE_PHASE=all SPIKE_TIMEOUT_MS=90000 SPIKE_ADAPTER_APPROVAL_POLICY=untrusted SPIKE_ADAPTER_APPROVALS_REVIEWER=user SPIKE_ADAPTER_SANDBOX_MODE=workspaceWrite SPIKE_APPROVAL_PROBE_PATH=/tmp/copilot-codex-approval-20260611-2330 SPIKE_FILE_PROBE=1 SPIKE_TOOL_PROBE=1 SPIKE_TOOL_FAILURE_PROBE=1 SPIKE_WORKDIR=/tmp/copilot-codex-work-20260611-2330 SPIKE_OUT=/tmp/copilot-codex-phase6-policy-20260611-2330.json npx tsx examples/copilot-codex-adapter-spike.ts",
+    "rawArtifact": "/tmp/copilot-codex-phase6-policy-20260611-2330.json",
+    "rawArtifactSha256": "3095a406a55a2211b0fc312f6a1f7ec606579412b8d639b4d79f0faf947935c1",
+    "rawArtifactSize": "2.7M",
+    "runId": "1024a103-364b-4b94-ac54-6de5e808ddf1",
+    "verdict": "pass",
+    "ledgerCounts": {
+      "copilotCli": 396,
+      "codexAdapter": 1146
+    },
+    "passingCapabilities": [
+      "core new session",
+      "resume continuation",
+      "command approval approve",
+      "command approval deny",
+      "file approval approve/deny",
+      "custom tool call",
+      "tool deny or failure"
+    ],
+    "statusTriplets": "Every selected-profile check passed traceParity, dataAssertion, and intentAssertion with missing=[] for both backends.",
+    "unsupportedProfiles": [
+      "Interactive Profile",
+      "Fidelity Profile",
+      "Extended CLI Profile"
+    ]
+  }
+}

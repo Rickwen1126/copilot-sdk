@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-11 11:43
+Last Updated: 2026-06-12 15:00
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -105,3 +105,15 @@ node dist/experimental/codexAdapterServer.js
 ```
 
 Use `cliUrl: "127.0.0.1:4873"` from the SDK consumer.
+
+## ShinyiPilot Python App Notes
+
+The ShinyiPilot spike proves a Python app can use the local Python SDK source and
+connect to the Node.js Codex adapter as an external Copilot-protocol runtime.
+The language split is not the primary risk; the adapter must be deployed as a
+sidecar or sibling service with explicit process ownership, start order,
+readiness, logs, Codex auth home, and durable session-store policy.
+
+See
+[shinyipilot-python-node-spike/spec.md](./shinyipilot-python-node-spike/spec.md)
+for the spike commit, live CLI proof, and deployment notes.

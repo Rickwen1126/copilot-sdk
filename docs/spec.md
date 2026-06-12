@@ -1,7 +1,7 @@
 # Copilot SDK Canonical Spec
 
 Created: 2026-05-16
-Last Updated: 2026-06-12 09:28
+Last Updated: 2026-06-12 15:00
 Status: Active
 
 ## Purpose
@@ -18,6 +18,7 @@ This repo provides the Copilot SDK and the surrounding docs, examples, tests, an
 - The adapter intentionally remains experimental for the next P1 refactor slice. The graduation decision and future trigger are recorded in [docs/integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md](./integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md).
 - The adapter can also run as a long-lived Copilot-protocol server through [nodejs/src/experimental/codexAdapterServer.ts](../nodejs/src/experimental/codexAdapterServer.ts), exposed as the package bin `copilot-codex-adapter`.
 - The first downstream Chatpilot integration uses the existing SDK transport seam: Chatpilot keeps its runtime/session/app routing code stable and points its Python Copilot SDK client at the adapter with `CHATPILOT_COPILOT_CLI_URL`.
+- The ShinyiPilot spike extends the same transport-boundary pattern to a Python app using local Python SDK source with the Node.js Codex adapter as a sidecar runtime. The current commit/deployment notes are recorded in [docs/integrations/codex-sdk-runtime-profile/shinyipilot-python-node-spike/spec.md](./integrations/codex-sdk-runtime-profile/shinyipilot-python-node-spike/spec.md).
 - Protocol compatibility is versioned at the adapter boundary. Node SDK conformance stays on protocol v3 by default; current Chatpilot Python SDK compatibility uses `CODEX_ADAPTER_PROTOCOL_VERSION=2`, including v2 `tool.call` custom tool handling.
 - The protocol-version dynamic-tool routing decision is isolated in [nodejs/src/experimental/codexAdapterToolPolicy.ts](../nodejs/src/experimental/codexAdapterToolPolicy.ts). Protocol v2 routes through SDK `tool.call`; protocol v3 routes through `external_tool.requested` and `session.tools.handlePendingToolCall`.
 - The conformance harness entrypoint remains [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), backed by reusable support modules in [nodejs/conformance](../nodejs/conformance). It is the regression gate for the adapter module.

@@ -1,7 +1,7 @@
 # Copilot SDK Canonical Spec
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 23:36
+Last Updated: 2026-06-12 09:28
 Status: Active
 
 ## Purpose
@@ -41,6 +41,8 @@ This repo provides the Copilot SDK and the surrounding docs, examples, tests, an
 Current artifact: [docs/architecture/skyeye.html](./architecture/skyeye.html)
 
 The diagram shows the Chatpilot app substrate, Copilot SDK protocol seam, Copilot CLI baseline, Codex adapter path, and P0 readiness evidence chain.
+
+Focused adapter integration diagram: [docs/architecture/dataflows/codex-adapter-integration.html](./architecture/dataflows/codex-adapter-integration.html)
 
 ## Code Map / CodeTour
 

@@ -1,0 +1,180 @@
+{
+  "title": "Codex Adapter Integration Flow",
+  "subtitle": "How Chatpilot keeps its SDK seam while the runtime behind it changes from Copilot CLI to Codex app-server",
+  "kind": "dataflows",
+  "name": "codex-adapter-integration",
+  "active_path": [
+    "chatpilot",
+    "python-sdk",
+    "adapter-bin",
+    "adapter-core",
+    "mapper-policy",
+    "gateway",
+    "codex-app-server",
+    "proof-harness"
+  ],
+  "groups": [
+    {
+      "id": "downstream",
+      "label": "Downstream app keeps its substrate",
+      "x": 40,
+      "y": 150,
+      "w": 440,
+      "h": 380,
+      "color": "green"
+    },
+    {
+      "id": "adapter",
+      "label": "Experimental adapter boundary",
+      "x": 510,
+      "y": 150,
+      "w": 490,
+      "h": 500,
+      "color": "orange"
+    },
+    {
+      "id": "codex",
+      "label": "Codex runtime boundary",
+      "x": 1020,
+      "y": 150,
+      "w": 230,
+      "h": 700,
+      "color": "blue"
+    },
+    {
+      "id": "proof",
+      "label": "Read-back proof boundary",
+      "x": 1020,
+      "y": 650,
+      "w": 230,
+      "h": 180,
+      "color": "gray"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "chatpilot",
+      "label": "Chatpilot<br /><code>/cli/chat</code><br />routes + app session",
+      "x": 70,
+      "y": 260,
+      "w": 180,
+      "h": 150,
+      "color": "green"
+    },
+    {
+      "id": "python-sdk",
+      "label": "Python SDK client<br />points <code>cliUrl</code><br />at adapter",
+      "x": 290,
+      "y": 260,
+      "w": 170,
+      "h": 150,
+      "color": "green"
+    },
+    {
+      "id": "adapter-bin",
+      "label": "Adapter server bin<br /><code>copilot-codex-adapter</code>",
+      "x": 540,
+      "y": 230,
+      "w": 170,
+      "h": 130,
+      "color": "orange"
+    },
+    {
+      "id": "adapter-core",
+      "label": "Adapter core<br />SDK JSON-RPC facade<br />session + event bridge",
+      "x": 770,
+      "y": 230,
+      "w": 190,
+      "h": 130,
+      "color": "orange"
+    },
+    {
+      "id": "mapper-policy",
+      "label": "Policy mappers<br />tools + approvals<br />sandbox + v2/v3",
+      "x": 770,
+      "y": 430,
+      "w": 190,
+      "h": 150,
+      "color": "orange"
+    },
+    {
+      "id": "session-store",
+      "label": "Resume store<br />session -> thread<br />cwd + tools",
+      "x": 540,
+      "y": 430,
+      "w": 170,
+      "h": 150,
+      "color": "gray"
+    },
+    {
+      "id": "gateway",
+      "label": "Codex gateway<br />app-server IO<br />child proc",
+      "x": 1040,
+      "y": 230,
+      "w": 170,
+      "h": 130,
+      "color": "blue"
+    },
+    {
+      "id": "codex-app-server",
+      "label": "Codex app-server<br />thread + turn<br />dynamic tools",
+      "x": 1040,
+      "y": 430,
+      "w": 170,
+      "h": 150,
+      "color": "blue"
+    },
+    {
+      "id": "proof-harness",
+      "label": "Read-back proof<br />logs + DB<br />tool verdict",
+      "x": 1040,
+      "y": 690,
+      "w": 170,
+      "h": 115,
+      "color": "gray"
+    }
+  ],
+  "arrows": [
+    {
+      "from": "chatpilot",
+      "to": "python-sdk"
+    },
+    {
+      "from": "python-sdk",
+      "to": "adapter-bin"
+    },
+    {
+      "from": "adapter-bin",
+      "to": "adapter-core"
+    },
+    {
+      "from": "adapter-core",
+      "to": "mapper-policy"
+    },
+    {
+      "from": "adapter-bin",
+      "to": "session-store",
+      "mode": "vertical"
+    },
+    {
+      "from": "mapper-policy",
+      "to": "gateway"
+    },
+    {
+      "from": "gateway",
+      "to": "codex-app-server",
+      "mode": "vertical"
+    },
+    {
+      "from": "codex-app-server",
+      "to": "proof-harness",
+      "mode": "vertical"
+    }
+  ],
+  "notes": [
+    "The downstream app keeps its routing, user/session model, and SDK client shape; only the cliUrl points to the adapter.",
+    "The adapter owns translation: SDK session/create/resume/send becomes Codex thread/start/resume/turn, while tools, approvals, sandbox, and protocol-version routing are mapped at the boundary.",
+    "Session continuity is explicit: the runtime store binds SDK session ids to Codex thread ids plus cwd and tool fingerprint, so incompatible resume fails early.",
+    "Proof is read-back, not narration: the harness checks logs, adapter transcript, SQLite side effects, tool intent, schema round-trip, and pass/fail/not-run artifacts."
+  ]
+}

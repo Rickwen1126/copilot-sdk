@@ -1,10 +1,30 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-14 11:06
+Last Updated: 2026-06-15 00:09
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: ShinyiPilot Codex Adapter Tool Dispatch Production Smoke @2026-06-15-0009
+
+Section source:
+
+- Canonical spec: [docs/spec.md](./spec.md)
+- Active follow-up: [docs/todo.md](./todo.md#p1-shinyipilot-codex-adapter-production-isolation-gate-2026-06-15-0009)
+- Code/Surface: [python/copilot/tools.py](../python/copilot/tools.py), [python/test_tool_result_compat.py](../python/test_tool_result_compat.py), ShinyiPilot worktree `/Users/rickwen/code/copilot-sdk/shinyipilot-spike/src/chatpilot/tools/factory.py`, and ShinyiPilot worktree `/Users/rickwen/code/copilot-sdk/shinyipilot-spike/tests/unit/test_tool_factory.py`
+- Commits: `420cee72c00a4f52bd433dadb25277dd5e40ffd3` (`fix: preserve legacy tool result kwargs`) and ShinyiPilot worktree `c00a7dced95a472d190c24afcd56c2c91b82315f` (`fix: normalize SDK tool invocation objects`)
+- Live proof: `/tmp/shinyipilot-codex-adapter-summary-after-log-normalization.json` and `/tmp/shinyipilot-codex-smoke-after-log-normalization/chatpilot.db`
+- Source: user requested continuing the production integration experiment using the ShinyiPilot worktree under the current repo.
+
+- [x] Normalized SDK `ToolInvocation` dataclass objects at the ShinyiPilot `ToolFactory` boundary.
+      Completion evidence: `tests/unit/test_tool_factory.py` calls the generated SDK tool handler with `copilot.tools.ToolInvocation` and verifies the handler receives the existing dict-shaped invocation contract.
+- [x] Preserved legacy downstream `ToolResult` constructor compatibility in the parent SDK.
+      Completion evidence: `ToolResult` accepts camelCase kwargs such as `textResultForLlm`, `resultType`, and `toolTelemetry`, while current SDK code continues to read snake_case fields.
+- [x] Proved the production-like forced `save_memo` path end to end.
+      Completion evidence: `CHATPILOT_RUNTIME_BACKEND=codex-adapter` with adapter `127.0.0.1:4873`, ShinyiPilot `127.0.0.1:29999`, temp gpt-5.4 route config, and fresh temp DB returned CLI output `saved`; SQLite read-back found exactly one matching `memory_memos` row; ShinyiPilot logs showed `[tool_call] save_memo`, `[db] SAVE memo`, and `[tool_result] ... status=success`; adapter summary showed `resultType: success` and Codex dynamic tool response `success: true`.
+- [x] Left the production isolation decision as active work instead of hiding it in the completed proof.
+      Completion evidence: [docs/todo.md](./todo.md#p1-shinyipilot-codex-adapter-production-isolation-gate-2026-06-15-0009) tracks the clean `CODEX_HOME` / container / stricter profile decision and the ShinyiPilot model config policy.
 
 ## Completed: Codex Adapter Self-Reviewed Workspace Permission Lane @2026-06-14-1106
 

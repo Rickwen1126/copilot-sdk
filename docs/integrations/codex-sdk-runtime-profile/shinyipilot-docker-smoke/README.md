@@ -1,7 +1,7 @@
 # ShinyiPilot Codex Docker Smoke
 
 Created: 2026-06-15 00:42
-Last Updated: 2026-06-15 02:26
+Last Updated: 2026-06-15 03:03
 Status: Active production-smoke lane
 
 This folder contains the containerized state-changing smoke for the
@@ -47,6 +47,47 @@ The production LINE lane must not treat `/runtime` as discardable container
 state. It should use a host-backed persistent state directory such as
 `~/.local/state/shinyipilot-codex-line/runtime:/runtime`, with a SQLite-aware
 backup before any writable container starts.
+
+### Production LINE Shadow Runner
+
+Use production-line shadow mode before any host `2999` cutover:
+
+```sh
+docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh
+```
+
+The runner uses real `~/code/shinyipilot` source/config/env, but writes app
+state through the host-backed runtime mount:
+
+```text
+~/.local/state/shinyipilot-codex-line/runtime:/runtime
+```
+
+Before Docker starts, the runner calls `production-runtime-backup.py` and writes
+a SQLite-aware startup backup plus `startup-backup-manifest.json`. Shadow mode
+publishes no host ports. It posts a signed synthetic LINE webhook inside the
+container, selects an `observer_capture_only` + `suppress_origin_delivery` route
+from the real route bindings, and verifies `/health`, route policy, source
+message capture, route identity registry update, ShinyiPilot log evidence, and
+secret redaction booleans.
+
+Because the real ShinyiPilot checkout has not yet accepted the Codex adapter
+runtime patches, the runner overlays only these adapter compatibility files into
+the temporary Docker build context:
+
+- `src/chatpilot/sdk/session.py`
+- `src/chatpilot/tools/factory.py`
+
+The original `~/code/shinyipilot` checkout is not modified. The artifact
+directory records `source-overlay-manifest.json` with source and overlay hashes.
+
+Latest passing production-line shadow artifact:
+`~/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`.
+
+That run used `gpt-5.4-mini`, did not publish host `2999`, wrote startup backup
+`~/.local/state/shinyipilot-codex-line/backups/20260615-030207-production-line-startup`,
+and verified one synthetic `source_messages` row with `capture_policy=observer`
+and one route identity row.
 
 ## Default Model
 

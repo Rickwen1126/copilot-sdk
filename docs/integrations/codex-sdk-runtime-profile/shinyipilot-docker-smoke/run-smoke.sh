@@ -45,6 +45,10 @@ cp -a "${SCRIPT_DIR}/Dockerfile" "${BUILD_CONTEXT}/Dockerfile"
 cp -a "${SCRIPT_DIR}/container-smoke.sh" "${BUILD_CONTEXT}/container-smoke.sh"
 cp -a "${SCRIPT_DIR}/container-behavior-sweep.py" \
     "${BUILD_CONTEXT}/container-behavior-sweep.py"
+cp -a "${SCRIPT_DIR}/container-production-line.sh" \
+    "${BUILD_CONTEXT}/container-production-line.sh"
+cp -a "${SCRIPT_DIR}/container-line-shadow-preflight.py" \
+    "${BUILD_CONTEXT}/container-line-shadow-preflight.py"
 
 mkdir -p "${ARTIFACT_DIR}"
 

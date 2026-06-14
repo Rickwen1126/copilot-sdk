@@ -24,9 +24,15 @@ COPY python /workspace/python
 COPY shinyipilot /workspace/shinyipilot
 COPY container-smoke.sh /usr/local/bin/shinyipilot-codex-smoke
 COPY container-behavior-sweep.py /usr/local/bin/shinyipilot-codex-behavior-sweep
+COPY container-production-line.sh /usr/local/bin/shinyipilot-codex-production-line
+COPY container-line-shadow-preflight.py /usr/local/bin/shinyipilot-line-shadow-preflight
 
 RUN chmod +x /usr/local/bin/shinyipilot-codex-smoke \
     && chmod +x /usr/local/bin/shinyipilot-codex-behavior-sweep \
-    && uv sync --locked --project /workspace/shinyipilot
+    && chmod +x /usr/local/bin/shinyipilot-codex-production-line \
+    && chmod +x /usr/local/bin/shinyipilot-line-shadow-preflight \
+    && uv sync --locked --project /workspace/shinyipilot \
+    && uv pip install --python /workspace/shinyipilot/.venv/bin/python \
+        --editable /workspace/python
 
 ENTRYPOINT ["/usr/local/bin/shinyipilot-codex-smoke"]

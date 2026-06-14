@@ -1,8 +1,8 @@
 # ShinyiPilot Production LINE Docker Lab
 
 Created: 2026-06-15 02:26
-Last Updated: 2026-06-15 02:26
-Status: Planned production-like experiment lane
+Last Updated: 2026-06-15 03:03
+Status: Shadow preflight passed; host 2999 cutover pending
 
 This document records the short-term source of truth for running ShinyiPilot
 through the Python Codex adapter as a production-like LINE service.
@@ -149,6 +149,27 @@ It should prove:
 Shadow mode can use synthetic webhook payloads and safe canary route ids. It
 should not send uncontrolled replies to real LINE users.
 
+Current proof:
+
+- Runner: `run-production-line.sh`
+- Artifact:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`
+- Startup backup:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-030207-production-line-startup`
+- Result file: `line-shadow-preflight-result.json`
+- Source shape: real `/Users/rickwen/code/shinyipilot` source/config/env, with
+  only `src/chatpilot/sdk/session.py` and `src/chatpilot/tools/factory.py`
+  overlaid from `shinyipilot-spike` inside the temporary Docker build context.
+- Runtime shape:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime:/runtime`.
+- Pass evidence: `/health` returned `status=ok`; `runtimeBackend` was
+  `codex-adapter`; model was `gpt-5.4-mini`; LINE channel env names were present;
+  the selected real route used `observer_capture_only` and
+  `suppress_origin_delivery`; SQLite read-back found one matching
+  `source_messages` row with `capture_policy=observer` and one route identity
+  row; ShinyiPilot log contained the line ingress handled marker.
+- Host boundary: no host `2999` listener was published.
+
 ## Host Port Cutover
 
 Cutover may publish:
@@ -194,10 +215,10 @@ The first accepted production-line lab proof must include:
 
 ## Open Work
 
-- Implement a dedicated production-line runner instead of overloading
-  `run-smoke.sh`, `run-lab.sh`, or `run-sweep.sh`.
-- Add the SQLite backup helper and manifest verifier.
-- Add shadow synthetic LINE webhook probes.
+- Decide whether the two adapter compatibility overlays should be copied into
+  `~/code/shinyipilot` as accepted product code before cutover, or kept as a
+  parent-runner overlay for this experimental branch.
 - Decide the long-running Codex auth persistence strategy.
+- Prepare the host `2999` cutover and backout checklist.
 - Decide whether `~/code/shinyipilot` product docs should receive the accepted
   subset after the first successful LINE canary.

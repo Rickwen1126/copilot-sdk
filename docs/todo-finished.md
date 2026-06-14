@@ -1,10 +1,31 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 01:51
+Last Updated: 2026-06-15 03:03
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: ShinyiPilot Production LINE Shadow Runner @2026-06-15-0303
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Production LINE lab plan: [production-line-lab.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-line-lab.md)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Code/Surface: [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), [production-runtime-backup.py](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-runtime-backup.py), [container-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-production-line.sh), [container-line-shadow-preflight.py](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-line-shadow-preflight.py)
+- Artifact directory: `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`
+- Startup backup: `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-030207-production-line-startup`
+- Source: user approved keeping production-line deployment policy in parent `copilot-sdk`, copying latest ShinyiPilot DB/runtime assets into host-backed state, and using NAS backup as the external safety copy before production-like experiments.
+
+- [x] Added the dedicated production-line Docker runner.
+      Completion evidence: `run-production-line.sh` builds from real `/Users/rickwen/code/shinyipilot` source, mounts real route settings/bindings read-only, mounts host Codex auth read-only, writes artifacts under host state, and defaults to shadow mode without publishing host ports.
+- [x] Added startup backup and manifest verification.
+      Completion evidence: `production-runtime-backup.py` ran before startup and wrote `startup-backup-manifest.json` with SQLite integrity `ok`, DB byte sizes, DB hashes, row-count summaries, and allowlisted runtime asset hashes. The latest startup backup captured `chatpilot.db` with `source_messages=953` before the synthetic webhook added the next row.
+- [x] Added synthetic LINE webhook shadow preflight.
+      Completion evidence: `line-shadow-preflight-result.json` reports `status=pass`, `/health status=ok`, `runtimeBackend=codex-adapter`, `model=gpt-5.4-mini`, LINE secret/token env presence booleans, selected real route policy `observer_capture_only` + `suppress_origin_delivery`, HTTP 200 from `/webhook/line`, one SQLite `source_messages` row with `capture_policy=observer`, one route identity row, and ShinyiPilot line-ingress log proof.
+- [x] Kept the host boundary clean.
+      Completion evidence: the passing shadow container ran with `--rm`, published no host ports, and post-run `lsof -nP -iTCP:2999 -sTCP:LISTEN` returned no listener. The original `/Users/rickwen/code/shinyipilot` checkout was not modified; the runner records a build-context-only overlay manifest for `src/chatpilot/sdk/session.py` and `src/chatpilot/tools/factory.py`.
 
 ## Completed: ShinyiPilot Codex Docker Behavior Sweep @2026-06-15-0151
 

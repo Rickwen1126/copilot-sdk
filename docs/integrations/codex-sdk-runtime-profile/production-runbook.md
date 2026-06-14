@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-15 02:26
+Last Updated: 2026-06-15 03:03
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -46,6 +46,24 @@ Keep that experiment in this `copilot-sdk` branch for now because
 internal docs or config as canonical source. The production-line lane changes
 the state contract: `/runtime` must become a host-backed persistent directory
 with SQLite-aware backups before startup, not discardable container state.
+
+Production-line shadow mode is now available:
+
+```sh
+docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh
+```
+
+The latest passing shadow artifact is
+`~/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`.
+That run used real `~/code/shinyipilot` config/env, host-backed
+`~/.local/state/shinyipilot-codex-line/runtime:/runtime`, no host port
+publishing, and startup backup
+`~/.local/state/shinyipilot-codex-line/backups/20260615-030207-production-line-startup`.
+It verified `/health`, `CHATPILOT_RUNTIME_BACKEND=codex-adapter`,
+`gpt-5.4-mini`, a signed synthetic LINE webhook against a real
+`observer_capture_only` route, SQLite `source_messages` read-back, route
+identity read-back, and ShinyiPilot line-ingress log evidence. Host `2999`
+remains cutover-pending.
 
 The default model for this Codex-backed daily-office experiment lane is
 `gpt-5.4-mini`. This is a Codex runtime model policy, not a GitHub Copilot SDK

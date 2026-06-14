@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 02:26
+Last Updated: 2026-06-15 03:03
 Status: Active
 
 ## P1: ShinyiPilot Production LINE Docker Lab @2026-06-15-0226
@@ -14,35 +14,30 @@ Section source:
 - Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
 - Source: user accepted keeping short-term ShinyiPilot production-line deployment decisions in the parent `copilot-sdk` branch because `shinyipilot-spike/` is a nested worktree and parent git cannot own its internal files as canonical source.
 
-Current checkpoint @2026-06-15 02:26:
+Current checkpoint @2026-06-15 03:03:
 
-- Existing smoke/sweep/lab modes use `shinyipilot-spike` source and example
-  config. They are proof lanes, not production config lanes.
-- Production-like LINE experiments should use real `~/code/shinyipilot` source
-  and real route config, but deployment policy and notes stay in this parent
-  repo for now.
-- For production-like LINE experiments, `/runtime` must be host-backed
-  persistent state, not discardable container filesystem.
-- SQLite DBs must be backed up before any writable container starts.
+- `run-production-line.sh` now implements the dedicated production-line shadow
+  runner.
+- The runner uses real `~/code/shinyipilot` source/config/env and host-backed
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime:/runtime`.
+- Because the real ShinyiPilot checkout has not yet accepted the Codex adapter
+  runtime patches, the runner overlays only `src/chatpilot/sdk/session.py` and
+  `src/chatpilot/tools/factory.py` from `shinyipilot-spike` into the temporary
+  Docker build context. The original checkout is not modified.
+- Startup backup passed at
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-030207-production-line-startup`.
+- Shadow preflight passed at
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`.
+  It verified health, real LINE config env presence, route policy,
+  source-message capture, route identity registry update, and log evidence.
+- Host `2999` was not published; post-run `lsof` found no listener.
 - The old host-local `2999` service may be stopped for cutover, but stopping it
   must not edit, delete, or migrate its data.
 
-- [ ] Implement a dedicated production-line Docker runner.
-  - Source: [production-line-lab.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-line-lab.md)
-  - Code/Surface: new runner under `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/`, existing Dockerfile/container entrypoint, and real ShinyiPilot source/config mounts.
-  - Done when: the runner can start in shadow mode using real source/config, host-backed persistent `/runtime`, and no host port publishing.
-- [ ] Add SQLite-aware backup and manifest verification before startup.
-  - Source: production-line lab persistent state policy.
-  - Code/Surface: runner backup helper and artifact manifest.
-  - Done when: startup aborts if backup/checkpoint fails, and the artifact directory records DB paths, byte sizes, sha256 values, row-count summaries, and timestamp.
-- [ ] Add synthetic LINE webhook shadow preflight.
-  - Source: production-line lab shadow preflight policy.
-  - Code/Surface: ShinyiPilot `/webhook/{platform}` path, real route config, adapter summary, ShinyiPilot logs, and DB read-back.
-  - Done when: synthetic webhook proves route id, binding match, source-message capture, identity registry update, and no secret leakage in artifacts.
 - [ ] Prepare host `2999` cutover and backout checklist.
   - Source: user said the old `2999` service can be stopped directly, but data must not be modified.
-  - Code/Surface: production-line lab runbook and runner flags for `127.0.0.1:2999:29999`.
-  - Done when: cutover requires shadow pass, fresh backup, old-service stop confirmation, container health, Cloudflare tunnel target confirmation, and a documented stop-container backout path.
+  - Code/Surface: [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), [production-line-lab.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-line-lab.md), production runbook, and runner flags for `127.0.0.1:2999:29999`.
+  - Done when: cutover requires the latest shadow pass, fresh startup backup, old-service stop confirmation, container health, Cloudflare tunnel target confirmation, and a documented stop-container backout path.
 
 ## P1: Codex Adapter Semantic Observability Parity @2026-06-15-0024
 

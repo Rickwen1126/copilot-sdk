@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-15 01:51
+Last Updated: 2026-06-15 02:26
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -38,6 +38,14 @@ experiments:
 - The container does not publish adapter `4873` or ShinyiPilot `29999` to the
   host. Those ports are container-internal only.
 - The only host-writable path is the artifact directory mounted at `/artifacts`.
+
+The production-like LINE cutover lane is tracked in
+[shinyipilot-docker-smoke/production-line-lab.md](./shinyipilot-docker-smoke/production-line-lab.md).
+Keep that experiment in this `copilot-sdk` branch for now because
+`shinyipilot-spike/` is a nested worktree and the parent repo cannot track its
+internal docs or config as canonical source. The production-line lane changes
+the state contract: `/runtime` must become a host-backed persistent directory
+with SQLite-aware backups before startup, not discardable container state.
 
 The default model for this Codex-backed daily-office experiment lane is
 `gpt-5.4-mini`. This is a Codex runtime model policy, not a GitHub Copilot SDK

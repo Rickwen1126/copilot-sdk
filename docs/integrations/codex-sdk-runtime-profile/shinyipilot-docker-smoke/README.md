@@ -1,7 +1,7 @@
 # ShinyiPilot Codex Docker Smoke
 
 Created: 2026-06-15 00:42
-Last Updated: 2026-06-15 01:51
+Last Updated: 2026-06-15 02:26
 Status: Active production-smoke lane
 
 This folder contains the containerized state-changing smoke for the
@@ -30,6 +30,23 @@ auth home and receives artifacts.
 This lets state-changing Codex turns exercise workspace-write behavior without
 writing app DBs, runtime session stores, or Codex app-server state into the host
 environment.
+
+## Production LINE Lab
+
+The production-like LINE cutover lane is tracked separately in
+[production-line-lab.md](./production-line-lab.md).
+
+That lane is intentionally documented in this parent `copilot-sdk` branch.
+`shinyipilot-spike/` is a nested worktree and experiment target, so parent git
+cannot own its internal docs or config as normal source. Keep Docker runner
+policy, real-config mount rules, persistent `/runtime` policy, SQLite backup
+requirements, and Cloudflare/host `2999` cutover notes here until the lane is
+accepted as ShinyiPilot product deployment guidance.
+
+The production LINE lane must not treat `/runtime` as discardable container
+state. It should use a host-backed persistent state directory such as
+`~/.local/state/shinyipilot-codex-line/runtime:/runtime`, with a SQLite-aware
+backup before any writable container starts.
 
 ## Default Model
 

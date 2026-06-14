@@ -1,8 +1,48 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 01:26
+Last Updated: 2026-06-15 02:26
 Status: Active
+
+## P1: ShinyiPilot Production LINE Docker Lab @2026-06-15-0226
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Docker lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
+- Production LINE lab plan: [production-line-lab.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-line-lab.md)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Source: user accepted keeping short-term ShinyiPilot production-line deployment decisions in the parent `copilot-sdk` branch because `shinyipilot-spike/` is a nested worktree and parent git cannot own its internal files as canonical source.
+
+Current checkpoint @2026-06-15 02:26:
+
+- Existing smoke/sweep/lab modes use `shinyipilot-spike` source and example
+  config. They are proof lanes, not production config lanes.
+- Production-like LINE experiments should use real `~/code/shinyipilot` source
+  and real route config, but deployment policy and notes stay in this parent
+  repo for now.
+- For production-like LINE experiments, `/runtime` must be host-backed
+  persistent state, not discardable container filesystem.
+- SQLite DBs must be backed up before any writable container starts.
+- The old host-local `2999` service may be stopped for cutover, but stopping it
+  must not edit, delete, or migrate its data.
+
+- [ ] Implement a dedicated production-line Docker runner.
+  - Source: [production-line-lab.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-line-lab.md)
+  - Code/Surface: new runner under `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/`, existing Dockerfile/container entrypoint, and real ShinyiPilot source/config mounts.
+  - Done when: the runner can start in shadow mode using real source/config, host-backed persistent `/runtime`, and no host port publishing.
+- [ ] Add SQLite-aware backup and manifest verification before startup.
+  - Source: production-line lab persistent state policy.
+  - Code/Surface: runner backup helper and artifact manifest.
+  - Done when: startup aborts if backup/checkpoint fails, and the artifact directory records DB paths, byte sizes, sha256 values, row-count summaries, and timestamp.
+- [ ] Add synthetic LINE webhook shadow preflight.
+  - Source: production-line lab shadow preflight policy.
+  - Code/Surface: ShinyiPilot `/webhook/{platform}` path, real route config, adapter summary, ShinyiPilot logs, and DB read-back.
+  - Done when: synthetic webhook proves route id, binding match, source-message capture, identity registry update, and no secret leakage in artifacts.
+- [ ] Prepare host `2999` cutover and backout checklist.
+  - Source: user said the old `2999` service can be stopped directly, but data must not be modified.
+  - Code/Surface: production-line lab runbook and runner flags for `127.0.0.1:2999:29999`.
+  - Done when: cutover requires shadow pass, fresh backup, old-service stop confirmation, container health, Cloudflare tunnel target confirmation, and a documented stop-container backout path.
 
 ## P1: Codex Adapter Semantic Observability Parity @2026-06-15-0024
 

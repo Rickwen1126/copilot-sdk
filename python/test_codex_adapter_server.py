@@ -154,6 +154,13 @@ async def test_python_sdk_can_ping_status_auth_models_and_send(adapter):
             "excludeTmpdirEnvVar": False,
             "excludeSlashTmp": False,
         }
+        semantic_events = {
+            (entry["category"], entry["event"]) for entry in server.summary()["semanticLog"]
+        }
+        assert ("session.lifecycle", "created") in semantic_events
+        assert ("turn.lifecycle", "started") in semantic_events
+        assert ("assistant.message", "completed") in semantic_events
+        assert ("turn.lifecycle", "completed") in semantic_events
     finally:
         await client.force_stop()
 
@@ -334,6 +341,12 @@ async def test_protocol_v2_dynamic_tool_call_round_trips_through_tool_call(tmp_p
             "contentItems": [{"type": "inputText", "text": "lookup:v2"}],
             "success": True,
         }
+        semantic_events = {
+            (entry["category"], entry["event"]) for entry in server.summary()["semanticLog"]
+        }
+        assert ("tool.routing", "requested") in semantic_events
+        assert ("tool.sdk_call", "dispatched") in semantic_events
+        assert ("tool.sdk_result", "received") in semantic_events
     finally:
         await client.force_stop()
         await server.stop()

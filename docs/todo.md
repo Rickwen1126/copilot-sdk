@@ -1,8 +1,32 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 00:09
+Last Updated: 2026-06-15 00:24
 Status: Active
+
+## P1: Codex Adapter Semantic Observability Parity @2026-06-15-0024
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Runtime backend guide: [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md)
+- Code/Surface: [python/copilot/experimental/codex_adapter/server.py](../python/copilot/experimental/codex_adapter/server.py), [python/test_codex_adapter_server.py](../python/test_codex_adapter_server.py), [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/src/experimental/codexAppServerGateway.ts](../nodejs/src/experimental/codexAppServerGateway.ts)
+- Source: user clarified that Codex raw thread events should become adapter-visible structured classifications before they are logged or replayed.
+
+Current checkpoint @2026-06-15 00:24:
+
+- Python adapter now records bounded `semanticLog` entries in summary output.
+- Python categories currently include `session.lifecycle`, `turn.lifecycle`,
+  `assistant.message`, `tool.routing`, `tool.sdk_call`, `tool.sdk_result`,
+  `approval.requested`, `approval.resolved`, and `runtime.error`.
+- Python implementation intentionally does not add new SDK events; it keeps
+  this as structured observability for logs/replay/debug proof.
+- Node.js adapter counterpart is not yet implemented.
+
+- [ ] Add the same adapter semantic observability vocabulary to the Node.js Codex adapter.
+  - Source: Python-first semantic log work completed before production deploy/high-density test.
+  - Code/Surface: `nodejs/src/experimental/codexAdapter.ts`, `nodejs/src/experimental/codexAppServerGateway.ts`, Node conformance tests, and selected-profile summary artifacts.
+  - Done when: Node summary/log artifacts expose the same stable adapter categories as Python for session lifecycle, turn lifecycle, assistant message completion, tool routing, SDK tool call/result, approval request/result, and runtime error/timeout, without adding product-facing SDK events.
 
 ## P1: ShinyiPilot Codex Adapter Production Isolation Gate @2026-06-15-0009
 

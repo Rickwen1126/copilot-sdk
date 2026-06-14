@@ -278,6 +278,7 @@ class CodexCopilotAdapterServer:
         self.file_change_snapshots: dict[str, list[Any]] = {}
         self.pending_dynamic_tool_calls: dict[str, PendingDynamicToolCall] = {}
         self.transcript: list[dict[str, Any]] = []
+        self.semantic_log: list[dict[str, Any]] = []
         self.server: asyncio.AbstractServer | None = None
         self.port = 0
         self.next_connection_id = 1
@@ -286,6 +287,30 @@ class CodexCopilotAdapterServer:
         self.transcript.append({"at": _now_iso(), "direction": direction, "message": message})
         if len(self.transcript) > self.options.transcript_limit:
             del self.transcript[: len(self.transcript) - self.options.transcript_limit]
+
+    def _record_semantic(
+        self,
+        category: str,
+        event: str,
+        *,
+        session_id: str | None = None,
+        thread_id: str | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        entry: dict[str, Any] = {
+            "at": _now_iso(),
+            "category": category,
+            "event": event,
+        }
+        if session_id:
+            entry["sessionId"] = session_id
+        if thread_id:
+            entry["threadId"] = thread_id
+        if data:
+            entry["data"] = {key: value for key, value in data.items() if value is not None}
+        self.semantic_log.append(entry)
+        if len(self.semantic_log) > self.options.transcript_limit:
+            del self.semantic_log[: len(self.semantic_log) - self.options.transcript_limit]
 
     async def start(self) -> dict[str, Any]:
         await self.codex.start()
@@ -348,6 +373,7 @@ class CodexCopilotAdapterServer:
                 for session in self.sessions.values()
             ],
             "adapterTranscript": self.transcript,
+            "semanticLog": self.semantic_log,
             "codex": self.codex.summary(),
         }
 
@@ -533,6 +559,13 @@ class CodexCopilotAdapterServer:
         self.thread_to_session[thread_id] = session_id
         self.session_store.upsert(self._session_record_from_session(session, created_at))
         self._record_concurrent_workspace_threads(session, "create")
+        self._record_semantic(
+            "session.lifecycle",
+            "created",
+            session_id=session_id,
+            thread_id=thread_id,
+            data={"cwd": cwd, "model": model, "toolCount": len(tools)},
+        )
         await self._emit_lifecycle(
             "session.created", session_id, {"startTime": created_at, "modifiedTime": created_at}
         )
@@ -623,6 +656,19 @@ class CodexCopilotAdapterServer:
         self.session_store.upsert(self._session_record_from_session(session, _now_iso()))
         self._record_concurrent_workspace_threads(session, "resume")
         resume_time = _now_iso()
+        self._record_semantic(
+            "session.lifecycle",
+            "resumed",
+            session_id=session.session_id,
+            thread_id=session.thread_id,
+            data={
+                "cwd": session.cwd,
+                "model": session.model or self.options.model,
+                "eventCount": event_count,
+                "alreadyInUse": already_in_use,
+                "toolCount": len(session.tools),
+            },
+        )
         await self._emit_lifecycle(
             "session.resumed",
             session.session_id,
@@ -679,6 +725,17 @@ class CodexCopilotAdapterServer:
                 "user.message",
                 {"content": prompt, "messageId": user_message_id},
             ),
+        )
+        self._record_semantic(
+            "turn.lifecycle",
+            "started",
+            session_id=session.session_id,
+            thread_id=session.thread_id,
+            data={
+                "messageId": user_message_id,
+                "promptChars": len(prompt),
+                "model": session.model or self.options.model,
+            },
         )
         response = await self.codex.request(
             "turn/start",
@@ -841,6 +898,23 @@ class CodexCopilotAdapterServer:
         if method == "item/completed":
             item = params.get("item") if _is_record(params.get("item")) else {}
             if item.get("type") == "agentMessage":
+                text = item.get("text") if isinstance(item.get("text"), str) else ""
+                message_id = (
+                    item.get("id")
+                    if isinstance(item.get("id"), str)
+                    else f"assistant-{uuid.uuid4()}"
+                )
+                self._record_semantic(
+                    "assistant.message",
+                    "completed",
+                    session_id=session_id,
+                    thread_id=thread_id,
+                    data={
+                        "messageId": message_id,
+                        "contentChars": len(text),
+                        "phase": item.get("phase") if isinstance(item.get("phase"), str) else None,
+                    },
+                )
                 asyncio.create_task(
                     self._emit_session_event(
                         session_id,
@@ -848,12 +922,8 @@ class CodexCopilotAdapterServer:
                             session,
                             "assistant.message",
                             {
-                                "content": item.get("text")
-                                if isinstance(item.get("text"), str)
-                                else "",
-                                "messageId": item.get("id")
-                                if isinstance(item.get("id"), str)
-                                else f"assistant-{uuid.uuid4()}",
+                                "content": text,
+                                "messageId": message_id,
                                 "phase": item.get("phase")
                                 if isinstance(item.get("phase"), str)
                                 else None,
@@ -864,6 +934,13 @@ class CodexCopilotAdapterServer:
         elif method == "turn/completed":
             turn = params.get("turn") if _is_record(params.get("turn")) else {}
             status = turn.get("status") if isinstance(turn.get("status"), str) else "completed"
+            self._record_semantic(
+                "turn.lifecycle",
+                "completed",
+                session_id=session_id,
+                thread_id=thread_id,
+                data={"status": status},
+            )
             event = (
                 self._create_session_event(session, "session.idle", {})
                 if status == "completed"
@@ -950,6 +1027,18 @@ class CodexCopilotAdapterServer:
             if request.get("method") == "item/fileChange/requestApproval"
             else map_codex_command_approval_to_permission_request(params)
         )
+        approval_kind = (
+            "file_change"
+            if request.get("method") == "item/fileChange/requestApproval"
+            else "command"
+        )
+        self._record_semantic(
+            "approval.requested",
+            approval_kind,
+            session_id=session.session_id,
+            thread_id=session.thread_id,
+            data={"requestId": str(request_id), "itemId": params.get("itemId")},
+        )
         try:
             callback_params = {
                 "sessionId": session.session_id,
@@ -978,11 +1067,25 @@ class CodexCopilotAdapterServer:
                 if request.get("method") == "item/fileChange/requestApproval"
                 else map_permission_result_to_codex_command_decision(result, params)
             )
+            self._record_semantic(
+                "approval.resolved",
+                approval_kind,
+                session_id=session.session_id,
+                thread_id=session.thread_id,
+                data={"requestId": str(request_id), "decision": decision},
+            )
             self.codex.respond(request_id, {"decision": decision})
         except Exception as exc:
             self._record(
                 "sdk->adapter.response",
                 {"method": "permission.request", "error": _summarize_error(exc)},
+            )
+            self._record_semantic(
+                "runtime.error",
+                "approval.callback_failed",
+                session_id=session.session_id,
+                thread_id=session.thread_id,
+                data={"requestId": str(request_id), "error": str(exc)},
             )
             self.codex.respond(request_id, {"decision": "decline"})
 
@@ -1044,11 +1147,30 @@ class CodexCopilotAdapterServer:
                 "argumentsPayload": params.get("arguments"),
             }
         )
+        self._record_semantic(
+            "tool.routing",
+            "requested",
+            session_id=session.session_id,
+            thread_id=session.thread_id,
+            data={
+                "toolName": tool_name,
+                "toolCallId": tool_call_id,
+                "protocolVersion": self.options.protocol_version,
+                "mode": routing["mode"],
+            },
+        )
         if routing["mode"] == "protocol-v2-sdk-request":
             try:
                 self._record(
                     "adapter->sdk.request",
                     {"method": "tool.call", "params": routing["toolCallParams"]},
+                )
+                self._record_semantic(
+                    "tool.sdk_call",
+                    "dispatched",
+                    session_id=session.session_id,
+                    thread_id=session.thread_id,
+                    data={"toolName": tool_name, "toolCallId": tool_call_id},
                 )
                 response = await connection.request(
                     "tool.call",
@@ -1064,14 +1186,32 @@ class CodexCopilotAdapterServer:
                     if _is_record(response) and "result" in response
                     else response
                 )
-                self.codex.respond(
-                    request.get("id"),
-                    map_sdk_tool_result_to_codex_dynamic_tool_response(result, None),
+                codex_response = map_sdk_tool_result_to_codex_dynamic_tool_response(
+                    result, None
                 )
+                self._record_semantic(
+                    "tool.sdk_result",
+                    "received",
+                    session_id=session.session_id,
+                    thread_id=session.thread_id,
+                    data={
+                        "toolName": tool_name,
+                        "toolCallId": tool_call_id,
+                        "success": codex_response.get("success"),
+                    },
+                )
+                self.codex.respond(request.get("id"), codex_response)
             except Exception as exc:
                 self._record(
                     "sdk->adapter.response",
                     {"method": "tool.call", "error": _summarize_error(exc)},
+                )
+                self._record_semantic(
+                    "runtime.error",
+                    "tool.sdk_call_failed",
+                    session_id=session.session_id,
+                    thread_id=session.thread_id,
+                    data={"toolName": tool_name, "toolCallId": tool_call_id, "error": str(exc)},
                 )
                 self.codex.respond(
                     request.get("id"),
@@ -1086,6 +1226,17 @@ class CodexCopilotAdapterServer:
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             timeout_task=timeout_task,
+        )
+        self._record_semantic(
+            "tool.sdk_call",
+            "pending",
+            session_id=session.session_id,
+            thread_id=session.thread_id,
+            data={
+                "requestId": sdk_request_id,
+                "toolName": tool_name,
+                "toolCallId": tool_call_id,
+            },
         )
         await self._emit_session_event(
             session.session_id,
@@ -1114,6 +1265,18 @@ class CodexCopilotAdapterServer:
                 "toolCallId": pending.tool_call_id,
             },
         )
+        session = self.sessions.get(pending.session_id)
+        self._record_semantic(
+            "runtime.error",
+            "tool.timeout",
+            session_id=pending.session_id,
+            thread_id=session.thread_id if session else None,
+            data={
+                "requestId": request_id,
+                "toolName": pending.tool_name,
+                "toolCallId": pending.tool_call_id,
+            },
+        )
 
     def _handle_pending_tool_call(self, params: Any, _connection_id: str) -> dict[str, Any]:
         if not _is_record(params):
@@ -1130,6 +1293,18 @@ class CodexCopilotAdapterServer:
         )
         self.codex.respond(pending.codex_request_id, response)
         session = self.sessions.get(pending.session_id)
+        self._record_semantic(
+            "tool.sdk_result",
+            "received",
+            session_id=pending.session_id,
+            thread_id=session.thread_id if session else None,
+            data={
+                "requestId": request_id,
+                "toolName": pending.tool_name,
+                "toolCallId": pending.tool_call_id,
+                "success": response.get("success"),
+            },
+        )
         if session:
             asyncio.create_task(
                 self._emit_session_event(

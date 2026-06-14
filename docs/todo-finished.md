@@ -1,10 +1,28 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 00:09
+Last Updated: 2026-06-15 00:24
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Python Codex Adapter Semantic Observability Log @2026-06-15-0024
+
+Section source:
+
+- Canonical spec: [docs/spec.md](./spec.md)
+- Active follow-up: [docs/todo.md](./todo.md#p1-codex-adapter-semantic-observability-parity-2026-06-15-0024)
+- Code/Surface: [python/copilot/experimental/codex_adapter/server.py](../python/copilot/experimental/codex_adapter/server.py), [python/test_codex_adapter_server.py](../python/test_codex_adapter_server.py)
+- Source: user clarified that Codex raw thread events should become adapter-visible structured classifications before being logged or replayed.
+
+- [x] Added a bounded Python adapter `semanticLog` summary channel.
+      Completion evidence: `CodexCopilotAdapterServer.summary()` includes `semanticLog`, capped by the existing transcript limit.
+- [x] Classified existing Python adapter junction points without adding SDK events.
+      Completion evidence: session create/resume, turn start/completion, assistant message completion, dynamic tool routing, SDK tool call/result, approval request/result, and tool timeout/runtime error paths record stable category/event pairs.
+- [x] Added focused regression coverage.
+      Completion evidence: `python/test_codex_adapter_server.py` asserts semantic log entries for normal send/assistant completion and protocol-v2 tool routing/SDK result flow.
+- [x] Left Node.js counterpart as active parity work.
+      Completion evidence: [docs/todo.md](./todo.md#p1-codex-adapter-semantic-observability-parity-2026-06-15-0024) tracks the Node.js implementation debt.
 
 ## Completed: ShinyiPilot Codex Adapter Tool Dispatch Production Smoke @2026-06-15-0009
 

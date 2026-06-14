@@ -320,10 +320,12 @@ async def test_protocol_v2_dynamic_tool_call_round_trips_through_tool_call(tmp_p
     client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
     await client.start()
     try:
+        result_text = "lookup:v2 " + ("result-preview-" * 30)
 
         @define_tool(description="Lookup source data")
         def lookup(args):
-            return f"lookup:{args['query']}"
+            assert args["api_token"] == "sk-" + ("secret" * 8)
+            return ToolResult(text_result_for_llm=result_text, result_type="success")
 
         await client.create_session(
             on_permission_request=PermissionHandler.approve_all, tools=[lookup]
@@ -334,19 +336,34 @@ async def test_protocol_v2_dynamic_tool_call_round_trips_through_tool_call(tmp_p
                 "threadId": "thread-1",
                 "tool": "lookup",
                 "callId": "call-1",
-                "arguments": {"query": "v2"},
+                "arguments": {
+                    "query": "v2",
+                    "api_token": "sk-" + ("secret" * 8),
+                    "long_note": "argument preview " * 30,
+                },
             },
         )
         assert result["result"] == {
-            "contentItems": [{"type": "inputText", "text": "lookup:v2"}],
+            "contentItems": [{"type": "inputText", "text": result_text}],
             "success": True,
         }
-        semantic_events = {
-            (entry["category"], entry["event"]) for entry in server.summary()["semanticLog"]
-        }
+        semantic_log = server.summary()["semanticLog"]
+        semantic_events = {(entry["category"], entry["event"]) for entry in semantic_log}
         assert ("tool.routing", "requested") in semantic_events
         assert ("tool.sdk_call", "dispatched") in semantic_events
         assert ("tool.sdk_result", "received") in semantic_events
+        routing_entry = next(entry for entry in semantic_log if entry["category"] == "tool.routing")
+        assert routing_entry["data"]["argumentsPreview"]["query"] == "v2"
+        assert routing_entry["data"]["argumentsPreview"]["api_token"] == "[redacted]"
+        assert routing_entry["data"]["argumentsPreview"]["long_note"].endswith("...")
+        assert routing_entry["data"]["argumentsPreviewRedacted"] is True
+        assert routing_entry["data"]["argumentsPreviewTruncated"] is True
+        result_entry = next(
+            entry for entry in semantic_log if entry["category"] == "tool.sdk_result"
+        )
+        assert result_entry["data"]["resultPreview"]["textResultForLlm"].startswith("lookup:v2")
+        assert result_entry["data"]["resultPreview"]["textResultForLlm"].endswith("...")
+        assert result_entry["data"]["resultPreviewTruncated"] is True
     finally:
         await client.force_stop()
         await server.stop()

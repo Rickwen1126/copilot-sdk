@@ -1,7 +1,7 @@
 # ShinyiPilot Codex Docker Smoke
 
 Created: 2026-06-15 00:42
-Last Updated: 2026-06-15 01:26
+Last Updated: 2026-06-15 01:33
 Status: Active production-smoke lane
 
 This folder contains the containerized state-changing smoke for the
@@ -144,9 +144,15 @@ observability for:
 The live adapter summary is periodically flushed while the adapter runs, so
 `adapter-summary.json` can be inspected before shutdown. In the 01:24 lab,
 `semanticLog` recorded session lifecycle, turn lifecycle, assistant completion,
-tool routing, SDK tool dispatch, and SDK tool result entries. The ShinyiPilot
-log remains the source for business payload details such as tool arguments,
-tool result text, and DB save/delete messages.
+tool routing, SDK tool dispatch, and SDK tool result entries. Tool routing and
+result entries now include bounded redacted argument/result previews for quick
+scanability. The ShinyiPilot log remains the source for full business payload
+details such as tool arguments, tool result text, and DB save/delete messages.
+
+The redacted-preview smoke artifact is
+`/tmp/shinyipilot-codex-docker-smoke-redacted-preview-20260615-0129`. It proves
+the smoke still passes and records `argumentsPreview` plus `resultPreview` for
+the real `save_memo` tool call.
 
 Known app-level gap from the probe: `list_custom_prompts` displays only the
 first 8 characters of the prompt ID, but `delete_custom_prompt` currently

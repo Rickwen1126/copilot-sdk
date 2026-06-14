@@ -41,6 +41,24 @@ DEFAULT_TRANSCRIPT_LIMIT = 500
 DEFAULT_FALLBACK_WORKSPACE_PARENT = os.path.join(
     tempfile.gettempdir(), "copilot-codex-adapter-workspaces"
 )
+SEMANTIC_PREVIEW_MAX_STRING_CHARS = 240
+SEMANTIC_PREVIEW_MAX_ITEMS = 8
+SEMANTIC_PREVIEW_MAX_DEPTH = 4
+REDACTED_PREVIEW = "[redacted]"
+TRUNCATED_PREVIEW = "[truncated]"
+SENSITIVE_KEY_MARKERS = (
+    "api_key",
+    "apikey",
+    "authorization",
+    "cookie",
+    "credential",
+    "password",
+    "passwd",
+    "private_key",
+    "refresh_token",
+    "secret",
+    "token",
+)
 
 CODEX_ADAPTER_CAPABILITIES = {
     "targetProfiles": ["SDK Core Profile", "Coding Agent Profile"],
@@ -147,6 +165,92 @@ def _stable_stringify(value: Any) -> str:
 
 def _summarize_error(error: Exception) -> dict[str, str]:
     return {"name": error.__class__.__name__, "message": str(error)}
+
+
+def _is_sensitive_key(key: Any) -> bool:
+    if not isinstance(key, str):
+        return False
+    normalized = key.lower().replace("-", "_").replace(" ", "_")
+    return any(marker in normalized for marker in SENSITIVE_KEY_MARKERS)
+
+
+def _looks_like_secret_string(value: str) -> bool:
+    stripped = value.strip()
+    lowered = stripped.lower()
+    if lowered.startswith("bearer "):
+        return True
+    if stripped.startswith("sk-") and len(stripped) > 20:
+        return True
+    if stripped.startswith("eyJ") and stripped.count(".") >= 2:
+        return True
+    return len(stripped) > 120 and not any(char.isspace() for char in stripped)
+
+
+def _preview_value(value: Any, *, depth: int = 0) -> tuple[Any, bool, bool]:
+    if depth >= SEMANTIC_PREVIEW_MAX_DEPTH:
+        return TRUNCATED_PREVIEW, False, True
+
+    if isinstance(value, dict):
+        redacted = False
+        truncated = False
+        preview: dict[str, Any] = {}
+        items = list(value.items())
+        for key, item in items[:SEMANTIC_PREVIEW_MAX_ITEMS]:
+            key_text = str(key)
+            if _is_sensitive_key(key):
+                preview[key_text] = REDACTED_PREVIEW
+                redacted = True
+                continue
+            item_preview, item_redacted, item_truncated = _preview_value(
+                item, depth=depth + 1
+            )
+            preview[key_text] = item_preview
+            redacted = redacted or item_redacted
+            truncated = truncated or item_truncated
+        if len(items) > SEMANTIC_PREVIEW_MAX_ITEMS:
+            preview["..."] = f"{len(items) - SEMANTIC_PREVIEW_MAX_ITEMS} more keys"
+            truncated = True
+        return preview, redacted, truncated
+
+    if isinstance(value, (list, tuple)):
+        redacted = False
+        truncated = False
+        preview_items = []
+        for item in list(value)[:SEMANTIC_PREVIEW_MAX_ITEMS]:
+            item_preview, item_redacted, item_truncated = _preview_value(
+                item, depth=depth + 1
+            )
+            preview_items.append(item_preview)
+            redacted = redacted or item_redacted
+            truncated = truncated or item_truncated
+        if len(value) > SEMANTIC_PREVIEW_MAX_ITEMS:
+            preview_items.append(f"... {len(value) - SEMANTIC_PREVIEW_MAX_ITEMS} more items")
+            truncated = True
+        return preview_items, redacted, truncated
+
+    if isinstance(value, str):
+        if _looks_like_secret_string(value):
+            return REDACTED_PREVIEW, True, False
+        if len(value) > SEMANTIC_PREVIEW_MAX_STRING_CHARS:
+            return value[:SEMANTIC_PREVIEW_MAX_STRING_CHARS] + "...", False, True
+        return value, False, False
+
+    if value is None or isinstance(value, (bool, int, float)):
+        return value, False, False
+
+    text = repr(value)
+    if len(text) > SEMANTIC_PREVIEW_MAX_STRING_CHARS:
+        return text[:SEMANTIC_PREVIEW_MAX_STRING_CHARS] + "...", False, True
+    return text, False, False
+
+
+def _preview_fields(prefix: str, value: Any) -> dict[str, Any]:
+    preview, redacted, truncated = _preview_value(value)
+    return {
+        f"{prefix}Preview": preview,
+        f"{prefix}PreviewRedacted": redacted,
+        f"{prefix}PreviewTruncated": truncated,
+    }
 
 
 def tool_fingerprint_from_descriptors(tools: list[ToolDescriptor]) -> str:
@@ -1157,6 +1261,7 @@ class CodexCopilotAdapterServer:
                 "toolCallId": tool_call_id,
                 "protocolVersion": self.options.protocol_version,
                 "mode": routing["mode"],
+                **_preview_fields("arguments", params.get("arguments")),
             },
         )
         if routing["mode"] == "protocol-v2-sdk-request":
@@ -1198,6 +1303,7 @@ class CodexCopilotAdapterServer:
                         "toolName": tool_name,
                         "toolCallId": tool_call_id,
                         "success": codex_response.get("success"),
+                        **_preview_fields("result", result),
                     },
                 )
                 self.codex.respond(request.get("id"), codex_response)
@@ -1303,6 +1409,10 @@ class CodexCopilotAdapterServer:
                 "toolName": pending.tool_name,
                 "toolCallId": pending.tool_call_id,
                 "success": response.get("success"),
+                **_preview_fields(
+                    "result",
+                    params.get("result") if params.get("error") is None else params.get("error"),
+                ),
             },
         )
         if session:

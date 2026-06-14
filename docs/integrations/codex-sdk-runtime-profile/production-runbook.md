@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-15 01:26
+Last Updated: 2026-06-15 01:33
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -69,8 +69,10 @@ ports. The 2026-06-15 01:24 lab at
 CLI turns for memo, reminder, schedule, custom-prompt, list, cancel, and delete
 tool flows with DB read-back and live `adapter-summary.json` inspection.
 Adapter `semanticLog` is a control-plane view: lifecycle, routing, dispatch,
-result, and assistant completion. ShinyiPilot logs remain the business-payload
-view for tool arguments, tool result text, and DB mutation messages.
+result, and assistant completion. Tool routing/result events include bounded
+redacted previews of SDK tool arguments and results for quick scanability.
+ShinyiPilot logs remain the business-payload view for full tool arguments, tool
+result text, and DB mutation messages.
 
 ## Durable Resume Setup
 
@@ -176,6 +178,15 @@ CODEX_ADAPTER_FALLBACK_WORKSPACE_PARENT=/tmp/copilot-codex-adapter-workspaces
 `CODEX_ADAPTER_NETWORK_ACCESS=false` is the safer default for production-like runs that do not need outbound network. Use `CODEX_ADAPTER_NETWORK_ACCESS=true` for runtime agents whose normal workspace task requires network access, and keep `CODEX_ADAPTER_SANDBOX_MODE=workspaceWrite` so local file operations stay scoped to the selected workspace.
 
 For P0 observability, always set `CODEX_ADAPTER_SUMMARY_PATH` in staged/prod-like runs and retain process stdout/stderr. Live metrics or health endpoints remain a P2 follow-up until the deployment environment needs them; bounded transcript summaries are the current evidence contract.
+
+When dynamic SDK tools run, inspect `semanticLog` first to verify routing and
+tool outcome. `tool.routing:requested` includes `argumentsPreview`,
+`argumentsPreviewRedacted`, and `argumentsPreviewTruncated`. `tool.sdk_result`
+includes `resultPreview`, `resultPreviewRedacted`, and
+`resultPreviewTruncated`. These fields are intentionally previews: common
+secret-bearing keys and opaque token-like strings are redacted, long strings and
+large collections are truncated, and ShinyiPilot remains the source for full
+business-payload logs.
 
 ## Minimal Start Command
 

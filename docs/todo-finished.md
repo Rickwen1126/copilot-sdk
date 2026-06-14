@@ -1,10 +1,30 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 01:26
+Last Updated: 2026-06-15 01:33
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Python Codex Adapter Redacted Tool Preview Observability @2026-06-15-0133
+
+Section source:
+
+- Canonical spec: [docs/spec.md](./spec.md)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Docker smoke lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
+- Code/Surface: [python/copilot/experimental/codex_adapter/server.py](../python/copilot/experimental/codex_adapter/server.py), [python/test_codex_adapter_server.py](../python/test_codex_adapter_server.py)
+- Artifact directory: `/tmp/shinyipilot-codex-docker-smoke-redacted-preview-20260615-0129`
+- Source: user asked to add redacted args/result preview to adapter `semanticLog` after the Docker lab proved the current observability split was useful.
+
+- [x] Added bounded argument previews to adapter semantic tool routing events.
+      Completion evidence: `tool.routing:requested` records `argumentsPreview`, `argumentsPreviewRedacted`, and `argumentsPreviewTruncated`.
+- [x] Added bounded result previews to adapter semantic tool result events.
+      Completion evidence: `tool.sdk_result:received` records `resultPreview`, `resultPreviewRedacted`, and `resultPreviewTruncated`.
+- [x] Redacted common secret-bearing payloads.
+      Completion evidence: tests cover token-like argument keys and long payload truncation; the helper redacts common password/token/secret/cookie/credential/API-key fields and opaque token-like strings.
+- [x] Proved the change in a real ShinyiPilot Docker smoke.
+      Completion evidence: `/tmp/shinyipilot-codex-docker-smoke-redacted-preview-20260615-0129/smoke-result.json` reports `status=pass`, `model=gpt-5.4-mini`, `sqlite.matchingMemoryMemoRows=1`, and `sqlite.artifactReadbackMemoryMemoRows=1`; `adapter-summary.json` shows `argumentsPreview.text` and `resultPreview.textResultForLlm` for the real `save_memo` tool call.
 
 ## Completed: ShinyiPilot Codex Docker Lab Mode And Live Observability Probe @2026-06-15-0126
 

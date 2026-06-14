@@ -1,10 +1,32 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 01:08
+Last Updated: 2026-06-15 01:26
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: ShinyiPilot Codex Docker Lab Mode And Live Observability Probe @2026-06-15-0126
+
+Section source:
+
+- Canonical spec: [docs/spec.md](./spec.md)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Docker lab lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
+- Active app-level follow-up: [docs/todo.md](./todo.md#p2-shinyipilot-custom-prompt-prefix-delete-gap-2026-06-15-0126)
+- Artifact directory: `/tmp/shinyipilot-codex-docker-lab-live-20260615-0124`
+- Source: user asked to keep Docker running and probe ShinyiPilot's DB-backed tools from a user perspective through CLI + SDK + Codex, while inspecting adapter observability.
+
+- [x] Added a persistent Docker lab mode for repeated CLI probes.
+      Completion evidence: `run-lab.sh` starts `shinyipilot-codex-lab` detached with no host port publishing; `container-smoke.sh` writes `lab-ready.json` and keeps adapter/app processes running in lab mode.
+- [x] Made adapter summary observable while the process is still running.
+      Completion evidence: `python/copilot/experimental/codex_adapter/cli.py` periodically flushes `adapter-summary.json` when `--summary-path` is set, then writes a final summary at shutdown.
+- [x] Proved natural-language DB-backed SDK tool calls in the lab.
+      Completion evidence: CLI turns through `gpt-5.4-mini` successfully called `save_memo`, `list_memos`, `delete_memo`, `add_reminder`, `schedule_task_cron`, `list_schedules`, `cancel_schedule`, `save_custom_prompt`, and `list_custom_prompts`; DB read-back confirmed memo/reminder/schedule/custom-prompt mutations and cleanup state.
+- [x] Proved live control-plane observability is useful.
+      Completion evidence: `adapter-summary.json` recorded 80 semantic entries across session lifecycle, turn lifecycle, tool routing, SDK tool dispatch, SDK tool result, and assistant completion; ShinyiPilot logs supplied tool arguments, result text, and DB mutation messages.
+- [x] Identified one app-level product tool gap without misclassifying it as adapter failure.
+      Completion evidence: a natural list-and-delete preference turn called `list_custom_prompts` then `delete_custom_prompt` with the displayed 8-character ID and received `success=false`; the active follow-up now tracks the ShinyiPilot prefix/full-ID mismatch.
 
 ## Completed: ShinyiPilot Codex Docker Clean Config Smoke Proof @2026-06-15-0108
 

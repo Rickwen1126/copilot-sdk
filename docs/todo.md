@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 01:08
+Last Updated: 2026-06-15 01:26
 Status: Active
 
 ## P1: Codex Adapter Semantic Observability Parity @2026-06-15-0024
@@ -60,6 +60,35 @@ Current checkpoint @2026-06-15 01:06:
   - Source: the clean Docker smoke lane deliberately avoids writable host Codex home state.
   - Code/Surface: production runbook, Docker deployment shape, secret/volume policy, and `CODEX_ADAPTER_CODEX_HOME` / `CODEX_ADAPTER_ISOLATE_CODEX_HOME` settings.
   - Done when: the runbook states whether long-lived containers use a controlled writable secret volume, a refresh-token persistence policy, API-key/service-account lane, or another explicit auth mechanism; the decision must say where refresh/session state can be written and how it is rotated or discarded.
+
+## P2: ShinyiPilot Custom Prompt Prefix Delete Gap @2026-06-15-0126
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Docker lab lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
+- Evidence: `/tmp/shinyipilot-codex-docker-lab-live-20260615-0124/shinyipilot.log`, `/tmp/shinyipilot-codex-docker-lab-live-20260615-0124/adapter-summary.json`
+- Code/Surface: `/Users/rickwen/code/copilot-sdk/shinyipilot-spike/src/chatpilot/tools/builtin/list_custom_prompts.py`, `/Users/rickwen/code/copilot-sdk/shinyipilot-spike/src/chatpilot/tools/builtin/delete_custom_prompt.py`
+- Source: broad Codex + SDK Docker lab testing found an app-level tool usability mismatch.
+
+Current checkpoint @2026-06-15 01:26:
+
+- `list_custom_prompts` returns shortened IDs like `[f4663078]`.
+- `delete_custom_prompt` currently passes the provided `prompt_id` directly to
+  `memory_store.delete(route_id, "custom_prompt", prompt_id)`.
+- A natural user turn that asked Codex to list and delete the current preference
+  called `list_custom_prompts` and then `delete_custom_prompt` with
+  `prompt_id=f4663078`.
+- ShinyiPilot returned `找不到 ID 為 f4663078 的偏好設定`; adapter
+  `semanticLog` correctly recorded `tool.sdk_result success=false`.
+- This is not an adapter dispatch failure. It is a ShinyiPilot tool contract gap
+  between list output and delete input, similar to the prefix support already
+  present in `delete_memo`.
+
+- [ ] Make `delete_custom_prompt` support unambiguous ID prefixes or change `list_custom_prompts` to expose full IDs.
+  - Source: Docker lab probe using `gpt-5.4-mini` and natural-language CLI turns.
+  - Code/Surface: ShinyiPilot `delete_custom_prompt.py`, `list_custom_prompts.py`, and matching unit tests in the nested ShinyiPilot worktree.
+  - Done when: a user can ask to list and delete a preference by the displayed ID, DB read-back confirms deletion, ShinyiPilot logs show `status=success`, and adapter `semanticLog` records `tool.sdk_result success=true`.
 
 ## P1: Runtime Adapter Refactor Architecture Guard @2026-06-03-1141
 

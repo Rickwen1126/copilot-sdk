@@ -1,7 +1,7 @@
 # ShinyiPilot Codex Docker Smoke
 
 Created: 2026-06-15 00:42
-Last Updated: 2026-06-15 01:08
+Last Updated: 2026-06-15 01:26
 Status: Active production-smoke lane
 
 This folder contains the containerized state-changing smoke for the
@@ -66,6 +66,31 @@ ARTIFACT_DIR=/tmp/shinyipilot-codex-docker-smoke \
 docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-smoke.sh
 ```
 
+## Lab Mode
+
+Use lab mode when you want the adapter and ShinyiPilot app to stay running while
+you send repeated CLI prompts through the SDK + Codex adapter path.
+
+```sh
+docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-lab.sh
+```
+
+The lab container does not publish host ports. Run CLI probes inside the
+container:
+
+```sh
+docker exec shinyipilot-codex-lab \
+  uv run --project /workspace/shinyipilot chatpilot-cli \
+  --url http://127.0.0.1:29999 \
+  chat "你好，請回覆 lab-ready" --user lab-user
+```
+
+Stop the lab container with:
+
+```sh
+docker stop shinyipilot-codex-lab
+```
+
 The host runner builds a temporary Docker context under `/tmp`. It copies only:
 
 - parent SDK `python/copilot`, `python/pyproject.toml`, `python/uv.lock`
@@ -97,3 +122,35 @@ Artifacts:
 - `smoke-result.json`
 - `chatpilot.db`
 - `codex-config.toml`
+
+Lab-mode artifacts additionally include:
+
+- `lab-ready.json`
+
+## Latest Lab Probe
+
+The 2026-06-15 01:24 lab used container `shinyipilot-codex-lab`, with
+artifacts at `/tmp/shinyipilot-codex-docker-lab-live-20260615-0124`.
+
+The lab probe exercised natural-language CLI turns through ShinyiPilot, the
+Python SDK client, the Python Codex adapter, and Codex app-server using
+`gpt-5.4-mini`. It verified data-level DB side effects and SDK tool
+observability for:
+
+- `save_memo`, `list_memos`, and `delete_memo`
+- `add_reminder`, `schedule_task_cron`, `list_schedules`, and `cancel_schedule`
+- `save_custom_prompt` and `list_custom_prompts`
+
+The live adapter summary is periodically flushed while the adapter runs, so
+`adapter-summary.json` can be inspected before shutdown. In the 01:24 lab,
+`semanticLog` recorded session lifecycle, turn lifecycle, assistant completion,
+tool routing, SDK tool dispatch, and SDK tool result entries. The ShinyiPilot
+log remains the source for business payload details such as tool arguments,
+tool result text, and DB save/delete messages.
+
+Known app-level gap from the probe: `list_custom_prompts` displays only the
+first 8 characters of the prompt ID, but `delete_custom_prompt` currently
+requires the full ID. A natural user request to list and delete the preference
+therefore produced an adapter-visible `tool.sdk_result success=false` and a
+ShinyiPilot tool result of "找不到 ID 為 f4663078 的偏好設定". Track this as a
+ShinyiPilot tool usability fix, not as a Codex adapter failure.

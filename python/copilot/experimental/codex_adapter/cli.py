@@ -57,6 +57,22 @@ def build_options() -> CodexAdapterOptions:
     )
 
 
+def _write_summary(path: Path, server: CodexCopilotAdapterServer) -> None:
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    tmp_path.write_text(json.dumps(server.summary(), indent=2) + "\n", encoding="utf-8")
+    tmp_path.replace(path)
+
+
+async def _flush_summary_loop(
+    path: Path,
+    server: CodexCopilotAdapterServer,
+    interval_seconds: float,
+) -> None:
+    while True:
+        _write_summary(path, server)
+        await asyncio.sleep(interval_seconds)
+
+
 async def run() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary-path", default=_env_string("CODEX_ADAPTER_SUMMARY_PATH"))
@@ -69,6 +85,13 @@ async def run() -> None:
         loop.add_signal_handler(sig, stop_event.set)
 
     started = await server.start()
+    summary_task: asyncio.Task[None] | None = None
+    summary_path = Path(args.summary_path) if args.summary_path else None
+    if summary_path:
+        interval_ms = _env_int("CODEX_ADAPTER_SUMMARY_FLUSH_INTERVAL_MS") or 1_000
+        summary_task = asyncio.create_task(
+            _flush_summary_loop(summary_path, server, max(interval_ms, 100) / 1000)
+        )
     print(
         json.dumps(
             {
@@ -81,8 +104,14 @@ async def run() -> None:
         flush=True,
     )
     await stop_event.wait()
-    if args.summary_path:
-        Path(args.summary_path).write_text(json.dumps(server.summary(), indent=2) + "\n")
+    if summary_task:
+        summary_task.cancel()
+        try:
+            await summary_task
+        except asyncio.CancelledError:
+            pass
+    if summary_path:
+        _write_summary(summary_path, server)
     await server.stop()
 
 

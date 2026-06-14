@@ -8,6 +8,7 @@ CODEX_CLEAN_HOME="${CODEX_CLEAN_HOME:-${RUNTIME_DIR}/codex-clean-home}"
 MODEL="${CODEX_ADAPTER_MODEL:-gpt-5.4-mini}"
 SMOKE_USER="${SMOKE_USER:-codex-docker-smoke}"
 SMOKE_MARKER="${SMOKE_MARKER:-codex docker smoke marker $(date +%Y%m%d-%H%M%S)}"
+SHINYIPILOT_DOCKER_MODE="${SHINYIPILOT_DOCKER_MODE:-smoke}"
 APP_PORT="${APP_PORT:-29999}"
 ADAPTER_PORT="${CODEX_ADAPTER_PORT:-4873}"
 SMOKE_TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-240}"
@@ -154,6 +155,44 @@ uv run --project /workspace/shinyipilot uvicorn chatpilot.server:create_app \
     > "${ARTIFACT_DIR}/shinyipilot.log" 2>&1 &
 APP_PID="$!"
 wait_for_http "http://127.0.0.1:${APP_PORT}/health" "ShinyiPilot"
+
+if [[ "${SHINYIPILOT_DOCKER_MODE}" == "lab" ]]; then
+    MODEL="${MODEL}" \
+    ADAPTER_PORT="${ADAPTER_PORT}" \
+    APP_PORT="${APP_PORT}" \
+    CODEX_CLEAN_HOME="${CODEX_CLEAN_HOME}" \
+    python - "${ARTIFACT_DIR}/lab-ready.json" <<'PY'
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+Path(sys.argv[1]).write_text(
+    json.dumps(
+        {
+            "status": "ready",
+            "mode": "lab",
+            "model": os.environ["MODEL"],
+            "codexHomeMode": "clean-minimal-config",
+            "codexCleanHome": os.environ["CODEX_CLEAN_HOME"],
+            "adapterUrl": f"127.0.0.1:{os.environ['ADAPTER_PORT']}",
+            "appUrl": f"http://127.0.0.1:{os.environ['APP_PORT']}",
+            "readyAt": datetime.now(timezone.utc).isoformat(),
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
+    echo "READY: ShinyiPilot Codex Docker lab"
+    echo "model=${MODEL}"
+    echo "artifacts=${ARTIFACT_DIR}"
+    wait -n "${ADAPTER_PID}" "${APP_PID}"
+    exit 1
+fi
 
 PROMPT="請呼叫 save_memo 工具，把 memo 內容存成：${SMOKE_MARKER}。工具成功後只回覆 saved。不要只用文字承諾。"
 timeout "${SMOKE_TIMEOUT_SECONDS}" \

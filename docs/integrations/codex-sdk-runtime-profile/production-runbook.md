@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-15 01:08
+Last Updated: 2026-06-15 01:26
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -60,6 +60,17 @@ startup: the host provides read-only login material, Codex app-server writes any
 refresh/session state into container-local homes, and the container removes that
 state at exit. That is acceptable for short state-changing smokes, but not yet a
 long-running production auth strategy.
+
+For exploratory tool-calling probes, use the same Docker lane in lab mode. Lab
+mode starts the adapter and ShinyiPilot app inside the container, writes
+`lab-ready.json`, and keeps both processes running without publishing host
+ports. The 2026-06-15 01:24 lab at
+`/tmp/shinyipilot-codex-docker-lab-live-20260615-0124` verified natural-language
+CLI turns for memo, reminder, schedule, custom-prompt, list, cancel, and delete
+tool flows with DB read-back and live `adapter-summary.json` inspection.
+Adapter `semanticLog` is a control-plane view: lifecycle, routing, dispatch,
+result, and assistant completion. ShinyiPilot logs remain the business-payload
+view for tool arguments, tool result text, and DB mutation messages.
 
 ## Durable Resume Setup
 

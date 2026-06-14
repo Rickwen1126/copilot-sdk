@@ -4,6 +4,7 @@ set -Eeuo pipefail
 ARTIFACT_DIR="${ARTIFACT_DIR:-/artifacts}"
 RUNTIME_DIR="${RUNTIME_DIR:-/runtime}"
 CODEX_AUTH_SOURCE="${CODEX_AUTH_SOURCE:-/host-codex-home}"
+CODEX_CLEAN_HOME="${CODEX_CLEAN_HOME:-${RUNTIME_DIR}/codex-clean-home}"
 MODEL="${CODEX_ADAPTER_MODEL:-gpt-5.4-mini}"
 SMOKE_USER="${SMOKE_USER:-codex-docker-smoke}"
 SMOKE_MARKER="${SMOKE_MARKER:-codex docker smoke marker $(date +%Y%m%d-%H%M%S)}"
@@ -74,11 +75,23 @@ wait_for_http() {
     done
 }
 
-mkdir -p "${ARTIFACT_DIR}" "${RUNTIME_DIR}" "${RUNTIME_DIR}/codex-workspaces"
+mkdir -p "${ARTIFACT_DIR}" "${RUNTIME_DIR}" "${RUNTIME_DIR}/codex-workspaces" "${CODEX_CLEAN_HOME}"
 
 if [[ ! -r "${CODEX_AUTH_SOURCE}/auth.json" ]]; then
     fail "missing readable Codex auth at ${CODEX_AUTH_SOURCE}/auth.json; mount a logged-in Codex home read-only"
 fi
+
+cp -a "${CODEX_AUTH_SOURCE}/auth.json" "${CODEX_CLEAN_HOME}/auth.json"
+for filename in "installation_id" "models_cache.json"; do
+    if [[ -f "${CODEX_AUTH_SOURCE}/${filename}" ]]; then
+        cp -a "${CODEX_AUTH_SOURCE}/${filename}" "${CODEX_CLEAN_HOME}/${filename}"
+    fi
+done
+cat > "${CODEX_CLEAN_HOME}/config.toml" <<EOF
+# Minimal Codex config generated inside the ShinyiPilot Docker smoke.
+# Host config.toml is intentionally not copied into this container lane.
+EOF
+cp -a "${CODEX_CLEAN_HOME}/config.toml" "${ARTIFACT_DIR}/codex-config.toml"
 
 export ROUTE_SETTINGS_PATH="${RUNTIME_DIR}/route_settings.codex.yaml"
 export ROUTE_BINDINGS_PATH="${RUNTIME_DIR}/route_bindings.codex.yaml"
@@ -117,7 +130,7 @@ PY
 CODEX_ADAPTER_HOST="127.0.0.1" \
 CODEX_ADAPTER_PORT="${ADAPTER_PORT}" \
 CODEX_ADAPTER_PROTOCOL_VERSION="2" \
-CODEX_ADAPTER_CODEX_HOME="${CODEX_AUTH_SOURCE}" \
+CODEX_ADAPTER_CODEX_HOME="${CODEX_CLEAN_HOME}" \
 CODEX_ADAPTER_ISOLATE_CODEX_HOME="true" \
 CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH="${RUNTIME_DIR}/codex-runtime-sessions.json" \
 CODEX_ADAPTER_FALLBACK_WORKSPACE_PARENT="${RUNTIME_DIR}/codex-workspaces" \
@@ -225,6 +238,7 @@ result_path.write_text(
     json.dumps(
         {
             "status": "pass",
+            "codexHomeMode": "clean-minimal-config",
             "model": os.environ["MODEL"],
             "smokeUser": os.environ["SMOKE_USER"],
             "marker": os.environ["SMOKE_MARKER"],

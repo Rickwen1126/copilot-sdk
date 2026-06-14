@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 00:53
+Last Updated: 2026-06-15 01:08
 Status: Active
 
 ## P1: Codex Adapter Semantic Observability Parity @2026-06-15-0024
@@ -27,6 +27,39 @@ Current checkpoint @2026-06-15 00:24:
   - Source: Python-first semantic log work completed before production deploy/high-density test.
   - Code/Surface: `nodejs/src/experimental/codexAdapter.ts`, `nodejs/src/experimental/codexAppServerGateway.ts`, Node conformance tests, and selected-profile summary artifacts.
   - Done when: Node summary/log artifacts expose the same stable adapter categories as Python for session lifecycle, turn lifecycle, assistant message completion, tool routing, SDK tool call/result, approval request/result, and runtime error/timeout, without adding product-facing SDK events.
+
+## P2 Pending: Codex Container Auth Persistence Strategy @2026-06-15-0106
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Docker smoke lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
+- Code/Surface: [python/copilot/experimental/codex_adapter/gateway.py](../python/copilot/experimental/codex_adapter/gateway.py), [container-smoke.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-smoke.sh)
+- Source: user asked how Docker handles Codex auth before broader Codex + Copilot SDK testing.
+
+Current checkpoint @2026-06-15 01:06:
+
+- Short state-changing Docker smokes use host `~/.codex` only as a read-only
+  auth source.
+- The smoke copies `auth.json`, `installation_id`, and `models_cache.json`
+  when present into `/runtime/codex-clean-home`.
+- The smoke generates a minimal `config.toml` in `/runtime/codex-clean-home`.
+  Host `config.toml` is intentionally not copied, so host MCP/plugin/skill
+  settings do not enter the Docker smoke lane.
+- `gateway.py` still runs with `CODEX_ADAPTER_ISOLATE_CODEX_HOME=true`, so
+  `codex app-server` receives a second isolated container-local `CODEX_HOME`.
+- Any Codex token refresh/session writes happen inside container-local homes and
+  are discarded when the container exits.
+- This is acceptable for short smoke tests. It is not yet the long-running
+  production auth strategy.
+- Latest short-smoke proof with clean config passed at
+  `/tmp/shinyipilot-codex-docker-smoke-clean-20260615-0107`.
+
+- [ ] Decide and document the long-running container auth strategy.
+  - Source: the clean Docker smoke lane deliberately avoids writable host Codex home state.
+  - Code/Surface: production runbook, Docker deployment shape, secret/volume policy, and `CODEX_ADAPTER_CODEX_HOME` / `CODEX_ADAPTER_ISOLATE_CODEX_HOME` settings.
+  - Done when: the runbook states whether long-lived containers use a controlled writable secret volume, a refresh-token persistence policy, API-key/service-account lane, or another explicit auth mechanism; the decision must say where refresh/session state can be written and how it is rotated or discarded.
 
 ## P1: Runtime Adapter Refactor Architecture Guard @2026-06-03-1141
 

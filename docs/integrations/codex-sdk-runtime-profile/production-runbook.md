@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-15 00:53
+Last Updated: 2026-06-15 01:08
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -24,9 +24,14 @@ The Docker lane is the safety boundary for high-density or destructive-looking
 experiments:
 
 - The host Codex home is mounted read-only.
-- The adapter receives that Codex home as the source and runs with
-  `CODEX_ADAPTER_ISOLATE_CODEX_HOME=true`, so `gateway.py` copies the required
-  auth/config files into a container-local isolated Codex home before starting
+- The smoke copies only auth-required files from that mount into a
+  container-local clean source home under `/runtime/codex-clean-home`.
+- The smoke generates a minimal `config.toml` in the clean source home. Host
+  `config.toml` is intentionally not copied, so host MCP/plugin/skill settings
+  do not enter the Docker smoke lane.
+- The adapter receives the clean source home and runs with
+  `CODEX_ADAPTER_ISOLATE_CODEX_HOME=true`, so `gateway.py` copies those clean
+  files into a container-local isolated Codex home before starting
   `codex app-server`.
 - ShinyiPilot app state, SQLite DBs, Codex runtime session store, and fallback
   workspaces live under container-local `/runtime`.
@@ -41,12 +46,20 @@ model-list behavior must not be used as evidence against Codex app-server model
 availability. The Docker smoke proves the model by running an actual Codex turn
 and checking ShinyiPilot DB/log/adapter-summary side effects.
 
-Latest verified artifact: `/tmp/shinyipilot-codex-docker-smoke-20260615-0053`.
-That run returned CLI response `saved`, copied `chatpilot.db` back to the host,
-read one matching `memory_memos` row from the copied artifact DB, recorded
-ShinyiPilot `[tool_call] save_memo` / `[tool_result] ... status=success`, and
-recorded adapter semantic events for session creation, turn start, tool routing,
-SDK tool dispatch, and SDK tool result.
+Latest verified artifact:
+`/tmp/shinyipilot-codex-docker-smoke-clean-20260615-0107`. That run reported
+`codexHomeMode=clean-minimal-config`, returned CLI response `saved`, copied
+`chatpilot.db` back to the host, read one matching `memory_memos` row from the
+copied artifact DB, recorded ShinyiPilot `[tool_call] save_memo` /
+`[tool_result] ... status=success`, and recorded adapter semantic events for
+session creation, turn start, tool routing, SDK tool dispatch, and SDK tool
+result.
+
+Auth state for this smoke lane is intentionally ephemeral after container
+startup: the host provides read-only login material, Codex app-server writes any
+refresh/session state into container-local homes, and the container removes that
+state at exit. That is acceptable for short state-changing smokes, but not yet a
+long-running production auth strategy.
 
 ## Durable Resume Setup
 

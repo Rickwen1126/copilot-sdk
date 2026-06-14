@@ -1,10 +1,30 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 00:53
+Last Updated: 2026-06-15 01:08
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: ShinyiPilot Codex Docker Clean Config Smoke Proof @2026-06-15-0108
+
+Section source:
+
+- Canonical spec: [docs/spec.md](./spec.md)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Docker smoke lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
+- Pending auth strategy: [docs/todo.md](./todo.md#p2-pending-codex-container-auth-persistence-strategy-2026-06-15-0106)
+- Artifact directory: `/tmp/shinyipilot-codex-docker-smoke-clean-20260615-0107`
+- Source: user asked to keep auth strategy pending but move Docker Codex config to a clean minimal state before testing Codex + Copilot SDK.
+
+- [x] Removed host `config.toml` from the Docker smoke lane.
+      Completion evidence: `container-smoke.sh` now creates `/runtime/codex-clean-home`, copies only auth-required files, and generates a minimal `config.toml`; the adapter receives that clean home with `CODEX_ADAPTER_ISOLATE_CODEX_HOME=true`.
+- [x] Proved Codex + Copilot SDK still dispatches ShinyiPilot `save_memo` with the clean config.
+      Completion evidence: `/tmp/shinyipilot-codex-docker-smoke-clean-20260615-0107/smoke-result.json` reports `status=pass`, `codexHomeMode=clean-minimal-config`, `model=gpt-5.4-mini`, CLI response `saved`, `matchingMemoryMemoRows=1`, and `artifactReadbackMemoryMemoRows=1`.
+- [x] Preserved inspectable proof that host MCP/plugin/skill config was not copied.
+      Completion evidence: `/tmp/shinyipilot-codex-docker-smoke-clean-20260615-0107/codex-config.toml` contains only the generated minimal smoke config comments.
+- [x] Preserved data/log/semantic proof.
+      Completion evidence: copied artifact DB returns `cli:codex-docker-smoke|codex docker smoke marker 20260615-010731`; ShinyiPilot log contains `[tool_call] tool=save_memo`, `[db] SAVE memo`, and `[tool_result] tool=save_memo ... status=success`; adapter summary contains session, turn, tool routing, SDK tool dispatch, SDK tool result, and assistant completion semantic events.
 
 ## Completed: ShinyiPilot Codex Adapter Docker Smoke Proof @2026-06-15-0053
 

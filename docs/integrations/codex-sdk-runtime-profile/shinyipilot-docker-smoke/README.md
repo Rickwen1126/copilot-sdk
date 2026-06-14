@@ -1,7 +1,7 @@
 # ShinyiPilot Codex Docker Smoke
 
 Created: 2026-06-15 00:42
-Last Updated: 2026-06-15 00:52
+Last Updated: 2026-06-15 01:08
 Status: Active production-smoke lane
 
 This folder contains the containerized state-changing smoke for the
@@ -14,10 +14,15 @@ auth home and receives artifacts.
 ## Boundary
 
 - Host `~/.codex` is mounted read-only at `/host-codex-home`.
-- The adapter receives `CODEX_ADAPTER_CODEX_HOME=/host-codex-home` and
+- The smoke copies only auth-required files from `/host-codex-home` into a
+  container-local clean source home under `/runtime/codex-clean-home`.
+- The smoke generates a minimal `config.toml` in that clean source home. Host
+  `config.toml` is intentionally not copied, so host MCP/plugin/skill settings
+  do not enter this lane.
+- The adapter receives `CODEX_ADAPTER_CODEX_HOME=/runtime/codex-clean-home` and
   `CODEX_ADAPTER_ISOLATE_CODEX_HOME=true`.
-- `gateway.py` copies the required Codex home files into a container-local
-  isolated temp home before starting `codex app-server`.
+- `gateway.py` then copies the clean source home files into a second
+  container-local isolated temp home before starting `codex app-server`.
 - ShinyiPilot runtime state is container-local under `/runtime`.
 - Logs, adapter summary, CLI response, and smoke result are written to
   `/artifacts`, which is the only host-writable mount.
@@ -38,11 +43,13 @@ resulting DB/log/adapter side effects.
 ## Latest Verified Proof
 
 The latest passing artifact is
-`/tmp/shinyipilot-codex-docker-smoke-20260615-0053`.
+`/tmp/shinyipilot-codex-docker-smoke-clean-20260615-0107`.
 
-That run used `gpt-5.4-mini`, returned CLI response `saved`, copied
-`chatpilot.db` to the artifact directory, and read one matching
-`memory_memos` row back from the copied DB.
+That run used `gpt-5.4-mini`, reported `codexHomeMode=clean-minimal-config`,
+returned CLI response `saved`, copied `chatpilot.db` to the artifact directory,
+and read one matching `memory_memos` row back from the copied DB. The artifact
+`codex-config.toml` contains only the generated minimal smoke config, not host
+MCP/plugin/skill settings.
 
 ## Run
 
@@ -89,3 +96,4 @@ Artifacts:
 - `cli-response.txt`
 - `smoke-result.json`
 - `chatpilot.db`
+- `codex-config.toml`

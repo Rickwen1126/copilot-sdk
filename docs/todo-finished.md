@@ -1,10 +1,30 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 01:33
+Last Updated: 2026-06-15 01:51
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: ShinyiPilot Codex Docker Behavior Sweep @2026-06-15-0151
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Docker lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Code/Surface: [container-behavior-sweep.py](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-behavior-sweep.py), [container-smoke.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-smoke.sh), [run-sweep.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-sweep.sh)
+- Artifact directory: `/tmp/shinyipilot-codex-docker-sweep-dev-20260615-014939`
+- Source: user asked to make the Codex + SDK lane Docker-friendly enough for broader testing without fearing host-environment damage.
+
+- [x] Added a repeatable Docker behavior sweep mode.
+      Completion evidence: `run-sweep.sh` builds the same narrow Docker context as smoke/lab mode, starts one container with no host port publishing, sets `SHINYIPILOT_DOCKER_MODE=sweep`, and writes artifacts under `/artifacts`.
+- [x] Covered representative ShinyiPilot SDK tool behavior through real Codex turns.
+      Completion evidence: `/tmp/shinyipilot-codex-docker-sweep-dev-20260615-014939/behavior-sweep-result.json` reports `status=pass`, `model=gpt-5.4-mini`, 11 steps, 56 passing checks, 68 adapter semantic entries, and 4 adapter sessions. Steps covered memo save/list/delete, reminder add/list/cancel, schedule add/list/cancel, web initial chat, and web getCurrentContext/operate.
+- [x] Verified data-level side effects and cleanup from the copied DB artifact.
+      Completion evidence: `/tmp/shinyipilot-codex-docker-sweep-dev-20260615-014939/chatpilot.db` reads back zero remaining sweep `memory_memos`, `memory_reminders`, and `memory_schedules` rows after the sweep cleaned up the created state.
+- [x] Verified app and adapter observability for the exercised tools.
+      Completion evidence: `shinyipilot.log` contains `[tool_call]` / `[tool_result]` pairs for `save_memo`, `list_memos`, `delete_memo`, `add_reminder`, `list_schedules`, `cancel_schedule`, `schedule_task_cron`, `getCurrentContext`, and `operate`; `adapter-summary.json` contains successful `tool.sdk_result` semantic entries for the same exercised tool set.
 
 ## Completed: Python Codex Adapter Redacted Tool Preview Observability @2026-06-15-0133
 

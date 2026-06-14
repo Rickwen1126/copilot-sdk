@@ -1,7 +1,7 @@
 # ShinyiPilot Codex Docker Smoke
 
 Created: 2026-06-15 00:42
-Last Updated: 2026-06-15 01:33
+Last Updated: 2026-06-15 01:51
 Status: Active production-smoke lane
 
 This folder contains the containerized state-changing smoke for the
@@ -91,11 +91,44 @@ Stop the lab container with:
 docker stop shinyipilot-codex-lab
 ```
 
+## Behavior Sweep
+
+Use sweep mode when you want a repeatable Docker-only behavior test instead of
+manual `docker exec` probes.
+
+```sh
+docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-sweep.sh
+```
+
+The sweep starts the adapter and ShinyiPilot app inside one container, publishes
+no host ports, sends real SDK + Codex turns through the CLI and web facade, then
+writes `behavior-sweep-result.json`, `adapter-summary.json`, `shinyipilot.log`,
+`chatpilot.db`, and per-step CLI responses to the artifact directory.
+
+The current sweep covers:
+
+- memo save/list/delete with DB row create/read/delete checks
+- reminder add/list/cancel with DB cleanup checks
+- schedule add/list/cancel with DB cleanup checks
+- web facade `getCurrentContext` and `operate` with client poll/tool-result
+  round trip
+- adapter `semanticLog` success entries and ShinyiPilot `[tool_call]` /
+  `[tool_result]` logs for the exercised SDK tools
+
+Latest passing sweep:
+`/tmp/shinyipilot-codex-docker-sweep-dev-20260615-014939`.
+
+That artifact reports `status=pass`, `model=gpt-5.4-mini`, 11 executed steps,
+56 passing checks, 68 adapter semantic entries, and 4 adapter sessions. The
+copied `chatpilot.db` reads back zero remaining sweep memo/reminder/schedule
+rows after cleanup.
+
 The host runner builds a temporary Docker context under `/tmp`. It copies only:
 
 - parent SDK `python/copilot`, `python/pyproject.toml`, `python/uv.lock`
 - ShinyiPilot `src`, `pyproject.toml`, `uv.lock`, and example route configs
-- this folder's Dockerfile and container smoke script
+- this folder's Dockerfile, container smoke script, and container behavior
+  sweep script
 
 It does not copy ShinyiPilot `.env`, `data/`, `log/`, `.progress/`, `.venv/`,
 or live route config files.
@@ -126,6 +159,11 @@ Artifacts:
 Lab-mode artifacts additionally include:
 
 - `lab-ready.json`
+
+Sweep-mode artifacts additionally include:
+
+- `behavior-sweep-result.json`
+- `sweep-*.txt`
 
 ## Latest Lab Probe
 

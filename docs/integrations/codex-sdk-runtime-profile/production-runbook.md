@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-15 01:33
+Last Updated: 2026-06-15 01:51
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -73,6 +73,21 @@ result, and assistant completion. Tool routing/result events include bounded
 redacted previews of SDK tool arguments and results for quick scanability.
 ShinyiPilot logs remain the business-payload view for full tool arguments, tool
 result text, and DB mutation messages.
+
+For repeatable behavior coverage, use the Docker lane in sweep mode:
+
+```sh
+docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-sweep.sh
+```
+
+Sweep mode runs inside the same clean Docker boundary and exercises real Codex
+turns through ShinyiPilot CLI and web facade routes. The 2026-06-15 01:49
+artifact at `/tmp/shinyipilot-codex-docker-sweep-dev-20260615-014939` passed
+with 11 steps and 56 checks: memo save/list/delete, reminder add/list/cancel,
+schedule add/list/cancel, and web `getCurrentContext` plus `operate` client
+round trip. It verified DB create/delete side effects, copied DB cleanup
+read-back, ShinyiPilot `[tool_call]` / `[tool_result]` logs, and adapter
+`semanticLog` success entries for the exercised SDK tools.
 
 ## Durable Resume Setup
 

@@ -76,6 +76,16 @@ wait_for_http() {
     done
 }
 
+copy_chatpilot_db_artifact() {
+    sqlite3 "${CHATPILOT_DB}" "PRAGMA wal_checkpoint(FULL);" >/dev/null || true
+    cp -a "${CHATPILOT_DB}" "${ARTIFACT_DIR}/chatpilot.db"
+    for suffix in "-wal" "-shm"; do
+        if [[ -f "${CHATPILOT_DB}${suffix}" ]]; then
+            cp -a "${CHATPILOT_DB}${suffix}" "${ARTIFACT_DIR}/chatpilot.db${suffix}"
+        fi
+    done
+}
+
 mkdir -p "${ARTIFACT_DIR}" "${RUNTIME_DIR}" "${RUNTIME_DIR}/codex-workspaces" "${CODEX_CLEAN_HOME}"
 
 if [[ ! -r "${CODEX_AUTH_SOURCE}/auth.json" ]]; then
@@ -194,6 +204,32 @@ PY
     exit 1
 fi
 
+if [[ "${SHINYIPILOT_DOCKER_MODE}" == "sweep" ]]; then
+    ARTIFACT_DIR="${ARTIFACT_DIR}" \
+    APP_URL="http://127.0.0.1:${APP_PORT}" \
+    CHATPILOT_DB="${CHATPILOT_DB}" \
+    CODEX_ADAPTER_MODEL="${MODEL}" \
+    python /usr/local/bin/shinyipilot-codex-behavior-sweep
+
+    kill "${APP_PID}" 2>/dev/null || true
+    wait "${APP_PID}" 2>/dev/null || true
+    APP_PID=""
+    kill "${ADAPTER_PID}" 2>/dev/null || true
+    wait "${ADAPTER_PID}" 2>/dev/null || true
+    ADAPTER_PID=""
+
+    copy_chatpilot_db_artifact
+
+    echo "PASS: ShinyiPilot Codex Docker behavior sweep"
+    echo "model=${MODEL}"
+    echo "artifacts=${ARTIFACT_DIR}"
+    exit 0
+fi
+
+if [[ "${SHINYIPILOT_DOCKER_MODE}" != "smoke" ]]; then
+    fail "unknown SHINYIPILOT_DOCKER_MODE=${SHINYIPILOT_DOCKER_MODE}"
+fi
+
 PROMPT="請呼叫 save_memo 工具，把 memo 內容存成：${SMOKE_MARKER}。工具成功後只回覆 saved。不要只用文字承諾。"
 timeout "${SMOKE_TIMEOUT_SECONDS}" \
     uv run --project /workspace/shinyipilot chatpilot-cli \
@@ -228,13 +264,7 @@ kill "${ADAPTER_PID}" 2>/dev/null || true
 wait "${ADAPTER_PID}" 2>/dev/null || true
 ADAPTER_PID=""
 
-sqlite3 "${CHATPILOT_DB}" "PRAGMA wal_checkpoint(FULL);" >/dev/null || true
-cp -a "${CHATPILOT_DB}" "${ARTIFACT_DIR}/chatpilot.db"
-for suffix in "-wal" "-shm"; do
-    if [[ -f "${CHATPILOT_DB}${suffix}" ]]; then
-        cp -a "${CHATPILOT_DB}${suffix}" "${ARTIFACT_DIR}/chatpilot.db${suffix}"
-    fi
-done
+copy_chatpilot_db_artifact
 
 ARTIFACT_MEMO_COUNT="$(
     sqlite3 "${ARTIFACT_DIR}/chatpilot.db" \

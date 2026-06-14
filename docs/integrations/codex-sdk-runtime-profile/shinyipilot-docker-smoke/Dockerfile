@@ -23,8 +23,10 @@ WORKDIR /workspace/shinyipilot
 COPY python /workspace/python
 COPY shinyipilot /workspace/shinyipilot
 COPY container-smoke.sh /usr/local/bin/shinyipilot-codex-smoke
+COPY container-behavior-sweep.py /usr/local/bin/shinyipilot-codex-behavior-sweep
 
 RUN chmod +x /usr/local/bin/shinyipilot-codex-smoke \
+    && chmod +x /usr/local/bin/shinyipilot-codex-behavior-sweep \
     && uv sync --locked --project /workspace/shinyipilot
 
 ENTRYPOINT ["/usr/local/bin/shinyipilot-codex-smoke"]

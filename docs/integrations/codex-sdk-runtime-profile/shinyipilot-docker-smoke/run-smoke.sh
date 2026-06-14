@@ -43,6 +43,8 @@ cp -a "${REPO_ROOT}/shinyipilot-spike/config/route_bindings.example.yaml" \
 
 cp -a "${SCRIPT_DIR}/Dockerfile" "${BUILD_CONTEXT}/Dockerfile"
 cp -a "${SCRIPT_DIR}/container-smoke.sh" "${BUILD_CONTEXT}/container-smoke.sh"
+cp -a "${SCRIPT_DIR}/container-behavior-sweep.py" \
+    "${BUILD_CONTEXT}/container-behavior-sweep.py"
 
 mkdir -p "${ARTIFACT_DIR}"
 

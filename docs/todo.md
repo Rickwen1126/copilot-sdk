@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 23:36
+Last Updated: 2026-06-12 17:55
 Status: Active
 
 ## P1: Runtime Adapter Refactor Architecture Guard @2026-06-03-1141
@@ -20,11 +20,15 @@ Current milestone state:
 
 - Canonical spec: [docs/spec.md](./spec.md)
 - Architecture diagram: [docs/architecture/skyeye.html](./architecture/skyeye.html)
+- Python adapter sky eye: [docs/architecture/python-codex-adapter-skyeye.html](./architecture/python-codex-adapter-skyeye.html)
 - Code map: [docs/architecture/runtime-backend-code-map.md](./architecture/runtime-backend-code-map.md)
+- Python adapter CodeTour: [.tours/03-python-codex-adapter-skyeye-copilot-sdk.tour](../.tours/03-python-codex-adapter-skyeye-copilot-sdk.tour)
 - Runtime backend guide: [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md)
 - Runtime profile plan: [docs/integrations/codex-sdk-runtime-profile/plan.md](./integrations/codex-sdk-runtime-profile/plan.md)
 - Production readiness inventory: [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md)
 - Production capability spike: [codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json)
+- Python-native adapter spike: [docs/integrations/codex-sdk-runtime-profile/python-native-codex-adapter-spike/spec.md](./integrations/codex-sdk-runtime-profile/python-native-codex-adapter-spike/spec.md)
+- Python-native adapter live smoke: [python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json)
 - Conformance artifacts: [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md)
 - Unsupported capabilities: [docs/integrations/codex-sdk-runtime-profile/unsupported-capabilities.md](./integrations/codex-sdk-runtime-profile/unsupported-capabilities.md)
 - Completed todo archive: [docs/todo-finished.md](./todo-finished.md)

@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-12 15:00
+Last Updated: 2026-06-14 11:06
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -24,7 +24,11 @@ Production resume requires three stable identities:
 
 Do not treat the default isolated temporary Codex home as durable. It is useful for local spike isolation, but it cannot be the production resume source of truth.
 
+If the SDK consumer does not provide `workingDirectory`, the adapter now creates a session-specific UUID workspace under `CODEX_ADAPTER_FALLBACK_WORKSPACE_PARENT`. If that variable is unset, the parent is the system temp default `copilot-codex-adapter-workspaces` directory. This fallback prevents unrelated SDK sessions from silently sharing the adapter process cwd, but production apps should still pass an explicit workspace when the user/project identity is known.
+
 Do not resume the same SDK session into a different workspace unless that behavior has an explicit product-level migration policy. The adapter store records the original `cwd` and falls back to it when `resumeSession()` does not provide `workingDirectory`. If a developer changes the tool set or workspace while experimenting, starting a new SDK session is the cleaner path because it creates a fresh Codex thread with a fresh `thread/start` shape.
+
+Multiple SDK sessions may intentionally point at the same explicit workspace. The adapter does not block that pattern because product-level collaboration and concurrent task models may need it. When it detects another active session with a different Codex thread id and the same `cwd`, it writes an `adapter.workspace.concurrent_threads` entry to the bounded adapter transcript so operators can reconstruct overlap from `CODEX_ADAPTER_SUMMARY_PATH`.
 
 Recommended production shape:
 
@@ -36,9 +40,27 @@ CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH="$HOME/.codex/copilot-sdk-runtime-sessi
 
 Continuity proof is not "the app-server process is alive". The proof is that the adapter can recover the persisted mapping for the intended SDK session and workspace, then Codex accepts `thread/resume` for the mapped thread.
 
-## Chatpilot Locked Lane
+## Self-Reviewed Workspace Lane
 
-The default adapter lane is intentionally locked down for Chatpilot-style chatbot use:
+The default adapter lane is intentionally bounded but usable for SDK clients that use broad permission handlers such as `approve_all`:
+
+```sh
+CODEX_ADAPTER_APPROVAL_POLICY=on-request
+CODEX_ADAPTER_APPROVALS_REVIEWER=auto_review
+CODEX_ADAPTER_SANDBOX_MODE=workspaceWrite
+CODEX_ADAPTER_NETWORK_ACCESS=false
+```
+
+These are also the adapter defaults. The sandbox lets Codex work inside the explicit workspace without asking for every routine local action. Network access is disabled by default, but it is an explicit runtime knob rather than a permanent lock: set `CODEX_ADAPTER_NETWORK_ACCESS=true` when the selected product lane needs network-capable workspace execution. When a proposed action crosses the active sandbox boundary, such as writing outside the workspace or using blocked network access, `approvalPolicy=on-request` makes Codex ask for approval and `approvalsReviewer=auto_review` routes that request through Codex's reviewer agent instead of blindly forwarding it to the SDK permission handler.
+
+Codex has two separate control planes here:
+
+- `approvalPolicy` / `approvalsReviewer`: when a boundary crossing requires review, and who reviews it.
+- `sandboxMode` / `sandboxPolicy`: what local filesystem and network boundary Codex is allowed to operate inside.
+
+Auto-review is not a permission grant. It does not expand the workspace, enable network access, or weaken protected paths. It only reviews actions that already need approval. Actions that stay inside `workspaceWrite` proceed without extra review. If the runtime explicitly sets `CODEX_ADAPTER_NETWORK_ACCESS=true`, the same workspace sandbox is used, but `turn/start.sandboxPolicy.networkAccess` is set to `true`.
+
+For a pure observation lane, explicitly set:
 
 ```sh
 CODEX_ADAPTER_APPROVAL_POLICY=never
@@ -46,7 +68,7 @@ CODEX_ADAPTER_SANDBOX_MODE=readOnly
 CODEX_ADAPTER_NETWORK_ACCESS=false
 ```
 
-These are also the adapter defaults. They prevent the Codex coding-agent prior from turning a chatbot request into native shell/file side effects. If a coding-agent product path needs broader native Codex tools, run it as a separate explicit runtime profile and prove it with its own conformance artifact.
+Use that read-only lane only when the product should not let Codex make workspace edits. For runtime agents expected to perform bounded work, the self-reviewed workspace lane is safer than SDK-side `approve_all` alone while still letting ordinary workspace-local actions complete.
 
 ## Tool Selection And Media Policy
 
@@ -81,12 +103,19 @@ Common environment variables:
 CODEX_ADAPTER_PORT=4873
 CODEX_ADAPTER_PROTOCOL_VERSION=2
 CODEX_ADAPTER_MODEL=gpt-5.4
+CODEX_ADAPTER_APPROVAL_POLICY=on-request
+CODEX_ADAPTER_APPROVALS_REVIEWER=auto_review
+CODEX_ADAPTER_SANDBOX_MODE=workspaceWrite
+CODEX_ADAPTER_NETWORK_ACCESS=false
 CODEX_ADAPTER_REQUEST_TIMEOUT_MS=45000
 CODEX_ADAPTER_TRANSCRIPT_LIMIT=500
 CODEX_ADAPTER_SUMMARY_PATH=/tmp/codex-adapter-summary.json
+CODEX_ADAPTER_FALLBACK_WORKSPACE_PARENT=/tmp/copilot-codex-adapter-workspaces
 ```
 
 `CODEX_ADAPTER_REQUEST_TIMEOUT_MS` controls Codex request timeout and protocol-v3 pending dynamic tool timeout. `CODEX_ADAPTER_TRANSCRIPT_LIMIT` keeps adapter and gateway summaries bounded for long-running processes.
+
+`CODEX_ADAPTER_NETWORK_ACCESS=false` is the safer default for production-like runs that do not need outbound network. Use `CODEX_ADAPTER_NETWORK_ACCESS=true` for runtime agents whose normal workspace task requires network access, and keep `CODEX_ADAPTER_SANDBOX_MODE=workspaceWrite` so local file operations stay scoped to the selected workspace.
 
 For P0 observability, always set `CODEX_ADAPTER_SUMMARY_PATH` in staged/prod-like runs and retain process stdout/stderr. Live metrics or health endpoints remain a P2 follow-up until the deployment environment needs them; bounded transcript summaries are the current evidence contract.
 
@@ -98,8 +127,9 @@ CODEX_ADAPTER_PROTOCOL_VERSION=2 \
 CODEX_ADAPTER_CODEX_HOME="$HOME/.codex" \
 CODEX_ADAPTER_ISOLATE_CODEX_HOME=false \
 CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH="$HOME/.codex/copilot-sdk-runtime-sessions.json" \
-CODEX_ADAPTER_APPROVAL_POLICY=never \
-CODEX_ADAPTER_SANDBOX_MODE=readOnly \
+CODEX_ADAPTER_APPROVAL_POLICY=on-request \
+CODEX_ADAPTER_APPROVALS_REVIEWER=auto_review \
+CODEX_ADAPTER_SANDBOX_MODE=workspaceWrite \
 CODEX_ADAPTER_NETWORK_ACCESS=false \
 node dist/experimental/codexAdapterServer.js
 ```

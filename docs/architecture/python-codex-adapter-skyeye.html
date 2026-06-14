@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Python Codex Adapter Sky Eye</title>
+    <style>
+      :root {
+        --paper: #f6f1e8;
+        --paper-strong: #efe3cf;
+        --ink: #1f2430;
+        --muted: #606878;
+        --line: #b6a88f;
+        --orange: #b95a00;
+        --orange-bg: rgba(245, 167, 78, 0.14);
+        --blue: #1c5ba2;
+        --blue-bg: rgba(77, 145, 217, 0.16);
+        --green: #2a6f48;
+        --green-bg: rgba(88, 170, 110, 0.14);
+        --gray: #5a616e;
+        --gray-bg: rgba(138, 146, 161, 0.16);
+        --red: #a02f2f;
+        --red-bg: rgba(218, 88, 88, 0.14);
+        --shadow: 0 24px 60px rgba(66, 43, 12, 0.12);
+        --display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        --body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+        --mono: "SFMono-Regular", Menlo, Consolas, monospace;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: var(--body);
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.85), transparent 32%),
+          linear-gradient(180deg, #fdf9f2 0%, var(--paper) 100%);
+      }
+
+      .page {
+        width: min(1680px, calc(100vw - 48px));
+        margin: 28px auto;
+        padding: 28px;
+        border: 1px solid rgba(120, 95, 60, 0.18);
+        border-radius: 28px;
+        background: rgba(255, 252, 246, 0.86);
+        backdrop-filter: blur(10px);
+        box-shadow: var(--shadow);
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 24px;
+        margin-bottom: 18px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--orange);
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 32px;
+        height: 1px;
+        background: currentColor;
+      }
+
+      h1 {
+        margin: 10px 0 8px;
+        font-family: var(--display);
+        font-size: clamp(40px, 4.2vw, 62px);
+        font-weight: 600;
+        letter-spacing: -0.03em;
+        line-height: 0.96;
+      }
+
+      .lede {
+        max-width: 72ch;
+        margin: 0;
+        font-size: 17px;
+        line-height: 1.65;
+        color: var(--muted);
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid rgba(31, 36, 48, 0.14);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--ink);
+        font: inherit;
+        font-size: 14px;
+        padding: 10px 16px;
+        cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+        box-shadow: 0 10px 18px rgba(34, 24, 10, 0.06);
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        border-color: rgba(31, 36, 48, 0.24);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, calc(var(--canvas-width) * 1px)) 280px;
+        gap: 22px;
+        align-items: start;
+      }
+
+      .canvas-shell {
+        position: relative;
+        min-height: calc(var(--canvas-height) * 1px);
+        border-radius: 26px;
+        border: 1px solid rgba(120, 95, 60, 0.14);
+        background:
+          linear-gradient(rgba(120, 95, 60, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(120, 95, 60, 0.06) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 250, 242, 0.94));
+        background-size: 32px 32px, 32px 32px, auto;
+        overflow: auto;
+      }
+
+      .canvas {
+        position: relative;
+        width: calc(var(--canvas-width) * 1px);
+        height: calc(var(--canvas-height) * 1px);
+        transform-origin: top left;
+      }
+
+      .frame {
+        position: absolute;
+        border: 2px dashed currentColor;
+        border-radius: 28px;
+        padding: 18px;
+      }
+
+      .frame .frame-label {
+        position: absolute;
+        top: -15px;
+        left: 18px;
+        padding: 0 8px;
+        font-family: var(--mono);
+        font-size: 14px;
+        letter-spacing: 0.05em;
+        background: rgba(255, 252, 246, 0.94);
+      }
+
+      .frame.orange { color: var(--orange); background: var(--orange-bg); }
+      .frame.blue { color: var(--blue); background: var(--blue-bg); }
+      .frame.green { color: var(--green); background: var(--green-bg); }
+      .frame.gray { color: var(--gray); background: rgba(124, 131, 145, 0.08); }
+      .frame.red { color: var(--red); background: var(--red-bg); }
+
+      .node {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        border-radius: 22px;
+        padding: 18px 20px;
+        border: 2px solid currentColor;
+        background: white;
+        box-shadow: 0 18px 32px rgba(52, 38, 18, 0.08);
+        transition: transform 180ms ease, box-shadow 180ms ease;
+      }
+
+      .node:hover,
+      .node.is-active {
+        transform: translateY(-3px);
+        box-shadow: 0 22px 46px rgba(52, 38, 18, 0.14);
+      }
+
+      .node-body {
+        width: 100%;
+        height: 100%;
+        border-radius: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 14px 18px;
+      }
+
+      .node.orange { color: var(--orange); background: rgba(255, 248, 238, 0.96); }
+      .node.orange .node-body { background: var(--orange-bg); }
+      .node.blue { color: var(--blue); background: rgba(245, 250, 255, 0.96); }
+      .node.blue .node-body { background: var(--blue-bg); }
+      .node.green { color: var(--green); background: rgba(247, 255, 248, 0.96); }
+      .node.green .node-body { background: var(--green-bg); }
+      .node.gray { color: var(--gray); background: rgba(249, 250, 252, 0.96); }
+      .node.gray .node-body { background: var(--gray-bg); }
+      .node.red { color: var(--red); background: rgba(255, 248, 248, 0.96); }
+      .node.red .node-body { background: var(--red-bg); }
+
+      .node-title {
+        font-family: var(--display);
+        font-size: 19px;
+        line-height: 1.24;
+        letter-spacing: -0.02em;
+      }
+
+      .node code,
+      .footer-meta code {
+        font-family: var(--mono);
+        font-size: 0.92em;
+      }
+
+      svg.wires {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: visible;
+      }
+
+      .wire {
+        fill: none;
+        stroke: #433b30;
+        stroke-width: 2.4;
+        opacity: 0.72;
+        transition: opacity 180ms ease, stroke-width 180ms ease, stroke 180ms ease;
+      }
+
+      .wire.highlight {
+        opacity: 1;
+        stroke-width: 3.4;
+        stroke: var(--orange);
+      }
+
+      .note-panel {
+        position: sticky;
+        top: 24px;
+        border-radius: 24px;
+        padding: 18px 18px 20px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(248, 243, 234, 0.96));
+        border: 1px solid rgba(120, 95, 60, 0.14);
+        box-shadow: 0 18px 36px rgba(34, 24, 10, 0.08);
+      }
+
+      .panel-kicker {
+        font-family: var(--mono);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: var(--muted);
+        margin-bottom: 10px;
+      }
+
+      .panel-title {
+        margin: 0 0 12px;
+        font-family: var(--display);
+        font-size: 28px;
+        line-height: 1;
+      }
+
+      .note-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 10px;
+        color: var(--muted);
+      }
+
+      .note-list li {
+        padding-top: 10px;
+        border-top: 1px solid rgba(120, 95, 60, 0.12);
+        line-height: 1.55;
+      }
+
+      .footer-meta {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid rgba(120, 95, 60, 0.14);
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+
+      @media (max-width: 1500px) {
+        .layout { grid-template-columns: 1fr; }
+        .note-panel { position: static; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="topbar">
+        <div>
+          <div class="eyebrow">repo-local architecture diagram</div>
+          <h1 id="diagram-title"></h1>
+          <p class="lede" id="diagram-subtitle"></p>
+        </div>
+        <div class="controls">
+          <button type="button" id="highlight-flow">Highlight active path</button>
+          <button type="button" id="reset-flow">Reset</button>
+          <button type="button" id="export-svg">Export SVG</button>
+        </div>
+      </div>
+
+      <div class="layout">
+        <section class="canvas-shell">
+          <div class="canvas" id="diagram-canvas">
+            <svg class="wires" id="wire-layer" aria-hidden="true">
+              <defs>
+                <marker id="arrow-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#433b30"></path>
+                </marker>
+              </defs>
+            </svg>
+          </div>
+        </section>
+
+        <aside class="note-panel">
+          <div class="panel-kicker">Readout</div>
+          <h2 class="panel-title">Diagram Notes</h2>
+          <ol class="note-list" id="diagram-notes"></ol>
+          <div class="footer-meta" id="diagram-meta"></div>
+        </aside>
+      </div>
+    </main>
+
+    <script>
+      const spec = {"title":"Python Codex Adapter Sky Eye","subtitle":"Module-boundary view of the experimental Python adapter that keeps the Copilot SDK protocol stable while routing runtime work into codex app-server.","kind":"skyeye","name":"python-codex-adapter-skyeye","active_path":["sdk-client","adapter-cli","adapter-server","mapper-policy","gateway","codex-app-server"],"groups":[{"id":"consumer","label":"SDK consumer boundary","x":40,"y":200,"w":270,"h":250,"color":"green"},{"id":"adapter","label":"Python adapter module boundary","x":340,"y":120,"w":660,"h":500,"color":"orange"},{"id":"runtime","label":"Codex runtime boundary","x":1020,"y":200,"w":240,"h":330,"color":"blue"},{"id":"proof","label":"Proof boundary","x":340,"y":700,"w":920,"h":170,"color":"gray"}],"nodes":[{"id":"sdk-client","label":"Python SDK client<br /><code>ExternalServerConfig</code><br />Copilot protocol RPC","x":80,"y":270,"w":220,"h":120,"color":"green"},{"id":"package-boundary","label":"Experimental import path<br /><code>experimental</code><br /><code>codex_adapter</code>","x":390,"y":190,"w":200,"h":130,"color":"orange"},{"id":"adapter-cli","label":"CLI runner<br /><code>copilot-codex-adapter</code><br />env -&gt; options<br />readiness line","x":390,"y":390,"w":190,"h":140,"color":"orange"},{"id":"adapter-server","label":"Adapter core<br /><code>CodexCopilotAdapterServer</code><br />TCP facade<br />session + event bridge","x":610,"y":190,"w":200,"h":150,"color":"orange"},{"id":"mapper-policy","label":"Mapper + policy<br /><code>mappers.py</code> + <code>tool_policy.py</code><br />tools, approvals<br />sandbox, v2/v3","x":610,"y":390,"w":200,"h":160,"color":"orange"},{"id":"session-store","label":"Durable session store<br /><code>session_store.py</code><br />session -&gt; thread<br />cwd + tool fingerprint","x":830,"y":390,"w":150,"h":160,"color":"gray"},{"id":"gateway","label":"Gateway<br /><code>gateway.py</code><br />isolated <code>CODEX_HOME</code><br />line JSON-RPC","x":830,"y":190,"w":150,"h":150,"color":"blue"},{"id":"codex-app-server","label":"Codex app-server<br /><code>thread/start</code>, <code>resume</code>, <code>turn/start</code><br />approval + tool requests","x":1050,"y":280,"w":180,"h":170,"color":"blue"},{"id":"parity-tests","label":"Parity tests<br /><code>test_codex_adapter_*.py</code><br />fake gateway + snapshot","x":410,"y":735,"w":240,"h":105,"color":"gray"},{"id":"live-smoke","label":"Live smoke<br /><code>live_smoke.py</code><br />real CLI + SDK + Codex","x":680,"y":735,"w":240,"h":105,"color":"gray"}],"arrows":[{"from":"sdk-client","to":"adapter-cli"},{"from":"package-boundary","to":"adapter-server"},{"from":"adapter-cli","to":"adapter-server"},{"from":"adapter-server","to":"mapper-policy","mode":"vertical"},{"from":"adapter-server","to":"session-store"},{"from":"adapter-server","to":"gateway"},{"from":"mapper-policy","to":"gateway"},{"from":"gateway","to":"codex-app-server"},{"from":"parity-tests","to":"adapter-server"},{"from":"live-smoke","to":"adapter-cli"}],"notes":["The outer contract stays Copilot-shaped: downstream apps still speak SDK JSON-RPC over ExternalServerConfig and do not need to learn Codex thread or turn verbs.","The adapter module is split by responsibility: CLI boot policy in cli.py, subprocess/runtime transport in gateway.py, orchestration and event routing in server.py, and pure translation or policy logic in mappers.py plus tool_policy.py.","Session continuity is adapter-owned state. session_store.py persists SDK session id to Codex thread id together with cwd, model, and tool fingerprint so incompatible resume fails early instead of drifting at runtime.","Proof is part of the module story, not an afterthought. Fake-gateway parity tests lock observable behavior, and the live smoke script proves the packaged CLI can drive a real codex app-server without touching reserved ports 4800, 4801, or 4811."]};
+      const meta = {"kind":"skyeye","path":"/Users/rickwen/code/copilot-sdk/docs/architecture/python-codex-adapter-skyeye.html","export_name":"python-codex-adapter-skyeye.svg"};
+      const canvas = document.getElementById("diagram-canvas");
+      const wireLayer = document.getElementById("wire-layer");
+      const nodeMap = new Map();
+      const arrowMap = new Map();
+
+      document.getElementById("diagram-title").textContent = spec.title || "Architecture diagram";
+      document.getElementById("diagram-subtitle").textContent = spec.subtitle || "HTML-first diagram";
+
+      const noteList = document.getElementById("diagram-notes");
+      const notes = Array.isArray(spec.notes) && spec.notes.length ? spec.notes : [
+        "HTML is the canonical architecture artifact.",
+        "Use Export SVG only when a downstream whiteboard surface is needed."
+      ];
+      for (const note of notes) {
+        const li = document.createElement("li");
+        li.textContent = note;
+        noteList.appendChild(li);
+      }
+      document.getElementById("diagram-meta").innerHTML =
+        `Kind: <code>${meta.kind}</code><br />Path: <code>${meta.path}</code>`;
+
+      function measureCanvas() {
+        const nodeMaxX = Math.max(...spec.nodes.map((node) => node.x + node.w), 980);
+        const nodeMaxY = Math.max(...spec.nodes.map((node) => node.y + node.h), 640);
+        const groupMaxX = Math.max(...(spec.groups || []).map((group) => group.x + group.w), nodeMaxX);
+        const groupMaxY = Math.max(...(spec.groups || []).map((group) => group.y + group.h), nodeMaxY);
+        const width = Math.max(nodeMaxX, groupMaxX) + 80;
+        const height = Math.max(nodeMaxY, groupMaxY) + 80;
+        document.documentElement.style.setProperty("--canvas-width", String(width));
+        document.documentElement.style.setProperty("--canvas-height", String(height));
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        wireLayer.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        wireLayer.setAttribute("width", String(width));
+        wireLayer.setAttribute("height", String(height));
+        return { width, height };
+      }
+
+      const palette = {
+        orange: { stroke: "#b95a00", fill: "#fff8ee", inner: "rgba(245, 167, 78, 0.14)" },
+        blue: { stroke: "#1c5ba2", fill: "#f5faff", inner: "rgba(77, 145, 217, 0.16)" },
+        green: { stroke: "#2a6f48", fill: "#f7fff8", inner: "rgba(88, 170, 110, 0.14)" },
+        gray: { stroke: "#5a616e", fill: "#f9fafc", inner: "rgba(138, 146, 161, 0.16)" },
+        red: { stroke: "#a02f2f", fill: "#fff8f8", inner: "rgba(218, 88, 88, 0.14)" }
+      };
+
+      function renderFrames() {
+        for (const group of spec.groups || []) {
+          const frame = document.createElement("section");
+          frame.className = `frame ${group.color || "gray"}`;
+          frame.style.left = `${group.x}px`;
+          frame.style.top = `${group.y}px`;
+          frame.style.width = `${group.w}px`;
+          frame.style.height = `${group.h}px`;
+          const label = document.createElement("div");
+          label.className = "frame-label";
+          label.textContent = group.label || group.id;
+          frame.appendChild(label);
+          canvas.appendChild(frame);
+        }
+      }
+
+      function renderNodes() {
+        for (const node of spec.nodes) {
+          const el = document.createElement("article");
+          el.className = `node ${node.color || "gray"}`;
+          el.dataset.nodeId = node.id;
+          el.style.left = `${node.x}px`;
+          el.style.top = `${node.y}px`;
+          el.style.width = `${node.w}px`;
+          el.style.height = `${node.h}px`;
+          el.innerHTML = `<div class="node-body"><div class="node-title">${node.label}</div></div>`;
+          canvas.appendChild(el);
+          nodeMap.set(node.id, el);
+        }
+      }
+
+      function nodeRect(nodeId) {
+        const node = spec.nodes.find((item) => item.id === nodeId);
+        return {
+          left: node.x,
+          top: node.y,
+          right: node.x + node.w,
+          bottom: node.y + node.h,
+          cx: node.x + node.w / 2,
+          cy: node.y + node.h / 2
+        };
+      }
+
+      function arrowPath(arrow) {
+        const from = nodeRect(arrow.from);
+        const to = nodeRect(arrow.to);
+        if (arrow.mode === "vertical") {
+          return `M ${from.cx} ${from.bottom} L ${from.cx} ${to.top}`;
+        }
+        const startX = from.right;
+        const startY = from.cy;
+        const endX = to.left;
+        const endY = to.cy;
+        const midX = startX + (endX - startX) / 2;
+        return `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
+      }
+
+      function renderArrows() {
+        for (const arrow of spec.arrows || []) {
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("class", "wire");
+          path.setAttribute("marker-end", "url(#arrow-head)");
+          path.setAttribute("d", arrowPath(arrow));
+          path.dataset.from = arrow.from;
+          path.dataset.to = arrow.to;
+          wireLayer.appendChild(path);
+          arrowMap.set(`${arrow.from}:${arrow.to}`, path);
+        }
+      }
+
+      function clearHighlight() {
+        for (const node of nodeMap.values()) node.classList.remove("is-active");
+        for (const path of arrowMap.values()) path.classList.remove("highlight");
+      }
+
+      function highlightNode(nodeId) {
+        clearHighlight();
+        const node = nodeMap.get(nodeId);
+        if (node) node.classList.add("is-active");
+        for (const arrow of spec.arrows || []) {
+          if (arrow.from === nodeId || arrow.to === nodeId) {
+            arrowMap.get(`${arrow.from}:${arrow.to}`)?.classList.add("highlight");
+            nodeMap.get(arrow.from)?.classList.add("is-active");
+            nodeMap.get(arrow.to)?.classList.add("is-active");
+          }
+        }
+      }
+
+      function highlightActivePath() {
+        clearHighlight();
+        const pathNodes = spec.active_path || spec.nodes.map((node) => node.id);
+        for (const nodeId of pathNodes) nodeMap.get(nodeId)?.classList.add("is-active");
+        for (const arrow of spec.arrows || []) {
+          if (pathNodes.includes(arrow.from) && pathNodes.includes(arrow.to)) {
+            arrowMap.get(`${arrow.from}:${arrow.to}`)?.classList.add("highlight");
+          }
+        }
+      }
+
+      function exportSvg() {
+        const { width, height } = measureCanvas();
+        const serializer = new XMLSerializer();
+        const exported = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        exported.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        exported.setAttribute("width", String(width));
+        exported.setAttribute("height", String(height));
+        exported.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+        const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+        style.textContent = `
+          .frame { fill-opacity: 1; stroke-dasharray: 10 10; stroke-width: 2; rx: 28; ry: 28; }
+          .frame-label { font-family: Menlo, Consolas, monospace; font-size: 14px; letter-spacing: 0.05em; }
+          .node { rx: 22; ry: 22; stroke-width: 2; }
+          .inner { rx: 18; ry: 18; }
+          .label { font-family: Georgia, serif; font-size: 19px; fill: #1f2430; text-anchor: middle; }
+          .wire { fill: none; stroke: #433b30; stroke-width: 2.4; }
+          .title { font-family: Georgia, serif; font-size: 44px; fill: #1f2430; }
+          .subtitle { font-family: Avenir Next, Segoe UI, sans-serif; font-size: 18px; fill: #606878; }
+        `;
+        exported.appendChild(style);
+
+        const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        defs.innerHTML = `
+          <marker id="svg-arrow-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#433b30"></path>
+          </marker>
+        `;
+        exported.appendChild(defs);
+
+        const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        bg.setAttribute("width", String(width));
+        bg.setAttribute("height", String(height));
+        bg.setAttribute("fill", "#fdf9f2");
+        exported.appendChild(bg);
+
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        title.setAttribute("class", "title");
+        title.setAttribute("x", "58");
+        title.setAttribute("y", "58");
+        title.textContent = spec.title || "Architecture diagram";
+        exported.appendChild(title);
+
+        const subtitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        subtitle.setAttribute("class", "subtitle");
+        subtitle.setAttribute("x", "58");
+        subtitle.setAttribute("y", "96");
+        subtitle.textContent = spec.subtitle || "HTML-first diagram";
+        exported.appendChild(subtitle);
+
+        for (const group of spec.groups || []) {
+          const colors = palette[group.color || "gray"];
+          const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rect.setAttribute("class", "frame");
+          rect.setAttribute("x", String(group.x));
+          rect.setAttribute("y", String(group.y));
+          rect.setAttribute("width", String(group.w));
+          rect.setAttribute("height", String(group.h));
+          rect.setAttribute("fill", colors.inner);
+          rect.setAttribute("stroke", colors.stroke);
+          exported.appendChild(rect);
+
+          const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          label.setAttribute("class", "frame-label");
+          label.setAttribute("x", String(group.x + 14));
+          label.setAttribute("y", String(group.y - 12));
+          label.setAttribute("fill", colors.stroke);
+          label.textContent = group.label || group.id;
+          exported.appendChild(label);
+        }
+
+        for (const arrow of spec.arrows || []) {
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("class", "wire");
+          path.setAttribute("marker-end", "url(#svg-arrow-head)");
+          path.setAttribute("d", arrowPath(arrow));
+          exported.appendChild(path);
+        }
+
+        for (const node of spec.nodes) {
+          const colors = palette[node.color || "gray"];
+          const outer = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          outer.setAttribute("class", "node");
+          outer.setAttribute("x", String(node.x));
+          outer.setAttribute("y", String(node.y));
+          outer.setAttribute("width", String(node.w));
+          outer.setAttribute("height", String(node.h));
+          outer.setAttribute("fill", colors.fill);
+          outer.setAttribute("stroke", colors.stroke);
+          exported.appendChild(outer);
+
+          const inner = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          inner.setAttribute("class", "inner");
+          inner.setAttribute("x", String(node.x + 14));
+          inner.setAttribute("y", String(node.y + 14));
+          inner.setAttribute("width", String(node.w - 28));
+          inner.setAttribute("height", String(node.h - 28));
+          inner.setAttribute("fill", colors.inner);
+          inner.setAttribute("stroke", "transparent");
+          exported.appendChild(inner);
+
+          const lines = String(node.label).replace(/<[^>]+>/g, "").split(/<br\s*\/?>/i).flatMap((line) => line.split("\n"));
+          const startY = node.y + node.h / 2 - (lines.length - 1) * 13;
+          lines.forEach((line, index) => {
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute("class", "label");
+            text.setAttribute("x", String(node.x + node.w / 2));
+            text.setAttribute("y", String(startY + index * 28));
+            text.textContent = line.trim();
+            exported.appendChild(text);
+          });
+        }
+
+        const blob = new Blob([serializer.serializeToString(exported)], { type: "image/svg+xml;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = meta.export_name;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+
+      measureCanvas();
+      renderFrames();
+      renderNodes();
+      renderArrows();
+
+      for (const [nodeId, node] of nodeMap.entries()) {
+        node.addEventListener("mouseenter", () => highlightNode(nodeId));
+        node.addEventListener("mouseleave", clearHighlight);
+      }
+      document.getElementById("highlight-flow").addEventListener("click", highlightActivePath);
+      document.getElementById("reset-flow").addEventListener("click", clearHighlight);
+      document.getElementById("export-svg").addEventListener("click", exportSvg);
+    </script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 import { mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { approveAll, CopilotClient, defineTool } from "../src/index.js";
@@ -30,8 +30,10 @@ class FakeCodexGateway {
     readonly notifications: FakeCodexMessage[] = [];
     readonly responses: Array<{ id: number | string; result?: unknown; error?: unknown }> = [];
     private notificationHandlers = new Set<(notification: FakeCodexMessage) => void>();
-    private requestHandlers = new Set<(request: FakeCodexMessage & { id: number | string }) => void>();
-    private readonly threadId = "fake-thread-1";
+    private requestHandlers = new Set<
+        (request: FakeCodexMessage & { id: number | string }) => void
+    >();
+    private nextThreadNumber = 1;
 
     async start(): Promise<void> {}
 
@@ -41,31 +43,41 @@ class FakeCodexGateway {
         this.requests.push({ method, params });
 
         if (method === "thread/start") {
+            const threadId = `fake-thread-${this.nextThreadNumber}`;
+            this.nextThreadNumber += 1;
             return {
                 id: this.requests.length,
                 result: {
                     thread: {
-                        id: this.threadId,
+                        id: threadId,
                     },
                 },
             };
         }
 
         if (method === "thread/resume") {
+            const threadId =
+                isRecord(params) && typeof params.threadId === "string"
+                    ? params.threadId
+                    : "fake-thread-1";
             return {
                 id: this.requests.length,
                 result: {
                     thread: {
-                        id: this.threadId,
+                        id: threadId,
                     },
                 },
             };
         }
 
         if (method === "turn/start") {
+            const threadId =
+                isRecord(params) && typeof params.threadId === "string"
+                    ? params.threadId
+                    : "fake-thread-1";
             setTimeout(() => {
                 this.emitNotification("item/completed", {
-                    threadId: this.threadId,
+                    threadId,
                     item: {
                         type: "agentMessage",
                         id: "assistant-message-1",
@@ -73,7 +85,7 @@ class FakeCodexGateway {
                     },
                 });
                 this.emitNotification("turn/completed", {
-                    threadId: this.threadId,
+                    threadId,
                     turn: {
                         status: "completed",
                     },
@@ -315,6 +327,9 @@ describe("Codex adapter experimental boundary", () => {
             expect.objectContaining({
                 model: "gpt-test",
                 baseInstructions: "You are the adapter characterization test assistant.",
+                approvalPolicy: "on-request",
+                approvalsReviewer: "auto_review",
+                sandbox: "workspace-write",
                 ephemeral: false,
             })
         );
@@ -332,6 +347,15 @@ describe("Codex adapter experimental boundary", () => {
             expect.objectContaining({
                 threadId: "fake-thread-1",
                 model: "gpt-test",
+                approvalPolicy: "on-request",
+                approvalsReviewer: "auto_review",
+                sandboxPolicy: {
+                    type: "workspaceWrite",
+                    writableRoots: [],
+                    networkAccess: false,
+                    excludeTmpdirEnvVar: false,
+                    excludeSlashTmp: false,
+                },
             })
         );
 
@@ -343,6 +367,172 @@ describe("Codex adapter experimental boundary", () => {
                 "assistant.message",
                 "session.idle",
             ])
+        );
+    });
+
+    it("allows network access to be explicitly enabled inside the workspace sandbox", async () => {
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            sandboxMode: "workspaceWrite",
+            networkAccess: true,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        const session = await client.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+        });
+        await session.sendAndWait(
+            {
+                prompt: "Use the explicitly network-enabled workspace sandbox.",
+            },
+            1_000
+        );
+
+        const turnStart = fakeCodex.requests.find((entry) => entry.method === "turn/start");
+        expect(turnStart?.params).toEqual(
+            expect.objectContaining({
+                sandboxPolicy: {
+                    type: "workspaceWrite",
+                    writableRoots: [],
+                    networkAccess: true,
+                    excludeTmpdirEnvVar: false,
+                    excludeSlashTmp: false,
+                },
+            })
+        );
+    });
+
+    it("creates isolated fallback workspaces when the SDK omits workingDirectory", async () => {
+        const fallbackWorkspaceParent = mkdtempSync(join(tmpdir(), "codex-adapter-workspaces-"));
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            fallbackWorkspaceParent,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        const first = await client.createSession({
+            onPermissionRequest: approveAll,
+        });
+        const second = await client.createSession({
+            onPermissionRequest: approveAll,
+        });
+
+        const threadStarts = fakeCodex.requests.filter((entry) => entry.method === "thread/start");
+        const firstCwd = isRecord(threadStarts[0]?.params) ? threadStarts[0].params.cwd : null;
+        const secondCwd = isRecord(threadStarts[1]?.params) ? threadStarts[1].params.cwd : null;
+
+        expect(first.sessionId).not.toBe(second.sessionId);
+        expect(firstCwd).not.toBe(secondCwd);
+        expect(dirname(String(firstCwd))).toBe(fallbackWorkspaceParent);
+        expect(dirname(String(secondCwd))).toBe(fallbackWorkspaceParent);
+        expect(readdirSync(fallbackWorkspaceParent)).toHaveLength(2);
+    });
+
+    it("preserves an explicit workingDirectory instead of creating a fallback workspace", async () => {
+        const root = mkdtempSync(join(tmpdir(), "codex-adapter-explicit-"));
+        const fallbackWorkspaceParent = join(root, "fallback-workspaces");
+        const explicitWorkspace = join(root, "explicit-workspace");
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            fallbackWorkspaceParent,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        await client.createSession({
+            workingDirectory: explicitWorkspace,
+            onPermissionRequest: approveAll,
+        });
+
+        const threadStart = fakeCodex.requests.find((entry) => entry.method === "thread/start");
+        expect(threadStart?.params).toEqual(
+            expect.objectContaining({
+                cwd: explicitWorkspace,
+            })
+        );
+        expect(() => readdirSync(fallbackWorkspaceParent)).toThrow();
+    });
+
+    it("logs but does not block concurrent threads in the same explicit workspace", async () => {
+        const explicitWorkspace = mkdtempSync(join(tmpdir(), "codex-adapter-shared-workspace-"));
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        const first = await client.createSession({
+            workingDirectory: explicitWorkspace,
+            onPermissionRequest: approveAll,
+        });
+        const second = await client.createSession({
+            workingDirectory: explicitWorkspace,
+            onPermissionRequest: approveAll,
+        });
+
+        expect(first.sessionId).not.toBe(second.sessionId);
+        expect(fakeCodex.requests.filter((entry) => entry.method === "thread/start")).toHaveLength(
+            2
+        );
+
+        const summary = adapter.summary() as {
+            transcripts: Array<{ direction?: string; message?: unknown }>;
+        };
+        const concurrentLog = summary.transcripts.find(
+            (entry) => entry.direction === "adapter.workspace.concurrent_threads"
+        );
+        expect(concurrentLog?.message).toEqual(
+            expect.objectContaining({
+                operation: "create",
+                cwd: explicitWorkspace,
+                sessionId: second.sessionId,
+                threadId: "fake-thread-2",
+                overlappingSessions: [
+                    expect.objectContaining({
+                        sessionId: first.sessionId,
+                        threadId: "fake-thread-1",
+                    }),
+                ],
+            })
         );
     });
 
@@ -375,9 +565,9 @@ describe("Codex adapter experimental boundary", () => {
                 threadId: "fake-thread-1",
             },
         });
-        expect(fakeCodex.requests.filter((entry) => entry.method === "thread/unsubscribe")).toHaveLength(
-            1
-        );
+        expect(
+            fakeCodex.requests.filter((entry) => entry.method === "thread/unsubscribe")
+        ).toHaveLength(1);
 
         await client.resumeSession(session.sessionId, {
             model: "gpt-test",
@@ -387,7 +577,9 @@ describe("Codex adapter experimental boundary", () => {
             method: "thread/resume",
             params: expect.objectContaining({
                 threadId: "fake-thread-1",
-                sandbox: "read-only",
+                approvalPolicy: "on-request",
+                approvalsReviewer: "auto_review",
+                sandbox: "workspace-write",
             }),
         });
 
@@ -568,9 +760,9 @@ describe("Codex adapter experimental boundary", () => {
             })
         ).rejects.toThrow(/matching tools are required after adapter restart/);
 
-        expect(secondCodex.requests.filter((entry) => entry.method === "thread/resume")).toHaveLength(
-            0
-        );
+        expect(
+            secondCodex.requests.filter((entry) => entry.method === "thread/resume")
+        ).toHaveLength(0);
     });
 
     it("rejects adapter-restart resume when the supplied tool set does not match the persisted mapping", async () => {
@@ -632,9 +824,9 @@ describe("Codex adapter experimental boundary", () => {
             })
         ).rejects.toThrow(/tool set is incompatible with the persisted runtime session/);
 
-        expect(secondCodex.requests.filter((entry) => entry.method === "thread/resume")).toHaveLength(
-            0
-        );
+        expect(
+            secondCodex.requests.filter((entry) => entry.method === "thread/resume")
+        ).toHaveLength(0);
     });
 
     it("caps adapter transcripts for long-running server summaries", async () => {

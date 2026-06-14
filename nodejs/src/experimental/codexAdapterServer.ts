@@ -63,6 +63,7 @@ function buildOptions(): CodexAdapterOptions {
         requestTimeoutMs: envInt("CODEX_ADAPTER_REQUEST_TIMEOUT_MS"),
         transcriptLimit: envInt("CODEX_ADAPTER_TRANSCRIPT_LIMIT"),
         runtimeSessionStorePath: envString("CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH"),
+        fallbackWorkspaceParent: envString("CODEX_ADAPTER_FALLBACK_WORKSPACE_PARENT"),
         clientInfo: {
             name: envString("CODEX_ADAPTER_CLIENT_NAME"),
             title: envString("CODEX_ADAPTER_CLIENT_TITLE"),

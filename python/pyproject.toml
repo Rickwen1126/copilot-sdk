@@ -31,6 +31,9 @@ dependencies = [
 Homepage = "https://github.com/github/copilot-sdk"
 Repository = "https://github.com/github/copilot-sdk"
 
+[project.scripts]
+copilot-codex-adapter = "copilot.experimental.codex_adapter.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "ruff>=0.1.0",

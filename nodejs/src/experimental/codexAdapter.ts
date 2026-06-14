@@ -1,5 +1,7 @@
+import { mkdirSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
-import process from "node:process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import {
     createMessageConnection,
@@ -87,6 +89,7 @@ export type CodexAdapterOptions = {
     requestTimeoutMs?: number;
     transcriptLimit?: number;
     runtimeSessionStorePath?: string;
+    fallbackWorkspaceParent?: string;
     clientInfo?: {
         name?: string;
         title?: string;
@@ -119,6 +122,7 @@ const DEFAULT_MODEL = "gpt-5.4";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
 const DEFAULT_TRANSCRIPT_LIMIT = 500;
+const DEFAULT_FALLBACK_WORKSPACE_PARENT = join(tmpdir(), "copilot-codex-adapter-workspaces");
 
 export const CODEX_ADAPTER_CAPABILITIES = {
     targetProfiles: ["SDK Core Profile", "Coding Agent Profile"],
@@ -274,6 +278,7 @@ export class CodexCopilotAdapterServer {
             | "sandboxMode"
             | "networkAccess"
             | "requestTimeoutMs"
+            | "fallbackWorkspaceParent"
         >
     > &
         Pick<CodexAdapterOptions, "port">;
@@ -284,11 +289,13 @@ export class CodexCopilotAdapterServer {
             port: options.port,
             protocolVersion: options.protocolVersion ?? 3,
             model: options.model ?? DEFAULT_MODEL,
-            approvalPolicy: options.approvalPolicy ?? "never",
-            approvalsReviewer: options.approvalsReviewer ?? "user",
-            sandboxMode: options.sandboxMode ?? "readOnly",
+            approvalPolicy: options.approvalPolicy ?? "on-request",
+            approvalsReviewer: options.approvalsReviewer ?? "auto_review",
+            sandboxMode: options.sandboxMode ?? "workspaceWrite",
             networkAccess: options.networkAccess ?? false,
             requestTimeoutMs: options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+            fallbackWorkspaceParent:
+                options.fallbackWorkspaceParent ?? DEFAULT_FALLBACK_WORKSPACE_PARENT,
         };
         this.transcriptLimit = options.transcriptLimit ?? DEFAULT_TRANSCRIPT_LIMIT;
         this.codex = new CodexAppServerGateway(options);
@@ -585,14 +592,58 @@ export class CodexCopilotAdapterServer {
         return typeof content === "string" && content.trim().length > 0 ? content : undefined;
     }
 
+    private sessionCreateCwd(params: Record<string, unknown>): string {
+        if (typeof params.workingDirectory === "string" && params.workingDirectory.trim()) {
+            return params.workingDirectory;
+        }
+
+        const workspace = join(this.options.fallbackWorkspaceParent, randomUUID());
+        mkdirSync(this.options.fallbackWorkspaceParent, { recursive: true });
+        mkdirSync(workspace);
+        return workspace;
+    }
+
+    private recordConcurrentWorkspaceThreads(
+        session: SessionState,
+        operation: "create" | "resume"
+    ) {
+        const overlappingSessions = [...this.sessions.values()]
+            .filter(
+                (other) =>
+                    other.sessionId !== session.sessionId &&
+                    other.threadId !== session.threadId &&
+                    other.cwd === session.cwd
+            )
+            .map((other) => ({
+                sessionId: other.sessionId,
+                threadId: other.threadId,
+                attachedConnectionCount: other.attachedConnectionIds.size,
+            }));
+
+        if (overlappingSessions.length === 0) {
+            return;
+        }
+
+        this.recordTranscript({
+            at: nowIso(),
+            direction: "adapter.workspace.concurrent_threads",
+            message: {
+                operation,
+                cwd: session.cwd,
+                sessionId: session.sessionId,
+                threadId: session.threadId,
+                overlappingSessions,
+            },
+        });
+    }
+
     private async handleSessionCreate(params: unknown, connectionId: string) {
         if (!isRecord(params)) {
             throw new Error("session.create params missing");
         }
 
         const sessionId = typeof params.sessionId === "string" ? params.sessionId : randomUUID();
-        const cwd =
-            typeof params.workingDirectory === "string" ? params.workingDirectory : process.cwd();
+        const cwd = this.sessionCreateCwd(params);
         const createdAt = nowIso();
         const model = typeof params.model === "string" ? params.model : this.options.model;
         const reasoningEffort =
@@ -642,6 +693,7 @@ export class CodexCopilotAdapterServer {
         this.sessions.set(sessionId, session);
         this.threadToSession.set(threadId, sessionId);
         this.sessionStore.upsert(this.sessionRecordFromSession(session, createdAt));
+        this.recordConcurrentWorkspaceThreads(session, "create");
 
         this.emitLifecycle("session.created", sessionId, {
             startTime: createdAt,
@@ -741,6 +793,7 @@ export class CodexCopilotAdapterServer {
             throw resumeResponse.error;
         }
         this.sessionStore.upsert(this.sessionRecordFromSession(session, nowIso()));
+        this.recordConcurrentWorkspaceThreads(session, "resume");
 
         const resumeTime = nowIso();
         this.emitLifecycle("session.resumed", session.sessionId, {

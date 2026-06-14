@@ -1,7 +1,7 @@
 # Conformance Artifacts
 
 Created: 2026-06-01 14:05
-Last Updated: 2026-06-11 23:32
+Last Updated: 2026-06-12 16:50
 Status: Active
 
 This index records the current evidence for Codex adapter parity in the selected profile.
@@ -12,6 +12,38 @@ Raw full ledgers are intentionally not copied wholesale into docs when they are 
 - source artifact path and digest from the run
 - machine-readable summary kept in this repo
 - pass criteria and result
+
+## Python-Native Codex Adapter Spike
+
+Summary document: [python-native-codex-adapter-spike/spec.md](./python-native-codex-adapter-spike/spec.md)
+
+Live smoke artifact: [python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json](./artifacts/python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json)
+
+Command:
+
+```bash
+uv run pytest python/test_codex_adapter_mappers.py python/test_codex_adapter_server.py python/test_codex_adapter_session_store.py python/test_codex_adapter_parity_snapshot.py -q
+```
+
+Result:
+
+- status: `pass`
+- tests: `24 passed`
+- scope: Python parity for mapper/store/server behavior, protocol v2/v3 dynamic tool routing, command/file approval callbacks, timeout/error paths, session-store persistence, and Node-vs-Python selected-profile snapshot comparison.
+
+Additional verification:
+
+- `cd python && uv run --extra dev ruff check copilot/experimental examples/codex_adapter_live_smoke.py test_codex_adapter_mappers.py test_codex_adapter_server.py test_codex_adapter_session_store.py test_codex_adapter_parity_snapshot.py` -> pass
+- `cd python && uv run python -m compileall copilot/experimental copilot/generated examples/codex_adapter_live_smoke.py test_codex_adapter_mappers.py test_codex_adapter_server.py test_codex_adapter_session_store.py test_codex_adapter_parity_snapshot.py` -> pass
+- `cd python && uv run python examples/codex_adapter_live_smoke.py --out docs/integrations/codex-sdk-runtime-profile/artifacts/python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json` -> pass
+  - adapter summary sha256: `00176c3b8e9140deeb89ff89fb4f36cdb3479429ad87750d634d133fc3140cf0`
+  - required live Codex methods present: `account/read`, `model/list`, `thread/start`, `turn/start`, `thread/resume`, `thread/archive`
+
+Boundary:
+
+- This proves the Python adapter against a real `codex app-server`, but it is
+  still not a ShinyiPilot `29999` app-level smoke artifact and not a
+  production-route switch.
 
 ## Selected Profile Conformance
 

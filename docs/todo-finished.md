@@ -1,10 +1,85 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-11 23:36
+Last Updated: 2026-06-14 11:06
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: Codex Adapter Self-Reviewed Workspace Permission Lane @2026-06-14-1106
+
+Section source:
+
+- Canonical spec: [docs/spec.md](./spec.md)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Code/Surface: [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/src/experimental/codexAdapterServer.ts](../nodejs/src/experimental/codexAdapterServer.ts), [python/copilot/experimental/codex_adapter/server.py](../python/copilot/experimental/codex_adapter/server.py), [python/copilot/experimental/codex_adapter/cli.py](../python/copilot/experimental/codex_adapter/cli.py)
+- Tests: [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts), [python/test_codex_adapter_server.py](../python/test_codex_adapter_server.py)
+- Source: user clarified that SDK `approve_all` should not make Codex unusable or unsafe; Codex should use auto-review and workspace-scoped execution.
+
+- [x] Changed the adapter default lane from read-only/no-approval to self-reviewed workspace execution.
+      Completion evidence: Node and Python defaults now use `approvalPolicy=on-request`, `approvalsReviewer=auto_review`, `sandboxMode=workspaceWrite`, and `networkAccess=false`, with workspace-local operations enabled by default.
+- [x] Preserved bounded execution instead of broad SDK approval passthrough.
+      Completion evidence: tests assert `thread/start` receives the auto-review approval settings and `turn/start` receives a workspace-write sandbox policy. Network remains disabled by default, and Node/Python tests also assert the explicit enable path sets `sandboxPolicy.networkAccess=true`.
+- [x] Updated runtime proof entrypoints.
+      Completion evidence: Python live smoke and Node Chatpilot acceptance env now use the self-reviewed workspace lane unless explicitly overridden.
+
+## Completed: Codex Adapter Workspace Isolation Guard @2026-06-14-1044
+
+Section source:
+
+- Canonical spec: [docs/spec.md](./spec.md)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Code/Surface: [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/src/experimental/codexAdapterServer.ts](../nodejs/src/experimental/codexAdapterServer.ts), [python/copilot/experimental/codex_adapter/server.py](../python/copilot/experimental/codex_adapter/server.py), [python/copilot/experimental/codex_adapter/cli.py](../python/copilot/experimental/codex_adapter/cli.py)
+- Tests: [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts), [python/test_codex_adapter_server.py](../python/test_codex_adapter_server.py)
+- Source: user identified that missing `workingDirectory` fell back to adapter process cwd and could mix unrelated sessions.
+
+- [x] Isolated fallback workspaces for sessions without explicit `workingDirectory`.
+      Completion evidence: Node and Python adapters now create a UUID directory under `CODEX_ADAPTER_FALLBACK_WORKSPACE_PARENT` or the system temp default before calling Codex `thread/start`.
+- [x] Preserved explicit workspace semantics.
+      Completion evidence: Node and Python tests assert an explicit `workingDirectory` is passed through to `thread/start.cwd` without creating a fallback workspace.
+- [x] Added observability for concurrent threads sharing one workspace.
+      Completion evidence: Node and Python adapters allow the overlap but record `adapter.workspace.concurrent_threads` in the bounded adapter transcript when another active session has the same `cwd` and a different Codex thread id.
+
+## Completed: Python Codex Adapter Sky Eye And CodeTour @2026-06-12-1755
+
+Section source:
+
+- Canonical spec: [docs/spec.md](./spec.md)
+- Architecture index: [docs/architecture/README.md](./architecture/README.md)
+- Architecture artifact: [docs/architecture/python-codex-adapter-skyeye.html](./architecture/python-codex-adapter-skyeye.html)
+- Architecture spec: [docs/architecture/python-codex-adapter-skyeye.spec.json](./architecture/python-codex-adapter-skyeye.spec.json)
+- Review tour: [.tours/03-python-codex-adapter-skyeye-copilot-sdk.tour](../.tours/03-python-codex-adapter-skyeye-copilot-sdk.tour)
+- Code/Surface: [python/copilot/experimental/codex_adapter](../python/copilot/experimental/codex_adapter), [python/examples/codex_adapter_live_smoke.py](../python/examples/codex_adapter_live_smoke.py)
+- Source: user request for a Python-version skyeye plus codetour focused on the adapter module
+
+- [x] Added a focused Sky Eye for the Python-native adapter module.
+      Completion evidence: [python-codex-adapter-skyeye.html](./architecture/python-codex-adapter-skyeye.html) maps the SDK client seam, experimental package boundary, CLI runner, adapter core, mapper/policy layer, durable session store, Codex gateway, runtime boundary, and proof lanes.
+- [x] Added a CodeTour that walks the Python adapter from boundary to proof.
+      Completion evidence: [.tours/03-python-codex-adapter-skyeye-copilot-sdk.tour](../.tours/03-python-codex-adapter-skyeye-copilot-sdk.tour) anchors the package boundary, CLI startup, gateway, server orchestration, session lifecycle, mappers, v2/v3 tool policy, durable resume store, approval/tool backflow, and live smoke artifact.
+- [x] Reconciled canonical doc entrypoints for the new review artifacts.
+      Completion evidence: [docs/spec.md](./spec.md), [docs/architecture/README.md](./architecture/README.md), and [docs/todo.md](./todo.md) now point to the Python adapter Sky Eye and tour as current review surfaces for the Python-native spike.
+
+## Completed: Python-Native Codex Adapter Spike @2026-06-12-1553
+
+Section source:
+
+- Spec: [docs/integrations/codex-sdk-runtime-profile/python-native-codex-adapter-spike/spec.md](./integrations/codex-sdk-runtime-profile/python-native-codex-adapter-spike/spec.md)
+- Canonical spec: [docs/spec.md](./spec.md)
+- Code/Surface: [python/copilot/experimental/codex_adapter](../python/copilot/experimental/codex_adapter), [python/examples/codex_adapter_live_smoke.py](../python/examples/codex_adapter_live_smoke.py), [python/copilot/generated/session_events.py](../python/copilot/generated/session_events.py), [python/pyproject.toml](../python/pyproject.toml)
+- Tests: [python/test_codex_adapter_mappers.py](../python/test_codex_adapter_mappers.py), [python/test_codex_adapter_server.py](../python/test_codex_adapter_server.py), [python/test_codex_adapter_session_store.py](../python/test_codex_adapter_session_store.py), [python/test_codex_adapter_parity_snapshot.py](../python/test_codex_adapter_parity_snapshot.py), [nodejs/conformance/codexAdapterParitySnapshot.ts](../nodejs/conformance/codexAdapterParitySnapshot.ts)
+- Artifact: [python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json)
+- Source: user-provided Python-native Codex adapter spike plan
+
+- [x] Added the experimental Python package/CLI adapter surface.
+      Completion evidence: `copilot.experimental.codex_adapter` exposes the spike modules, `copilot-codex-adapter` is registered as a Python console script, and root `copilot.__init__` does not re-export adapter internals.
+- [x] Ported the selected Node adapter profile into Python-native layers.
+      Completion evidence: the spike includes a Copilot-protocol TCP server, Codex app-server gateway, adapter core methods, mappers, v2/v3 tool-routing policy, and durable session store.
+- [x] Added fake-gateway parity tests for the first spike gate.
+      Completion evidence: `uv run pytest python/test_codex_adapter_mappers.py python/test_codex_adapter_server.py python/test_codex_adapter_session_store.py python/test_codex_adapter_parity_snapshot.py -q` passed with `24 passed`, covering mapper parity, SDK transport, lifecycle, permission callbacks, v2/v3 tool routing, timeout/denied/failure paths, store parse/upsert/delete, and Node-vs-Python selected-profile snapshot comparison.
+- [x] Added live Codex app-server smoke for the Python CLI surface.
+      Completion evidence: [python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json) records a passing `copilot-codex-adapter` CLI smoke with `account/read`, `model/list`, `thread/start`, `turn/start`, `thread/resume`, and `thread/archive` all present in the adapter transcript, while leaving ports `4800`, `4801`, and `4811` untouched.
+- [x] Recorded the remaining boundary before treating the spike as production-ready.
+      Completion evidence: the spike spec now marks live gateway smoke as complete, keeps ShinyiPilot `29999` smoke as the next downstream gap, and explicitly notes that strict cross-SDK exception-string parity is still a follow-up if product requirements ever need it.
 
 ## Completed: Codex Adapter P1 Audit And Canonical Closeout Phase 7 @2026-06-11-2336
 
@@ -164,8 +239,8 @@ Section source:
       Completion evidence: adapter and gateway transcripts are bounded by `transcriptLimit`; protocol-v3 pending dynamic tool calls time out and return a failed Codex dynamic tool response; gateway request path can restart a previously-started app-server after child exit.
 - [x] Implemented safe tool-result text fallback.
       Completion evidence: object tool results without `textResultForLlm` no longer leak arbitrary object structure into Codex `inputText`; mapper test covers this contract.
-- [x] Documented the production locked lane and runbook.
-      Completion evidence: `production-runbook.md` documents required `codex login`, stable `CODEX_ADAPTER_CODEX_HOME`, stable `CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH`, Chatpilot locked defaults (`approvalPolicy=never`, `sandboxMode=readOnly`, `networkAccess=false`), resume tool-set policy, and common operational knobs.
+- [x] Documented the Phase 4 locked lane and runbook.
+      Completion evidence: the Phase 4 runbook documented required `codex login`, stable `CODEX_ADAPTER_CODEX_HOME`, stable `CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH`, locked defaults at the time (`approvalPolicy=never`, `sandboxMode=readOnly`, `networkAccess=false`), resume tool-set policy, and common operational knobs. Current default permission posture is superseded by `Codex Adapter Self-Reviewed Workspace Permission Lane @2026-06-14-1106` above.
 - [x] Passed final Phase 4 verification gates.
       Completion evidence: local gates passed (`npx vitest run test/codex-adapter.test.ts test/codex-adapter-mappers.test.ts` with 34 tests, scoped `npx tsc --noEmit ...`, scoped `npx eslint ...`, and `npm run build`); selected-profile conformance `/tmp/copilot-codex-refactor-phase4-final.json` run `d83f7062-a944-40cb-a0d9-3f56a436c85c` verdict `pass`; Chatpilot acceptance `/tmp/chatpilot-codex-refactor-phase4-final.json` run `15aade97-d245-43e7-ab78-58c8a9ae631e` status `pass`.
 - [x] Audited Phase 4 as ready for consolidated user review.

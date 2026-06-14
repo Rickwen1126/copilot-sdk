@@ -1,0 +1,116 @@
+{
+  "artifact": "python-native-codex-adapter-live-smoke",
+  "createdAt": "2026-06-12T08:50:11.545766Z",
+  "status": "pass",
+  "rawAdapterSummaryPath": "/var/folders/lk/y1xrwmdx6_l9l33t8tx__sj00000gn/T/python-codex-adapter-live-smoke-1b11p387.json",
+  "runtimeSessionStorePath": "/var/folders/lk/y1xrwmdx6_l9l33t8tx__sj00000gn/T/python-codex-adapter-live-smoke-1b11p387.sessions.json",
+  "config": {
+    "protocolVersion": 3,
+    "model": "gpt-5.4",
+    "approvalPolicy": "never",
+    "approvalsReviewer": "user",
+    "sandboxMode": "readOnly",
+    "networkAccess": false,
+    "isolateCodexHome": true
+  },
+  "reservedPortsUntouched": [
+    "4800",
+    "4801",
+    "4811"
+  ],
+  "adapterListen": {
+    "event": "codex-adapter.listening",
+    "cliUrl": "127.0.0.1:51394",
+    "port": 51394,
+    "targetProfiles": [
+      "SDK Core Profile",
+      "Coding Agent Profile"
+    ]
+  },
+  "probe": {
+    "ping": {
+      "message": "pong: python-live-smoke",
+      "protocolVersion": 3
+    },
+    "status": {
+      "version": "codex-copilot-adapter",
+      "protocolVersion": 3
+    },
+    "auth": {
+      "isAuthenticated": true,
+      "authType": "user",
+      "loginPresent": true,
+      "statusMessage": "chatgpt:pro"
+    },
+    "models": {
+      "count": 4,
+      "firstModelId": "gpt-5.5"
+    },
+    "assistantMessage": "PYTHON_ADAPTER_SMOKE_OK",
+    "eventTypes": [
+      "assistant.message",
+      "session.idle",
+      "session.start",
+      "user.message"
+    ],
+    "sessionIdPresent": true,
+    "deletedSessionId": "5b3c98d1-6d46-48e6-bc6c-2d35bd6f79bd"
+  },
+  "adapterSummary": {
+    "sha256": "00176c3b8e9140deeb89ff89fb4f36cdb3479429ad87750d634d133fc3140cf0",
+    "codexHomePresent": true,
+    "sessionCount": 0,
+    "codexMethods": [
+      "initialize",
+      "remoteControl/status/changed",
+      "initialized",
+      "account/read",
+      "model/list",
+      "thread/start",
+      "thread/started",
+      "warning",
+      "mcpServer/startupStatus/updated",
+      "mcpServer/startupStatus/updated",
+      "mcpServer/startupStatus/updated",
+      "mcpServer/startupStatus/updated",
+      "turn/start",
+      "thread/status/changed",
+      "turn/started",
+      "mcpServer/startupStatus/updated",
+      "mcpServer/startupStatus/updated",
+      "item/started",
+      "item/completed",
+      "item/started",
+      "item/completed",
+      "item/started",
+      "item/agentMessage/delta",
+      "item/agentMessage/delta",
+      "item/agentMessage/delta",
+      "item/agentMessage/delta",
+      "item/agentMessage/delta",
+      "item/agentMessage/delta",
+      "item/agentMessage/delta",
+      "item/completed",
+      "thread/tokenUsage/updated",
+      "account/rateLimits/updated",
+      "thread/status/changed",
+      "turn/completed",
+      "thread/unsubscribe",
+      "thread/resume",
+      "thread/tokenUsage/updated",
+      "thread/goal/cleared",
+      "thread/archive",
+      "thread/status/changed",
+      "thread/status/changed",
+      "thread/archived"
+    ],
+    "requiredMethodsPresent": {
+      "account/read": true,
+      "model/list": true,
+      "thread/start": true,
+      "turn/start": true,
+      "thread/resume": true,
+      "thread/archive": true
+    }
+  }
+}

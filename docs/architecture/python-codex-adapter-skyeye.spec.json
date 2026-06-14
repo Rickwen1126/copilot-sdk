@@ -1,0 +1,193 @@
+{
+  "title": "Python Codex Adapter Sky Eye",
+  "subtitle": "Module-boundary view of the experimental Python adapter that keeps the Copilot SDK protocol stable while routing runtime work into codex app-server.",
+  "kind": "skyeye",
+  "name": "python-codex-adapter-skyeye",
+  "active_path": [
+    "sdk-client",
+    "adapter-cli",
+    "adapter-server",
+    "mapper-policy",
+    "gateway",
+    "codex-app-server"
+  ],
+  "groups": [
+    {
+      "id": "consumer",
+      "label": "SDK consumer boundary",
+      "x": 40,
+      "y": 200,
+      "w": 270,
+      "h": 250,
+      "color": "green"
+    },
+    {
+      "id": "adapter",
+      "label": "Python adapter module boundary",
+      "x": 340,
+      "y": 120,
+      "w": 660,
+      "h": 500,
+      "color": "orange"
+    },
+    {
+      "id": "runtime",
+      "label": "Codex runtime boundary",
+      "x": 1020,
+      "y": 200,
+      "w": 240,
+      "h": 330,
+      "color": "blue"
+    },
+    {
+      "id": "proof",
+      "label": "Proof boundary",
+      "x": 340,
+      "y": 700,
+      "w": 920,
+      "h": 170,
+      "color": "gray"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "sdk-client",
+      "label": "Python SDK client<br /><code>ExternalServerConfig</code><br />Copilot protocol RPC",
+      "x": 80,
+      "y": 270,
+      "w": 220,
+      "h": 120,
+      "color": "green"
+    },
+    {
+      "id": "package-boundary",
+      "label": "Experimental import path<br /><code>experimental</code><br /><code>codex_adapter</code>",
+      "x": 390,
+      "y": 190,
+      "w": 200,
+      "h": 130,
+      "color": "orange"
+    },
+    {
+      "id": "adapter-cli",
+      "label": "CLI runner<br /><code>copilot-codex-adapter</code><br />env -&gt; options<br />readiness line",
+      "x": 390,
+      "y": 390,
+      "w": 190,
+      "h": 140,
+      "color": "orange"
+    },
+    {
+      "id": "adapter-server",
+      "label": "Adapter core<br /><code>CodexCopilotAdapterServer</code><br />TCP facade<br />session + event bridge",
+      "x": 610,
+      "y": 190,
+      "w": 200,
+      "h": 150,
+      "color": "orange"
+    },
+    {
+      "id": "mapper-policy",
+      "label": "Mapper + policy<br /><code>mappers.py</code> + <code>tool_policy.py</code><br />tools, approvals<br />sandbox, v2/v3",
+      "x": 610,
+      "y": 390,
+      "w": 200,
+      "h": 160,
+      "color": "orange"
+    },
+    {
+      "id": "session-store",
+      "label": "Durable session store<br /><code>session_store.py</code><br />session -&gt; thread<br />cwd + tool fingerprint",
+      "x": 830,
+      "y": 390,
+      "w": 150,
+      "h": 160,
+      "color": "gray"
+    },
+    {
+      "id": "gateway",
+      "label": "Gateway<br /><code>gateway.py</code><br />isolated <code>CODEX_HOME</code><br />line JSON-RPC",
+      "x": 830,
+      "y": 190,
+      "w": 150,
+      "h": 150,
+      "color": "blue"
+    },
+    {
+      "id": "codex-app-server",
+      "label": "Codex app-server<br /><code>thread/start</code>, <code>resume</code>, <code>turn/start</code><br />approval + tool requests",
+      "x": 1050,
+      "y": 280,
+      "w": 180,
+      "h": 170,
+      "color": "blue"
+    },
+    {
+      "id": "parity-tests",
+      "label": "Parity tests<br /><code>test_codex_adapter_*.py</code><br />fake gateway + snapshot",
+      "x": 410,
+      "y": 735,
+      "w": 240,
+      "h": 105,
+      "color": "gray"
+    },
+    {
+      "id": "live-smoke",
+      "label": "Live smoke<br /><code>live_smoke.py</code><br />real CLI + SDK + Codex",
+      "x": 680,
+      "y": 735,
+      "w": 240,
+      "h": 105,
+      "color": "gray"
+    }
+  ],
+  "arrows": [
+    {
+      "from": "sdk-client",
+      "to": "adapter-cli"
+    },
+    {
+      "from": "package-boundary",
+      "to": "adapter-server"
+    },
+    {
+      "from": "adapter-cli",
+      "to": "adapter-server"
+    },
+    {
+      "from": "adapter-server",
+      "to": "mapper-policy",
+      "mode": "vertical"
+    },
+    {
+      "from": "adapter-server",
+      "to": "session-store"
+    },
+    {
+      "from": "adapter-server",
+      "to": "gateway"
+    },
+    {
+      "from": "mapper-policy",
+      "to": "gateway"
+    },
+    {
+      "from": "gateway",
+      "to": "codex-app-server"
+    },
+    {
+      "from": "parity-tests",
+      "to": "adapter-server"
+    },
+    {
+      "from": "live-smoke",
+      "to": "adapter-cli"
+    }
+  ],
+  "notes": [
+    "The outer contract stays Copilot-shaped: downstream apps still speak SDK JSON-RPC over ExternalServerConfig and do not need to learn Codex thread or turn verbs.",
+    "The adapter module is split by responsibility: CLI boot policy in cli.py, subprocess/runtime transport in gateway.py, orchestration and event routing in server.py, and pure translation or policy logic in mappers.py plus tool_policy.py.",
+    "Session continuity is adapter-owned state. session_store.py persists SDK session id to Codex thread id together with cwd, model, and tool fingerprint so incompatible resume fails early instead of drifting at runtime.",
+    "Proof is part of the module story, not an afterthought. Fake-gateway parity tests lock observable behavior, and the live smoke script proves the packaged CLI can drive a real codex app-server without touching reserved ports 4800, 4801, or 4811."
+  ]
+}

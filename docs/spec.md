@@ -1,7 +1,7 @@
 # Copilot SDK Canonical Spec
 
 Created: 2026-05-16
-Last Updated: 2026-06-12 15:00
+Last Updated: 2026-06-14 11:06
 Status: Active
 
 ## Purpose
@@ -19,6 +19,9 @@ This repo provides the Copilot SDK and the surrounding docs, examples, tests, an
 - The adapter can also run as a long-lived Copilot-protocol server through [nodejs/src/experimental/codexAdapterServer.ts](../nodejs/src/experimental/codexAdapterServer.ts), exposed as the package bin `copilot-codex-adapter`.
 - The first downstream Chatpilot integration uses the existing SDK transport seam: Chatpilot keeps its runtime/session/app routing code stable and points its Python Copilot SDK client at the adapter with `CHATPILOT_COPILOT_CLI_URL`.
 - The ShinyiPilot spike extends the same transport-boundary pattern to a Python app using local Python SDK source with the Node.js Codex adapter as a sidecar runtime. The current commit/deployment notes are recorded in [docs/integrations/codex-sdk-runtime-profile/shinyipilot-python-node-spike/spec.md](./integrations/codex-sdk-runtime-profile/shinyipilot-python-node-spike/spec.md).
+- The Python-native Codex adapter spike adds an experimental Python package/CLI surface at `copilot.experimental.codex_adapter` and `copilot-codex-adapter`, with selected-profile parity tests and live Codex app-server smoke evidence recorded in [docs/integrations/codex-sdk-runtime-profile/python-native-codex-adapter-spike/spec.md](./integrations/codex-sdk-runtime-profile/python-native-codex-adapter-spike/spec.md) and [python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json). It is not yet a ShinyiPilot production route.
+- Both Node and Python Codex adapters isolate sessions that do not provide `workingDirectory` by creating a UUID fallback workspace under `CODEX_ADAPTER_FALLBACK_WORKSPACE_PARENT` or the system temp default. Explicit `workingDirectory` remains the product-owned workspace contract. The adapters allow multiple Codex threads to use the same explicit workspace, but record `adapter.workspace.concurrent_threads` in the bounded adapter transcript when that happens.
+- The adapter default permission lane is self-reviewed workspace execution: `approvalPolicy=on-request`, `approvalsReviewer=auto_review`, `sandboxMode=workspaceWrite`, and `networkAccess=false`. This lets SDK clients that use broad permission handlers still run ordinary workspace-local work, while Codex boundary crossings are reviewed by the Codex reviewer agent instead of being blindly approved by the SDK callback. Network is disabled by default, not hard-locked; products can explicitly set `CODEX_ADAPTER_NETWORK_ACCESS=true` when their bounded workspace lane needs network access.
 - Protocol compatibility is versioned at the adapter boundary. Node SDK conformance stays on protocol v3 by default; current Chatpilot Python SDK compatibility uses `CODEX_ADAPTER_PROTOCOL_VERSION=2`, including v2 `tool.call` custom tool handling.
 - The protocol-version dynamic-tool routing decision is isolated in [nodejs/src/experimental/codexAdapterToolPolicy.ts](../nodejs/src/experimental/codexAdapterToolPolicy.ts). Protocol v2 routes through SDK `tool.call`; protocol v3 routes through `external_tool.requested` and `session.tools.handlePendingToolCall`.
 - The conformance harness entrypoint remains [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), backed by reusable support modules in [nodejs/conformance](../nodejs/conformance). It is the regression gate for the adapter module.
@@ -45,11 +48,19 @@ The diagram shows the Chatpilot app substrate, Copilot SDK protocol seam, Copilo
 
 Focused adapter integration diagram: [docs/architecture/dataflows/codex-adapter-integration.html](./architecture/dataflows/codex-adapter-integration.html)
 
+Focused Python adapter Sky Eye: [docs/architecture/python-codex-adapter-skyeye.html](./architecture/python-codex-adapter-skyeye.html)
+
+This Sky Eye narrows the view to `copilot.experimental.codex_adapter`: package boundary, CLI runner, Copilot-protocol TCP facade, mapper/policy layer, durable session store, Codex gateway, and the parity/live-smoke proof lanes.
+
 ## Code Map / CodeTour
 
 Current artifact: [docs/architecture/runtime-backend-code-map.md](./architecture/runtime-backend-code-map.md)
 
 The code map identifies the adapter module, adapter server runner, conformance harness, Chatpilot acceptance harness, and downstream Chatpilot SDK/session seam.
+
+Focused Python adapter CodeTour: [.tours/03-python-codex-adapter-skyeye-copilot-sdk.tour](../.tours/03-python-codex-adapter-skyeye-copilot-sdk.tour)
+
+The tour walks the Python adapter package boundary, CLI boot path, gateway, server lifecycle mapping, mapper/policy split, durable resume store, and live smoke proof boundary.
 
 ## Source Of Truth Rules
 

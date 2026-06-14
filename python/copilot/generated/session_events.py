@@ -1532,6 +1532,7 @@ class PermissionRequest:
     action: PermissionRequestMemoryAction | None = None
     args: Any = None
     can_offer_session_approval: bool | None = None
+    changes: list[Any] | None = None
     citations: str | None = None
     commands: list[PermissionRequestShellCommand] | None = None
     diff: str | None = None
@@ -1539,11 +1540,13 @@ class PermissionRequest:
     fact: str | None = None
     file_name: str | None = None
     full_command_text: str | None = None
+    grant_root: str | None = None
     has_write_file_redirection: bool | None = None
     hook_message: str | None = None
     intention: str | None = None
     new_file_contents: str | None = None
     path: str | None = None
+    paths: list[str] | None = None
     possible_paths: list[str] | None = None
     possible_urls: list[PermissionRequestShellPossibleUrl] | None = None
     read_only: bool | None = None
@@ -1562,9 +1565,10 @@ class PermissionRequest:
     def from_dict(obj: Any) -> "PermissionRequest":
         assert isinstance(obj, dict)
         kind = parse_enum(PermissionRequestKind, obj.get("kind"))
-        action = from_union([from_none, lambda x: parse_enum(PermissionRequestMemoryAction, x)], obj.get("action", "store"))
+        action = from_union([from_none, lambda x: parse_enum(PermissionRequestMemoryAction, x)], obj.get("action"))
         args = obj.get("args")
         can_offer_session_approval = from_union([from_none, from_bool], obj.get("canOfferSessionApproval"))
+        changes = from_union([from_none, lambda x: from_list(lambda y: y, x)], obj.get("changes"))
         citations = from_union([from_none, from_str], obj.get("citations"))
         commands = from_union([from_none, lambda x: from_list(PermissionRequestShellCommand.from_dict, x)], obj.get("commands"))
         diff = from_union([from_none, from_str], obj.get("diff"))
@@ -1572,11 +1576,13 @@ class PermissionRequest:
         fact = from_union([from_none, from_str], obj.get("fact"))
         file_name = from_union([from_none, from_str], obj.get("fileName"))
         full_command_text = from_union([from_none, from_str], obj.get("fullCommandText"))
+        grant_root = from_union([from_none, from_str], obj.get("grantRoot"))
         has_write_file_redirection = from_union([from_none, from_bool], obj.get("hasWriteFileRedirection"))
         hook_message = from_union([from_none, from_str], obj.get("hookMessage"))
         intention = from_union([from_none, from_str], obj.get("intention"))
         new_file_contents = from_union([from_none, from_str], obj.get("newFileContents"))
         path = from_union([from_none, from_str], obj.get("path"))
+        paths = from_union([from_none, lambda x: from_list(from_str, x)], obj.get("paths"))
         possible_paths = from_union([from_none, lambda x: from_list(from_str, x)], obj.get("possiblePaths"))
         possible_urls = from_union([from_none, lambda x: from_list(PermissionRequestShellPossibleUrl.from_dict, x)], obj.get("possibleUrls"))
         read_only = from_union([from_none, from_bool], obj.get("readOnly"))
@@ -1595,6 +1601,7 @@ class PermissionRequest:
             action=action,
             args=args,
             can_offer_session_approval=can_offer_session_approval,
+            changes=changes,
             citations=citations,
             commands=commands,
             diff=diff,
@@ -1602,11 +1609,13 @@ class PermissionRequest:
             fact=fact,
             file_name=file_name,
             full_command_text=full_command_text,
+            grant_root=grant_root,
             has_write_file_redirection=has_write_file_redirection,
             hook_message=hook_message,
             intention=intention,
             new_file_contents=new_file_contents,
             path=path,
+            paths=paths,
             possible_paths=possible_paths,
             possible_urls=possible_urls,
             read_only=read_only,
@@ -1631,6 +1640,8 @@ class PermissionRequest:
             result["args"] = self.args
         if self.can_offer_session_approval is not None:
             result["canOfferSessionApproval"] = from_union([from_none, from_bool], self.can_offer_session_approval)
+        if self.changes is not None:
+            result["changes"] = from_union([from_none, lambda x: from_list(lambda y: y, x)], self.changes)
         if self.citations is not None:
             result["citations"] = from_union([from_none, from_str], self.citations)
         if self.commands is not None:
@@ -1645,6 +1656,8 @@ class PermissionRequest:
             result["fileName"] = from_union([from_none, from_str], self.file_name)
         if self.full_command_text is not None:
             result["fullCommandText"] = from_union([from_none, from_str], self.full_command_text)
+        if self.grant_root is not None:
+            result["grantRoot"] = from_union([from_none, from_str], self.grant_root)
         if self.has_write_file_redirection is not None:
             result["hasWriteFileRedirection"] = from_union([from_none, from_bool], self.has_write_file_redirection)
         if self.hook_message is not None:
@@ -1655,6 +1668,8 @@ class PermissionRequest:
             result["newFileContents"] = from_union([from_none, from_str], self.new_file_contents)
         if self.path is not None:
             result["path"] = from_union([from_none, from_str], self.path)
+        if self.paths is not None:
+            result["paths"] = from_union([from_none, lambda x: from_list(from_str, x)], self.paths)
         if self.possible_paths is not None:
             result["possiblePaths"] = from_union([from_none, lambda x: from_list(from_str, x)], self.possible_paths)
         if self.possible_urls is not None:
@@ -4241,4 +4256,3 @@ def session_event_from_dict(s: Any) -> SessionEvent:
 
 def session_event_to_dict(x: SessionEvent) -> Any:
     return x.to_dict()
-

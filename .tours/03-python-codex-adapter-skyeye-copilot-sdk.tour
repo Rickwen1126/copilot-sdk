@@ -1,0 +1,98 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "03 - Sky Eye: Copilot SDK Python Codex Adapter",
+  "steps": [
+    {
+      "title": "Context",
+      "description": "## 這條 tour 在看什麼\n\n這條 tour 不是在看「Python 版把 TypeScript 重寫一遍」；它在看的是：當 downstream app 還是講 Copilot SDK protocol，而 runtime 已經換成 `codex app-server` 時，Python adapter 把哪些責任拆成模組、每層怎麼對齊、哪裡用 proof 來防止只在 happy path 看起來成功。\n\n## 錨定問題\n\n先把它想成雙語總機。外側世界是 SDK 的 `session.create`、`session.resume`、`permission.request`、`tool.call`。內側世界是 Codex 的 `thread/start`、`thread/resume`、`turn/start`、approval request 和 dynamic tool call。這條 tour 的每個 step 都在回答：翻譯責任放在哪裡，哪些 state 必須被 adapter 自己保存，哪些差異只能明講不能假裝不存在。\n\n## 這條 Python 路徑為什麼重要\n\n這個 repo 原本已經有 Node adapter 當 oracle。Python 版的價值不是語言本身，而是證明 `copilot.experimental.codex_adapter` 可以成為一個獨立啟動、可 live smoke、可 selected-profile parity 對照的 adapter surface。看完後，你應該能用一句話說清楚：Python adapter 的 public boundary、runtime boundary、translation boundary、resume boundary 和 proof boundary 分別在哪裡。"
+    },
+    {
+      "file": "python/copilot/experimental/codex_adapter/__init__.py",
+      "line": 1,
+      "endLine": 43,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "Public Boundary: Experimental Package, Not Root SDK Surface",
+      "description": "## Insight\n\n**機制**：這個 `__init__` 是 Python 版 adapter 的門牌。它集中 re-export 了 server、mapper、session store 和 tool policy，但刻意把邊界放在 `copilot.experimental.codex_adapter`，而不是把 adapter 混進 root `copilot` package。\n\n**故障模式**：如果直接把這些型別塞進 root export，外部使用者會自然把它當成穩定 SDK surface；後面只要行為還在收斂，任何 rename 或 boundary 調整都會變成 public API break。\n\n## 白話解析\n\n這裡像是建了一個明確的試驗區入口。你可以正式 import 它、測它、啟動它，但門牌先告訴你：這還不是整個 SDK 已承諾永遠長這樣的地方。這種門牌很重要，因為它把「可以用」和「已經保證穩定」拆開來。\n\n## Code Detail\n\n**這段在幹嘛**：把 `CodexCopilotAdapterServer`、`CodexAdapterOptions`、`CodexAdapterSessionStore`、tool/result/approval mapper，以及 `plan_dynamic_tool_call_routing()` 整理成 Python 版 adapter 的可引用 surface。\n\n**為什麼這樣寫**：\n- 好處：下游或 tests 有穩定 import path。\n- 好處：experimental boundary 和 Node 版策略一致。\n- 壞處：如果未來 graduate，這裡和 root package policy 都要一起重談。\n\n**思考問題**：\n- 哪些名字屬於 adapter contract，哪些只是 internal implementation 細節？\n- 如果明天要 graduate，這裡最先會改的是 import path，還是 exported symbol set？"
+    },
+    {
+      "file": "python/copilot/experimental/codex_adapter/cli.py",
+      "line": 30,
+      "endLine": 85,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "CLI Runner: Process Policy Lives Outside The Core",
+      "description": "## Insight\n\n**機制**：CLI runner 把一串 `CODEX_ADAPTER_*` env 變成 `CodexAdapterOptions`，啟動 long-running server，然後用一行 JSON readiness event 把 `cliUrl`、`port` 和 target profiles 對外宣告出來。\n\n**故障模式**：若 env parsing 和 shutdown summary 寫進 core server，核心 class 就會同時背 protocol translation 和 deployment policy；而沒有 readiness line 時，下游只能用 sleep 或猜 port 判斷 adapter 是否真的 ready。\n\n## 白話解析\n\n這一層像是把 shell 世界翻成 adapter 看得懂的設定，再把 adapter 的「我已經起來了」翻成 supervisor 看得懂的一行訊號。對 downstream app 來說，它不需要知道 server 內部 state 怎麼放，只需要知道要連哪個 `cliUrl`。\n\n## Code Detail\n\n**這段在幹嘛**：`build_options()` 正規化 protocol version、sandbox、approval、model、summary path 等 runtime knobs；`run()` 啟動 server、印出 `codex-adapter.listening`，等待 signal，最後把 summary 寫到檔案再 shutdown。\n\n**為什麼這樣寫**：\n- 好處：process policy 和 adapter core 解耦。\n- 好處：live smoke 可以直接讀第一行 stdout 當 ready proof。\n- 壞處：env contract 一多，就得同步維護 smoke 與 docs。\n\n**思考問題**：\n- 哪些 env 是 deployment concern，哪些是真正會改變 adapter observable behavior 的 policy knob？\n- 如果 readiness line 格式改了，最先壞的會是 live smoke 還是 downstream app？"
+    },
+    {
+      "file": "python/copilot/experimental/codex_adapter/gateway.py",
+      "line": 35,
+      "endLine": 105,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "Gateway: Codex App-Server Becomes A Runtime Object",
+      "description": "## Insight\n\n**機制**：gateway 把 `codex app-server` 包成一個可 `start()`、`request()`、`notify()`、`respond()` 的 runtime object。它先準備隔離 `CODEX_HOME`，移掉 `OPENAI_API_KEY`，spawn child process，再做 `initialize` / `initialized` handshake。\n\n**故障模式**：若不用隔離 home，測試或 smoke 可能污染使用者 live Codex state；若不把 stdout JSON line 分流成 response / request / notification，adapter 會在 pending request、approval callback 或 dynamic tool 路徑上悄悄卡住。\n\n## 白話解析\n\n這層就是 adapter 面向 Codex 的耳朵和嘴巴。它不是在理解 Copilot SDK，也不是在管理 session 語意；它只負責把一個 child process 變成穩定可呼叫的 runtime 介面，讓上面那層不用直接碰 subprocess 細節。\n\n## Code Detail\n\n**這段在幹嘛**：constructor 建立 transcript、pending request map 和 handler registry；`_prepare_codex_home()` 複製 auth/config 到 temp home；`start()` 啟動 `codex app-server` 並送 initialize。\n\n**為什麼這樣寫**：\n- 好處：process lifecycle 和 adapter orchestration 可以分開測。\n- 好處：gateway transcript 讓 live smoke / summary 有可讀回證據。\n- 壞處：line-delimited JSON-RPC 解析錯誤時，診斷要回頭看 gateway transcript。\n\n**思考問題**：\n- 為什麼 `gateway.py` 是 runtime boundary，不是 session boundary？\n- `CODEX_HOME` identity 對 resume 和 auth proof 各自代表什麼風險？"
+    },
+    {
+      "file": "python/copilot/experimental/codex_adapter/server.py",
+      "line": 40,
+      "endLine": 118,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "Adapter Contract: Capabilities And State Are Explicit",
+      "description": "## Insight\n\n**機制**：這段先把 adapter 自己的承諾和 state vocabulary 釘住。`CODEX_ADAPTER_CAPABILITIES` 明講 selected profile 內哪些 RPC 與 approval/tool paths 是 supported，哪些 profile 還是 deferred；`CodexAdapterOptions`、`SessionState`、`PendingDynamicToolCall` 則定義 server 需要持有的 runtime state。\n\n**故障模式**：如果 capability claim 只存在 README 或口頭說法，程式可以默默支援或刪掉某條路徑卻沒有 guard；如果 state 結構不明確，後面 session resume、pending tool timeout、connection attach/detach 會變成分散在 methods 裡的隱性假設。\n\n## 白話解析\n\n這裡像是先把棋盤畫出來。你還沒看到 adapter 怎麼跑，但先知道它承諾支援哪些格子、哪些格子刻意不碰，以及它在記憶體裡到底記住哪些東西。後面所有 routing 幾乎都會回來用到這些 state 名詞。\n\n## Code Detail\n\n**這段在幹嘛**：定義 explicit capability flags、server options、session runtime state 與 pending dynamic tool state。\n\n**為什麼這樣寫**：\n- 好處：supported/deferred 邊界可測且可回寫 docs。\n- 好處：session、connection、tool timeout 的資料形狀在進入 orchestration 前就先固定。\n- 壞處：若 profile 邊界變動，capability 宣告、tests、docs 三邊都要同步更新。\n\n**思考問題**：\n- capability flags 是 implementation truth，還是 claim boundary？\n- 為什麼 pending dynamic tool call 需要自己的 state object，而不是只靠 request id？"
+    },
+    {
+      "file": "python/copilot/experimental/codex_adapter/server.py",
+      "line": 162,
+      "endLine": 358,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "Protocol Facade: Content-Length JSON-RPC Over TCP",
+      "description": "## Insight\n\n**機制**：`JsonRpcConnection` 負責外側的 Copilot protocol wire format，`CodexCopilotAdapterServer.start()` 則把每條 TCP socket 綁成一個 JSON-RPC connection，並把 Codex gateway 的 notification/request 訂進來。這裡把 SDK-side transport 和 Codex-side transport 接在同一個 orchestrator 裡，但仍讓兩邊保有不同的 protocol shape。\n\n**故障模式**：如果不先把 Content-Length framing 收斂成獨立 connection class，server 內部每條 handler 都會背 transport 細節；若 socket close 沒清理 attached sessions，thread-to-session routing 很容易留下 stale connection，之後 approval 或 tool callback 會打到不存在的 client。\n\n## 白話解析\n\n這是外層總機。SDK client 傳來的是一包包有 `Content-Length` 的 JSON-RPC 訊息，adapter 先把它們安全讀出來、配對 request/response，再交給真正懂 session 語意的 handler。也就是說，這裡先解決「怎麼收發電話」，下一段才處理「電話內容在講什麼」。\n\n## Code Detail\n\n**這段在幹嘛**：`JsonRpcConnection` 讀寫 JSON-RPC、管理 pending request；`CodexCopilotAdapterServer.start()` 啟動 Codex gateway、開 TCP server、建立 `cliUrl`；`_handle_client()` / `_detach_connection()` 管 connection lifecycle。\n\n**為什麼這樣寫**：\n- 好處：Copilot protocol framing 和 Codex gateway IO 分層。\n- 好處：connection attach/detach 被明確記錄到 adapter transcript。\n- 壞處：server 仍然是 orchestration-heavy class，未來擴大 profile 時要小心別把 mapper/policy 再塞回來。\n\n**思考問題**：\n- `connections` 和 `thread_to_session` 分別解什麼 routing 問題？\n- 為什麼 TCP transport 正確還不代表 session lifecycle 一定正確？"
+    },
+    {
+      "file": "python/copilot/experimental/codex_adapter/server.py",
+      "line": 440,
+      "endLine": 694,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "Session Lifecycle: SDK Session Becomes Codex Thread",
+      "description": "## Insight\n\n**機制**：這段把外側 session 語意翻成內側 thread/turn 語意。`session.create` 組出 `thread/start` 的 cwd、model、approval、sandbox、base instructions 和 dynamic tools；`session.resume` 檢查 persisted tool fingerprint，再走 `thread/resume`；`session.send` 先發 SDK `user.message` event，再送 `turn/start`；`session.delete` 對應 `thread/archive`。\n\n**故障模式**：resume 是最容易靜默漂移的地方。若 adapter restart 後沒有 persisted mapping，SDK session 會找不到原本 Codex thread；若 tool set 改了還硬 resume，Codex runtime 和 SDK client 對工具可用性的理解可能不一致，錯誤只會在很後面才爆。\n\n## 白話解析\n\n可以把這裡當成 session 翻譯主幹。外面的人講「開一個 session、接回舊 session、送一句 prompt、刪掉這個 session」，裡面其實是在操作 thread 和 turn。Python adapter 的核心價值，就是讓這條翻譯不只在新對話有效，還能在 restart、resume、delete 這些比較容易出事的地方維持一致。\n\n## Code Detail\n\n**這段在幹嘛**：create 時抽出 tools 並轉成 dynamic tools；resume 時檢查 active session 或 persisted record 的 fingerprint；send 時用 `codex_sandbox_policy()` 生成 turn-level sandboxPolicy；delete 時清 store 和 pending tool state。\n\n**為什麼這樣寫**：\n- 好處：tool incompatibility 在 resume 入口就早爆。\n- 好處：SDK event stream 仍保留 `session.start` / `session.resume` / `user.message` 等 app 熟悉的語意。\n- 壞處：session identity 同時依賴 SDK session id、Codex thread id、cwd、model、tool fingerprint，debug 時要回看多層 state。\n\n**思考問題**：\n- 為什麼 `thread/start` 用 thread-level sandbox mode，而 `turn/start` 改用 sandboxPolicy object？\n- 如果 downstream route 改了工具集合，這裡為什麼寧可拒絕 resume，也不冒險熱更新？"
+    },
+    {
+      "file": "python/copilot/experimental/codex_adapter/mappers.py",
+      "line": 30,
+      "endLine": 309,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "Translation Dictionary: Tools, Results, Sandbox, And Approvals",
+      "description": "## Insight\n\n**機制**：`mappers.py` 是資料形狀的字典層。它從 SDK `session.create` 抽工具描述，產出 Codex dynamic tools；把 SDK tool result 轉回 Codex `contentItems`; 正規化 sandbox mode；並把 Codex command/file approval request 映射成 SDK permission request，再把 reviewer 決策映回 Codex decision shape。\n\n**故障模式**：如果這些 shape conversion 散落在 server methods 裡，之後很難知道哪個差異是 protocol policy、哪個只是資料翻譯；更糟的是 tool result fallback 若太寬鬆，可能把不該進 LLM context 的 object internals 直接送回模型。\n\n## 白話解析\n\n這裡像一本雙語字典。server 知道流程，但不應該同時記得每個欄位名稱怎麼變、每個 permission payload 要長什麼樣。把它抽成 mapper 之後，adapter core 比較能專心當總機，而不是一邊接線一邊手刻每種資料格式。\n\n## Code Detail\n\n**這段在幹嘛**：`tool_descriptors_from_session_create_params()` 和 `dynamic_tools_from_descriptors()` 處理工具 schema；`map_sdk_tool_result_to_codex_dynamic_tool_response()` 做安全文字 fallback；sandbox helpers 處理 mode naming；approval helpers 負責 shell/write permission shape 與 Codex accept/decline decision。\n\n**為什麼這樣寫**：\n- 好處：mapper 可被 parity tests 直接鎖住。\n- 好處：command/file approval 的 SDK-visible shape 能獨立驗證，不必每次都跑 live gateway。\n- 壞處：只要 Codex approval payload 新增欄位，這裡就要同步更新才能保住語意。\n\n**思考問題**：\n- 哪些 mapper 是 lossless translation，哪些是保守 fallback？\n- 為什麼 permission mapping 值得被視為 first-class adapter contract，而不是 implementation detail？"
+    },
+    {
+      "file": "python/copilot/experimental/codex_adapter/tool_policy.py",
+      "line": 16,
+      "endLine": 40,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "Policy Axis: Protocol V2 And V3 Dynamic Tool Routing",
+      "description": "## Insight\n\n**機制**：這個 helper 封住目前 Python adapter 真正的策略分歧。protocol v2 把 Codex dynamic tool call 轉成 SDK `tool.call` request；protocol v3 則回傳 deterministic `sdkRequestId` 與 `external_tool.requested` event payload，等 SDK client 之後再用 `session.tools.handlePendingToolCall` 回結果。\n\n**故障模式**：如果這個分歧散在 server 裡的多個 if/else，Python SDK compatibility 和 Node selected-profile conformance 很容易互相踩到。改 v2 時你以為只動舊客戶端，結果 v3 pending tool flow 也被破壞。\n\n## 白話解析\n\n這裡像一個岔路牌。工具呼叫本質上是同一件事，但不同 protocol version 希望收到不同形狀的通知。把岔路抽成單獨 policy 之後，server 只要問「這次該走哪一條」，不用自己邊跑流程邊決策。\n\n## Code Detail\n\n**這段在幹嘛**：輸入 protocol version、session id、tool call id、tool name 和 arguments，輸出 v2 request params 或 v3 event data + stable request id。\n\n**為什麼這樣寫**：\n- 好處：策略差異可被獨立測試與對照 Node oracle。\n- 好處：server 只執行 plan，不自行發明 routing naming。\n- 壞處：若未來 protocol v4 改的不只 tool route，policy helper 可能要升級成更完整的 strategy surface。\n\n**思考問題**：\n- 為什麼這裡叫 policy，而不是 mapper？\n- 若某個 downstream 只支援 v2，真正的 version switch 入口在哪一層？"
+    },
+    {
+      "file": "python/copilot/experimental/codex_adapter/session_store.py",
+      "line": 11,
+      "endLine": 98,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "Durable Identity: Resume Needs More Than A Session Id",
+      "description": "## Insight\n\n**機制**：`CodexAdapterSessionStore` 把 SDK session id 對應到 Codex thread id，並一起保存 cwd、model、tool fingerprint、createdAt/updatedAt 和 optional `codexHomeIdentity`。這是 adapter restart 後仍能做正確 `thread/resume` 的最低耐久狀態。\n\n**故障模式**：如果只靠 memory map，process 一重啟 session continuity 就斷；如果 store 對 malformed record 不設 guard，resume 可能讀到半壞資料，導致錯誤在更後面的 lifecycle 才浮出來。\n\n## 白話解析\n\n這裡像一本通訊錄，但不是只記名字和電話。它還記下當時在哪個工作目錄、用哪組工具、對應哪個 Codex thread。因為 resume 的問題通常不是「找不到人」，而是「找到了錯的人」或「找到了舊環境」。\n\n## Code Detail\n\n**這段在幹嘛**：`CodexRuntimeSessionRecord` 定義 durability schema；`_parse_record()` 過濾不合法 payload；`upsert()` / `delete()` 透過 tmp file + replace 做較安全的落盤。\n\n**為什麼這樣寫**：\n- 好處：JSON file 足夠支撐單 process adapter 的 resume 需求。\n- 好處：tool fingerprint 和 cwd 被納入 durable identity，可以在 resume 前先做 compatibility guard。\n- 壞處：它不是 multi-process coordination store，若未來要做 HA，就要換 persistence model。\n\n**思考問題**：\n- `toolFingerprint` 為什麼屬於 session identity，而不只是 runtime option？\n- `codexHomeIdentity` 缺失時，resume 仍可能成功，但哪種 drift 會變得比較難判讀？"
+    },
+    {
+      "file": "python/copilot/experimental/codex_adapter/server.py",
+      "line": 773,
+      "endLine": 1100,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "Backflow Bridge: Codex Events, Approvals, And Dynamic Tools",
+      "description": "## Insight\n\n**機制**：這段是內側事件回流到 SDK 的地方。Codex notification 會被轉成 SDK `assistant.message`、`session.idle` 或 `session.error`；Codex approval request 會經過 mapper 變成 SDK `permission.request` callback；dynamic tool call 會先檢查 thread/session/connection/tool registration，再根據 v2/v3 policy 走 `tool.call` 或 `external_tool.requested` / pending tool completion 流程。\n\n**故障模式**：這裡最怕靜默失敗。若找不到 thread 對應 session、找不到 primary SDK connection、tool 沒有註冊、或 SDK tool result 超時，adapter 不能假裝成功，必須回 Codex 明確 failure/decline shape，否則 runtime 會以為工具或 approval 已被處理。\n\n## 白話解析\n\n如果前面的 session lifecycle 是把外側指令翻進去，這段就是把內側回話翻出來。Codex 說「我有一則 assistant message」、「我想請你核准 command/file change」、「我要叫一個 SDK tool」，adapter 得把這些都送回 SDK client 聽得懂的形式，還要保留拒絕、超時、未知工具這些失敗語意。\n\n## Code Detail\n\n**這段在幹嘛**：`_handle_codex_notification()` 處理 `item/completed` 與 `turn/completed`；`_handle_codex_request()` 分流 approval 與 tool call；`_handle_codex_dynamic_tool_call()` 負責 v2/v3 routing、unknown tool guard、timeout scheduling；`_handle_pending_tool_call()` 完成 v3 pending tool 回寫。\n\n**為什麼這樣寫**：\n- 好處：approval 與 tool callback 的 observable behavior 都有明確 response shape。\n- 好處：timeout、missing session、missing connection 都不會被吞掉，而是留下 transcript 與 failed Codex response。\n- 壞處：這段 orchestration 密度高，是最需要 parity tests 與 live smoke 一起照的地方。\n\n**思考問題**：\n- 為什麼 approval 和 dynamic tool 都需要先找到 primary SDK connection？\n- 超時被映成 failed tool result，和直接丟 exception 給 SDK client，對 runtime semantics 有什麼差別？"
+    },
+    {
+      "file": "python/examples/codex_adapter_live_smoke.py",
+      "line": 68,
+      "endLine": 210,
+      "ref": "9f8abdb058d7ebc7a3d84d5d100b730623ccbb53",
+      "title": "Proof Boundary: Packaged CLI Must Survive Real Codex Traffic",
+      "description": "## Insight\n\n**機制**：live smoke 不是 fake gateway test；它真的起 `copilot-codex-adapter` subprocess、等待 readiness line、用 `CopilotClient(ExternalServerConfig(...))` 走 `ping`、`status`、`auth`、`models`、`create_session`、`send_and_wait`、`resume_session`、`delete_session`，最後再讀 summary transcript 檢查 `account/read`、`model/list`、`thread/start`、`turn/start`、`thread/resume`、`thread/archive` 是否都出現。\n\n**故障模式**：如果只跑 unit 或 fake gateway，package entrypoint、subprocess env、real `codex app-server` initialize、summary artifact 和 transcript 方法名都可能從未被真正驗過。這種問題往往不是 mapper 錯，而是整條 packaged runtime path 沒有真的串起來。\n\n## 白話解析\n\n這一段是整條 Python adapter story 的驗真器。前面那些模組設計再漂亮，最後還是要證明：從 packaged CLI 啟動、到 SDK client 連線、到真 Codex app-server 跑一個 turn、再到 resume/delete 結束，整條線都能成立，而且不用碰保留 port。\n\n## Code Detail\n\n**這段在幹嘛**：建 isolated runtime store 與 adapter env、spawn CLI、讀第一行 stdout、走完整 SDK session lifecycle、terminate adapter、讀 raw summary，最後把 pass/fail、sha256、required method presence 和 reserved-port policy 寫成 artifact。\n\n**為什麼這樣寫**：\n- 好處：proof artifact 是 machine-readable，不是口頭說 smoke 通過。\n- 好處：同時驗 packaged CLI、SDK transport、Codex gateway 和 transcript completeness。\n- 壞處：它依賴當下 machine 的 Codex auth/runtime 狀態，失敗時要先分清是環境問題還是 adapter contract 問題。\n\n**思考問題**：\n- 為什麼 live smoke 要檢查 transcript 裡的方法名，而不只看 assistant 有回一句 `PYTHON_ADAPTER_SMOKE_OK`？\n- 這條 proof 能證明 selected-profile parity 的哪一部分，又不能取代哪一類 fake-gateway tests？"
+    }
+  ]
+}

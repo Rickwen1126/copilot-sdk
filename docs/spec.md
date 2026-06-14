@@ -1,7 +1,7 @@
 # Copilot SDK Canonical Spec
 
 Created: 2026-05-16
-Last Updated: 2026-06-14 11:06
+Last Updated: 2026-06-15 00:53
 Status: Active
 
 ## Purpose
@@ -22,6 +22,7 @@ This repo provides the Copilot SDK and the surrounding docs, examples, tests, an
 - The Python-native Codex adapter spike adds an experimental Python package/CLI surface at `copilot.experimental.codex_adapter` and `copilot-codex-adapter`, with selected-profile parity tests and live Codex app-server smoke evidence recorded in [docs/integrations/codex-sdk-runtime-profile/python-native-codex-adapter-spike/spec.md](./integrations/codex-sdk-runtime-profile/python-native-codex-adapter-spike/spec.md) and [python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json). It is not yet a ShinyiPilot production route.
 - Both Node and Python Codex adapters isolate sessions that do not provide `workingDirectory` by creating a UUID fallback workspace under `CODEX_ADAPTER_FALLBACK_WORKSPACE_PARENT` or the system temp default. Explicit `workingDirectory` remains the product-owned workspace contract. The adapters allow multiple Codex threads to use the same explicit workspace, but record `adapter.workspace.concurrent_threads` in the bounded adapter transcript when that happens.
 - The adapter default permission lane is self-reviewed workspace execution: `approvalPolicy=on-request`, `approvalsReviewer=auto_review`, `sandboxMode=workspaceWrite`, and `networkAccess=false`. This lets SDK clients that use broad permission handlers still run ordinary workspace-local work, while Codex boundary crossings are reviewed by the Codex reviewer agent instead of being blindly approved by the SDK callback. Network is disabled by default, not hard-locked; products can explicitly set `CODEX_ADAPTER_NETWORK_ACCESS=true` when their bounded workspace lane needs network access.
+- ShinyiPilot state-changing Codex adapter smokes now use the Docker lane at [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/). The default Codex model for this daily-office experiment lane is `gpt-5.4-mini`; the latest proof at `/tmp/shinyipilot-codex-docker-smoke-20260615-0053` validates an actual Codex turn, copied SQLite artifact read-back, ShinyiPilot tool logs, and adapter `semanticLog`, not GitHub Copilot SDK `list_models()` output.
 - Protocol compatibility is versioned at the adapter boundary. Node SDK conformance stays on protocol v3 by default; current Chatpilot Python SDK compatibility uses `CODEX_ADAPTER_PROTOCOL_VERSION=2`, including v2 `tool.call` custom tool handling.
 - The protocol-version dynamic-tool routing decision is isolated in [nodejs/src/experimental/codexAdapterToolPolicy.ts](../nodejs/src/experimental/codexAdapterToolPolicy.ts). Protocol v2 routes through SDK `tool.call`; protocol v3 routes through `external_tool.requested` and `session.tools.handlePendingToolCall`.
 - The conformance harness entrypoint remains [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), backed by reusable support modules in [nodejs/conformance](../nodejs/conformance). It is the regression gate for the adapter module.
@@ -37,6 +38,7 @@ This repo provides the Copilot SDK and the surrounding docs, examples, tests, an
 - Runtime backend guide: [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md)
 - Adapter graduation decision: [docs/integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md](./integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md)
 - Production readiness gate: [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md)
+- ShinyiPilot Docker smoke lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
 - Production capability spike evidence: [docs/integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json)
 - Session continuity: [.progress/progress.md](../.progress/progress.md)
 

@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 00:24
+Last Updated: 2026-06-15 00:53
 Status: Active
 
 ## P1: Codex Adapter Semantic Observability Parity @2026-06-15-0024
@@ -27,25 +27,6 @@ Current checkpoint @2026-06-15 00:24:
   - Source: Python-first semantic log work completed before production deploy/high-density test.
   - Code/Surface: `nodejs/src/experimental/codexAdapter.ts`, `nodejs/src/experimental/codexAppServerGateway.ts`, Node conformance tests, and selected-profile summary artifacts.
   - Done when: Node summary/log artifacts expose the same stable adapter categories as Python for session lifecycle, turn lifecycle, assistant message completion, tool routing, SDK tool call/result, approval request/result, and runtime error/timeout, without adding product-facing SDK events.
-
-## P1: ShinyiPilot Codex Adapter Production Isolation Gate @2026-06-15-0009
-
-Section source:
-
-- Spec: [docs/spec.md](./spec.md)
-- Runtime backend guide: [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md)
-- Code/Surface: [python/copilot/tools.py](../python/copilot/tools.py), [python/copilot/experimental/codex_adapter](../python/copilot/experimental/codex_adapter), ShinyiPilot worktree `/Users/rickwen/code/copilot-sdk/shinyipilot-spike/src/chatpilot/tools/factory.py`, ShinyiPilot `src/chatpilot/sdk/session.py`, and ShinyiPilot route config examples.
-- Completed proof: [docs/todo-finished.md](./todo-finished.md#completed-shinyipilot-codex-adapter-tool-dispatch-production-smoke-2026-06-15-0009)
-- Source: production-like ShinyiPilot integration smoke using the Python-native Codex adapter and temp gpt-5.4 route config.
-
-- [ ] Decide the production isolation lane for state-changing ShinyiPilot Codex adapter E2E.
-  - Source: failed forced `save_memo` runs before the compatibility fixes caused Codex native fallback to write marker files under `/Users/rickwen/.codex/memories/`.
-  - Code/Surface: Codex adapter runtime profile, `CODEX_HOME`/workspace isolation, adapter tool policy, and production runbook.
-  - Done when: the runbook states whether production smokes use a locked-down container, clean `CODEX_HOME`, stricter runtime profile, or another explicit boundary, and a state-changing smoke cannot silently write outside the intended app state.
-- [ ] Decide ShinyiPilot model config policy for Codex-backed production experiments.
-  - Source: ShinyiPilot example config uses `gemini-3-flash`, which Codex app-server rejected in the current ChatGPT-account lane; temp gpt-5.4 config was required for the passing smoke.
-  - Code/Surface: ShinyiPilot `config/route_settings.example.yaml`, runtime backend guide, and production smoke docs.
-  - Done when: docs/config clarify whether gpt-5.4 is a temp-only override for Codex adapter experiments or the accepted Codex-backed model lane.
 
 ## P1: Runtime Adapter Refactor Architecture Guard @2026-06-03-1141
 

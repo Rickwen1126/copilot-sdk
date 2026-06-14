@@ -1,10 +1,51 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 00:24
+Last Updated: 2026-06-15 00:53
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: ShinyiPilot Codex Adapter Docker Smoke Proof @2026-06-15-0053
+
+Section source:
+
+- Canonical spec: [docs/spec.md](./spec.md)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Docker smoke lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
+- Prior decision: [Docker isolation and model policy](./todo-finished.md#completed-shinyipilot-codex-adapter-docker-isolation-and-model-policy-2026-06-15-0046)
+- Artifact directory: `/tmp/shinyipilot-codex-docker-smoke-20260615-0053`
+- Source: user chose Docker as the safety boundary before high-density state-changing ShinyiPilot Codex adapter tests.
+
+- [x] Proved the containerized ShinyiPilot Codex adapter smoke with `gpt-5.4-mini`.
+      Completion evidence: `smoke-result.json` reports `status=pass`, `model=gpt-5.4-mini`, marker `codex docker smoke marker 20260615-005311`, and CLI response `saved`.
+- [x] Verified data-level side effect from the copied artifact DB.
+      Completion evidence: `smoke-result.json` records `matchingMemoryMemoRows=1` and `artifactReadbackMemoryMemoRows=1`; direct read-back from `/tmp/shinyipilot-codex-docker-smoke-20260615-0053/chatpilot.db` returns `cli:codex-docker-smoke|codex docker smoke marker 20260615-005311`.
+- [x] Verified ShinyiPilot tool execution logs.
+      Completion evidence: `/tmp/shinyipilot-codex-docker-smoke-20260615-0053/shinyipilot.log` contains `[tool_call] tool=save_memo`, `[db] SAVE memo`, and `[tool_result] tool=save_memo ... status=success`.
+- [x] Verified adapter semantic observability in the smoke artifact.
+      Completion evidence: `/tmp/shinyipilot-codex-docker-smoke-20260615-0053/adapter-summary.json` contains `session.lifecycle:created`, `turn.lifecycle:started`, `tool.routing:requested`, `tool.sdk_call:dispatched`, `tool.sdk_result:received`, `assistant.message:completed`, and `turn.lifecycle:completed`.
+- [x] Kept the host boundary clean.
+      Completion evidence: the Docker runner uses bind mounts only and publishes no host ports; post-run `lsof` checks found no listeners on host `4873` or `29999`.
+
+## Completed: ShinyiPilot Codex Adapter Docker Isolation And Model Policy @2026-06-15-0046
+
+Section source:
+
+- Canonical spec: [docs/spec.md](./spec.md)
+- Runtime proof follow-up: [Docker smoke proof](./todo-finished.md#completed-shinyipilot-codex-adapter-docker-smoke-proof-2026-06-15-0053)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Docker smoke lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
+- Source: user chose Docker for the state-changing production smoke boundary and `gpt-5.4-mini` for the default Codex-backed daily-office experiment model.
+
+- [x] Decided that Docker is the default boundary for the next state-changing ShinyiPilot Codex adapter smoke.
+      Completion evidence: the production runbook now points state-changing ShinyiPilot smokes at the Docker lane and describes host read-only Codex auth, container-local runtime state, no host port publishing, and `/artifacts` as the only host-writable mount.
+- [x] Added the Docker smoke artifact skeleton.
+      Completion evidence: `Dockerfile`, `run-smoke.sh`, `container-smoke.sh`, and `README.md` live under [shinyipilot-docker-smoke](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/).
+- [x] Decided the default Codex-backed model policy for this experiment lane.
+      Completion evidence: docs/spec and the runbook name `gpt-5.4-mini` as the default `CODEX_ADAPTER_MODEL` for ShinyiPilot daily-office Codex experiments.
+- [x] Kept runtime proof as a separate follow-up instead of claiming the lane was verified before it ran.
+      Completion evidence: the follow-up was completed in [Docker smoke proof](./todo-finished.md#completed-shinyipilot-codex-adapter-docker-smoke-proof-2026-06-15-0053) after the container build/run and artifact read-back passed.
 
 ## Completed: Python Codex Adapter Semantic Observability Log @2026-06-15-0024
 

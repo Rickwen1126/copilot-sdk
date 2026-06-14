@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-14 11:06
+Last Updated: 2026-06-15 00:53
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -13,6 +13,40 @@ Run `codex login` before starting the adapter.
 The adapter starts `codex app-server` through the Codex CLI. For the ChatGPT subscription lane, the operator must log in with the intended ChatGPT account first. The adapter strips `OPENAI_API_KEY` from the child app-server environment so API-key mode does not accidentally override the ChatGPT-auth lane.
 
 Phase 6 validation also proved the isolated Codex app-server lane can read the ChatGPT account with both `refreshToken=false` and `refreshToken=true`, and can list models from the copied runtime home. Keep raw auth smoke artifacts out of repo because they can contain account identity details; record only hashes and boolean evidence.
+
+## ShinyiPilot Docker Smoke Lane
+
+State-changing ShinyiPilot Codex adapter smokes should run in Docker by default.
+Use [shinyipilot-docker-smoke/](./shinyipilot-docker-smoke/) as the current
+smoke harness.
+
+The Docker lane is the safety boundary for high-density or destructive-looking
+experiments:
+
+- The host Codex home is mounted read-only.
+- The adapter receives that Codex home as the source and runs with
+  `CODEX_ADAPTER_ISOLATE_CODEX_HOME=true`, so `gateway.py` copies the required
+  auth/config files into a container-local isolated Codex home before starting
+  `codex app-server`.
+- ShinyiPilot app state, SQLite DBs, Codex runtime session store, and fallback
+  workspaces live under container-local `/runtime`.
+- The container does not publish adapter `4873` or ShinyiPilot `29999` to the
+  host. Those ports are container-internal only.
+- The only host-writable path is the artifact directory mounted at `/artifacts`.
+
+The default model for this Codex-backed daily-office experiment lane is
+`gpt-5.4-mini`. This is a Codex runtime model policy, not a GitHub Copilot SDK
+`list_models()` claim. ShinyiPilot notes about Copilot CLI / GitHub Copilot SDK
+model-list behavior must not be used as evidence against Codex app-server model
+availability. The Docker smoke proves the model by running an actual Codex turn
+and checking ShinyiPilot DB/log/adapter-summary side effects.
+
+Latest verified artifact: `/tmp/shinyipilot-codex-docker-smoke-20260615-0053`.
+That run returned CLI response `saved`, copied `chatpilot.db` back to the host,
+read one matching `memory_memos` row from the copied artifact DB, recorded
+ShinyiPilot `[tool_call] save_memo` / `[tool_result] ... status=success`, and
+recorded adapter semantic events for session creation, turn start, tool routing,
+SDK tool dispatch, and SDK tool result.
 
 ## Durable Resume Setup
 
@@ -102,7 +136,7 @@ Common environment variables:
 ```sh
 CODEX_ADAPTER_PORT=4873
 CODEX_ADAPTER_PROTOCOL_VERSION=2
-CODEX_ADAPTER_MODEL=gpt-5.4
+CODEX_ADAPTER_MODEL=gpt-5.4-mini
 CODEX_ADAPTER_APPROVAL_POLICY=on-request
 CODEX_ADAPTER_APPROVALS_REVIEWER=auto_review
 CODEX_ADAPTER_SANDBOX_MODE=workspaceWrite
@@ -124,6 +158,7 @@ For P0 observability, always set `CODEX_ADAPTER_SUMMARY_PATH` in staged/prod-lik
 ```sh
 CODEX_ADAPTER_PORT=4873 \
 CODEX_ADAPTER_PROTOCOL_VERSION=2 \
+CODEX_ADAPTER_MODEL=gpt-5.4-mini \
 CODEX_ADAPTER_CODEX_HOME="$HOME/.codex" \
 CODEX_ADAPTER_ISOLATE_CODEX_HOME=false \
 CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH="$HOME/.codex/copilot-sdk-runtime-sessions.json" \
@@ -139,10 +174,15 @@ Use `cliUrl: "127.0.0.1:4873"` from the SDK consumer.
 ## ShinyiPilot Python App Notes
 
 The ShinyiPilot spike proves a Python app can use the local Python SDK source and
-connect to the Node.js Codex adapter as an external Copilot-protocol runtime.
-The language split is not the primary risk; the adapter must be deployed as a
-sidecar or sibling service with explicit process ownership, start order,
-readiness, logs, Codex auth home, and durable session-store policy.
+connect to a Codex adapter as an external Copilot-protocol runtime. The language
+split is not the primary risk; the adapter must be deployed as a sidecar or
+sibling service with explicit process ownership, start order, readiness, logs,
+Codex auth home, and durable session-store policy.
+
+For state-changing ShinyiPilot validation, prefer the Docker smoke lane above
+before host-local or production deployment experiments. Host-local `4873` /
+`29999` smokes are useful historical evidence, but the next production-safety
+gate is containerized DB/log/adapter-summary read-back.
 
 See
 [shinyipilot-python-node-spike/spec.md](./shinyipilot-python-node-spike/spec.md)

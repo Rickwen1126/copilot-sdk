@@ -1,7 +1,7 @@
 # ShinyiPilot Runtime Backup Dry-Run Plan
 
 Created: 2026-06-15 13:54
-Last Updated: 2026-06-15 13:59
+Last Updated: 2026-06-15 16:33
 Status: Active; dry-run list specified, Item 1 complete
 
 ## Purpose
@@ -351,6 +351,11 @@ Decision:
   `CHATPILOT_TASK_DB=/runtime/tasks.db`,
   `CHATPILOT_FILES_DB=/runtime/files.db`,
   `CHATPILOT_FILE_ASSETS_DIR=/runtime/file_assets`.
+- Final deployment should align the host and container app port:
+  `127.0.0.1:2999 -> container:2999`, with ShinyiPilot app `PORT=2999`.
+  The current transition mapping `127.0.0.1:2999 -> container:29999` remains
+  accepted evidence and should not be changed just to make ports prettier,
+  because changing it would require replacing the running cutover container.
 - Route config remains ShinyiPilot-owned:
   `ROUTE_SETTINGS_PATH` and `ROUTE_BINDINGS_PATH` point at ShinyiPilot config
   files, with real local production config remaining untracked.

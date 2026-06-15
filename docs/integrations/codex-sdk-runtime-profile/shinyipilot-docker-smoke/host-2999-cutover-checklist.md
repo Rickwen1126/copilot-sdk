@@ -1,14 +1,15 @@
 # ShinyiPilot Host 2999 Cutover Checklist
 
 Created: 2026-06-15 09:44
-Last Updated: 2026-06-15 09:44
-Status: Ready for explicit cutover approval
+Last Updated: 2026-06-15 10:50
+Status: Executed; cutover container is running
 
-This checklist is the operational gate for moving host `127.0.0.1:2999` from
+This checklist was the operational gate for moving host `127.0.0.1:2999` from
 the old host-local ShinyiPilot service to the production-line Docker container.
 
-It is a checklist, not approval to cut over. Do not stop the old service or
-publish host `2999` until the user explicitly says to proceed with cutover.
+It now also records the accepted cutover evidence. Do not repeat the cutover,
+stop the running container, or run backout unless there is an explicit
+operational decision.
 
 ## Current Accepted Baseline
 
@@ -23,11 +24,56 @@ publish host `2999` until the user explicitly says to proceed with cutover.
 - Required source mode:
   `real-shinyipilot-source-no-overlay`
 
+## Executed Cutover Record
+
+- Explicit user approval: user asked to replace the host `2999` service and
+  perform LINE canary testing.
+- Fresh no-overlay shadow proof:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0950-production-line-shadow`
+- Cutover container:
+  `shinyipilot-codex-line-cutover-20260615-0958`
+- Cutover artifact:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0958-production-line-cutover`
+- Startup backup:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0958-production-line-startup`
+- Host port:
+  `127.0.0.1:2999 -> container:29999`
+- Health proof:
+  `curl -fsS http://127.0.0.1:2999/health` returned `status=ok`.
+- Source mode proof:
+  `source-overlay-manifest.json` has `status=not_applied` and
+  `sourceMode=real-shinyipilot-source-no-overlay`.
+- Cutover bind fix:
+  `container-production-line.sh` binds uvicorn to `0.0.0.0` for `cutover` and
+  keeps internal health checks on `127.0.0.1`.
+- Model policy fix:
+  ShinyiPilot local `config/route_settings.yaml` now uses `gpt-5.4-mini` for
+  all eight chatbot profiles; tracked `config/route_settings.example.yaml`
+  default was committed in ShinyiPilot at
+  `0dc74d4 chore: default route models to codex compatible model`.
+- Runtime reload:
+  `POST /cli/reload` returned `{"status":"reloaded"}`.
+- Real LINE canary evidence:
+  `source_messages` rows were written for route
+  `line:shinyipaint:C0069917b022d280805149bf9a8709453` at
+  `2026-06-15T02:48:42.675176+00:00`,
+  `2026-06-15T02:49:40.666339+00:00`, and
+  `2026-06-15T02:50:07.063516+00:00`.
+- Response proof:
+  ShinyiPilot logs show `model=gpt-5.4-mini`, assistant responses, server
+  `[response]` lines, and route `IDLE` transitions for the post-reload LINE
+  canaries.
+- Backout:
+  not used.
+
 ## Invariants
 
 - Do not edit, delete, move, or migrate old host-local `2999` service data.
-- Do not edit `~/code/shinyipilot/.env`, route config, SQLite DBs, `data/`, or
-  runtime assets as part of cutover.
+- Do not edit `~/code/shinyipilot/.env`, SQLite DBs, `data/`, or runtime assets
+  as part of cutover.
+- Route config changes require an explicit model-policy decision and must
+  record whether the changed file is tracked example config or ignored local
+  production config.
 - Do not run destructive cleanup on
   `~/.local/state/shinyipilot-codex-line/runtime`.
 - Do not use adapter compatibility overlay for cutover.

@@ -1,10 +1,38 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 09:44
+Last Updated: 2026-06-15 10:50
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: ShinyiPilot Host 2999 Codex Cutover @2026-06-15-1050
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Active follow-up: [docs/todo.md](./todo.md#p1-shinyipilot-deployment-ownership-transition-2026-06-15-0932)
+- Cutover checklist: [host-2999-cutover-checklist.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/host-2999-cutover-checklist.md)
+- Code/Surface: [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), [container-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-production-line.sh), ShinyiPilot `config/route_settings.yaml`, ShinyiPilot `config/route_settings.example.yaml`
+- ShinyiPilot commits: `0946d0b feat: support codex adapter runtime backend`, `0dc74d4 chore: default route models to codex compatible model`
+- `copilot-sdk` commit: `afe3599 fix: bind shinyipilot cutover app externally`
+- Cutover artifact directory: `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0958-production-line-cutover`
+- Startup backup: `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0958-production-line-startup`
+- Runtime DB: `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime/chatpilot.db`
+- Source: user explicitly approved replacing the old host `2999` service with the Docker-backed Codex production-line container and tested LINE canaries.
+
+- [x] Ran a fresh no-overlay shadow proof immediately before cutover.
+      Completion evidence: `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0950-production-line-shadow` passed with `sourceMode=real-shinyipilot-source-no-overlay`, startup backup `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0950-production-line-startup`, synthetic LINE message `codex-line-shadow-20260615-023848`, and SQLite/log read-back.
+- [x] Started the Docker cutover container on host `2999`.
+      Completion evidence: `production-line-ready.json` reports `mode=cutover`, `model=gpt-5.4-mini`, `appBindHost=0.0.0.0`, `containerAppUrl=http://127.0.0.1:29999`, and `adapterUrl=127.0.0.1:4873`; `curl http://127.0.0.1:2999/health` returned `{"status":"ok","version":"0.2.0",...}`; `docker ps` showed `shinyipilot-codex-line-cutover-20260615-0958` publishing `127.0.0.1:2999->29999/tcp`; `lsof` showed Docker owning `127.0.0.1:2999`.
+- [x] Fixed the cutover bind-host bug in the parent runner.
+      Completion evidence: the first cutover attempt bound uvicorn to container-local `127.0.0.1`, making host `2999` return an empty reply. The failed container was stopped without deleting runtime state. `container-production-line.sh` now binds `0.0.0.0` for `serve` and `cutover`, keeps internal health checks on `127.0.0.1`, and writes `appBindHost` into `production-line-ready.json`.
+- [x] Corrected ShinyiPilot's Codex-compatible model policy.
+      Completion evidence: the first real LINE canary reached the Docker-backed service and wrote `source_messages`, but the chatbot session used `model=gemini-3-flash`; adapter summary recorded Codex app-server rejecting it with `The 'gemini-3-flash' model is not supported when using Codex with a ChatGPT account.` The ignored production `config/route_settings.yaml` was updated locally to use `gpt-5.4-mini` for all eight chatbot profiles, the tracked `config/route_settings.example.yaml` default was committed in ShinyiPilot at `0dc74d4`, and `POST /cli/reload` returned `{"status":"reloaded"}`.
+- [x] Verified real LINE canaries after reload.
+      Completion evidence: SQLite read-back showed real LINE rows at `2026-06-15T02:48:42.675176+00:00`, `2026-06-15T02:49:40.666339+00:00`, and `2026-06-15T02:50:07.063516+00:00` for route `line:shinyipaint:C0069917b022d280805149bf9a8709453`. ShinyiPilot logs showed `model=gpt-5.4-mini`, assistant responses, server `[response]` lines, and `IDLE` transitions. The successful replies included `小奇你好，有什麼要我幫忙的？`, `有聽到啦，我現在就是用 Codex 幫忙回你。...`, and `有啦，今天蠻順的...`.
+- [x] Kept persistent runtime state intact.
+      Completion evidence: the cutover used host-backed `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`, startup backup manifests were preserved, no DB restore was used, and no destructive cleanup was performed. The cutover container remains running for production-like LINE testing.
 
 ## Completed: ShinyiPilot No-Overlay Production-Line Gate @2026-06-15-0942
 

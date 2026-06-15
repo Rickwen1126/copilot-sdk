@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 09:44
+Last Updated: 2026-06-15 10:50
 Status: Active
 
 ## P1: ShinyiPilot Deployment Ownership Transition @2026-06-15-0932
@@ -17,7 +17,7 @@ Section source:
 - Source: user accepted keeping short-term ShinyiPilot production-line deployment decisions in the parent `copilot-sdk` branch because `shinyipilot-spike/` is a nested worktree and parent git cannot own its internal files as canonical source.
 - Source update: user clarified the long-term split: `copilot-sdk` owns Codex adapter, Docker lab, and adapter E2E during transition; `shinyipilot` owns minimal app compatibility, product config, and future full Docker/config/DB deployment ownership.
 
-Current checkpoint @2026-06-15 09:44:
+Current checkpoint @2026-06-15 10:50:
 
 - `run-production-line.sh` now implements the dedicated production-line shadow
   runner and defaults to no application-code overlay.
@@ -35,16 +35,18 @@ Current checkpoint @2026-06-15 09:44:
   with `sourceMode=real-shinyipilot-source-no-overlay`.
   It verified health, real LINE config env presence, route policy,
   source-message capture, route identity registry update, and log evidence.
-- Host `2999` was not published; post-run `lsof` found no listener.
-- The old host-local `2999` service may be stopped for cutover, but stopping it
-  must not edit, delete, or migrate its data.
-- Host `2999` cutover/backout checklist is documented, but cutover has not been
-  approved or executed.
+- Host `2999` cutover was executed after explicit user approval.
+- Docker container `shinyipilot-codex-line-cutover-20260615-0958` owns
+  `127.0.0.1:2999 -> container:29999`.
+- Real LINE canary passed after the ShinyiPilot route model policy was corrected
+  from `gemini-3-flash` to `gpt-5.4-mini`.
+- Completion evidence is archived in
+  [docs/todo-finished.md](./todo-finished.md#completed-shinyipilot-host-2999-codex-cutover-2026-06-15-1050).
 
-- [ ] Execute host `2999` cutover and one controlled LINE canary only after explicit user approval.
-  - Source: [host-2999-cutover-checklist.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/host-2999-cutover-checklist.md) and user note that the old `2999` service may be stopped directly but its data must not be modified.
-  - Code/Surface: [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), host-backed `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`, Cloudflare tunnel target to host `2999`, and ShinyiPilot logs/SQLite read-back.
-  - Done when: fresh no-overlay shadow passes, old host-local `2999` owner is recorded and intentionally stopped without data changes, cutover container owns `127.0.0.1:2999`, `/health` passes through host `2999`, Cloudflare target is verified, one real LINE canary has DB/log/adapter evidence, and backout evidence is recorded if backout is used.
+- [ ] Move full ShinyiPilot production deployment ownership back to `~/code/shinyipilot` when the transition ends.
+  - Source: [shinyipilot-deployment-ownership-transition/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md) and user decision that future complete deployment should move Docker, config, DB, backup, and runbook ownership back to ShinyiPilot.
+  - Code/Surface: current parent Docker lane, ShinyiPilot config/runtime layout, and host-backed `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`.
+  - Done when: ShinyiPilot repo owns the production Docker/deploy/config/DB/backup runbook, while `copilot-sdk` keeps only adapter source/package and adapter-level Docker E2E.
 
 ## P1: Codex Adapter Semantic Observability Parity @2026-06-15-0024
 

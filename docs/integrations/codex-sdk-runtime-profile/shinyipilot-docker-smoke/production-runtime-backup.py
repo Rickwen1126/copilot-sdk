@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a startup backup for the ShinyiPilot production-line runtime."""
+"""Create a backup for the ShinyiPilot production-line runtime."""
 
 from __future__ import annotations
 
@@ -94,13 +94,30 @@ def row_counts(conn: sqlite3.Connection) -> dict[str, int]:
     return counts
 
 
-def backup_sqlite(source: Path, destination: Path) -> dict[str, Any]:
+def sqlite_readonly_uri(path: Path) -> str:
+    return f"file:{path.as_posix()}?mode=ro"
+
+
+def backup_sqlite(
+    source: Path,
+    destination: Path,
+    *,
+    live_readonly_snapshot: bool,
+) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    source_conn = sqlite3.connect(str(source))
+    if live_readonly_snapshot:
+        source_conn = sqlite3.connect(sqlite_readonly_uri(source), uri=True)
+        source_open_mode = "readonly-uri"
+    else:
+        source_conn = sqlite3.connect(str(source))
+        source_open_mode = "readwrite-path"
     source_conn.execute("PRAGMA busy_timeout=5000")
     checkpoint = None
     try:
-        checkpoint = list(source_conn.execute("PRAGMA wal_checkpoint(FULL);"))
+        if live_readonly_snapshot:
+            checkpoint = "not-requested"
+        else:
+            checkpoint = list(source_conn.execute("PRAGMA wal_checkpoint(FULL);"))
         destination_conn = sqlite3.connect(str(destination))
         try:
             source_conn.backup(destination_conn)
@@ -140,6 +157,7 @@ def backup_sqlite(source: Path, destination: Path) -> dict[str, Any]:
         "backupBytes": destination.stat().st_size,
         "backupSha256": sha256_file(destination),
         "integrityCheck": integrity,
+        "sourceOpenMode": source_open_mode,
         "walCheckpoint": checkpoint,
         "sourceSidecars": sidecars,
         "rowCounts": counts,
@@ -180,6 +198,14 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Defaults to '<timestamp>-production-line-startup'.",
     )
+    parser.add_argument(
+        "--live-readonly-snapshot",
+        action="store_true",
+        help=(
+            "Open source DBs through SQLite readonly URI mode and skip explicit "
+            "WAL checkpoint. Use for live backup dry runs."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -187,9 +213,17 @@ def main() -> int:
     args = parse_args()
     runtime_dir = args.runtime_dir.expanduser().resolve()
     backup_root = args.backup_root.expanduser().resolve()
-    backup_name = args.backup_name or f"{args.timestamp}-production-line-startup"
+    default_suffix = (
+        "transition-runtime-live-snapshot"
+        if args.live_readonly_snapshot
+        else "production-line-startup"
+    )
+    backup_name = args.backup_name or f"{args.timestamp}-{default_suffix}"
     backup_dir = backup_root / backup_name
     manifest_path = backup_dir / "manifest.json"
+    snapshot_mode = (
+        "live-readonly-snapshot" if args.live_readonly_snapshot else "startup-checkpoint"
+    )
 
     if not runtime_dir.is_dir():
         raise SystemExit(f"runtime dir does not exist: {runtime_dir}")
@@ -202,7 +236,13 @@ def main() -> int:
         source = runtime_dir / name
         if not source.exists():
             raise SystemExit(f"required SQLite DB missing: {source}")
-        databases.append(backup_sqlite(source, backup_dir / name))
+        databases.append(
+            backup_sqlite(
+                source,
+                backup_dir / name,
+                live_readonly_snapshot=args.live_readonly_snapshot,
+            )
+        )
 
     assets = []
     for name in ASSET_NAMES:
@@ -214,13 +254,21 @@ def main() -> int:
     manifest: dict[str, Any] = {
         "status": "pass",
         "runnerVersion": RUNNER_VERSION,
+        "snapshotMode": snapshot_mode,
+        "sourceWasLive": args.live_readonly_snapshot,
+        "walCheckpoint": "not-requested" if args.live_readonly_snapshot else "requested-full",
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "runtimeDir": str(runtime_dir),
         "backupDir": str(backup_dir),
         "databases": databases,
         "assets": assets,
         "notes": [
-            "SQLite databases were copied with sqlite3 backup API after WAL checkpoint.",
+            (
+                "SQLite databases were copied with sqlite3 backup API from read-only "
+                "source connections without requesting a WAL checkpoint."
+                if args.live_readonly_snapshot
+                else "SQLite databases were copied with sqlite3 backup API after WAL checkpoint."
+            ),
             "Only allowlisted non-DB runtime assets were copied.",
             "Codex auth homes, uv caches, .env files, and other secret-bearing state are not part of this backup helper.",
         ],
@@ -233,7 +281,12 @@ def main() -> int:
     if args.artifact_dir:
         artifact_dir = args.artifact_dir.expanduser().resolve()
         artifact_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(manifest_path, artifact_dir / "startup-backup-manifest.json")
+        artifact_name = (
+            "live-readonly-snapshot-manifest.json"
+            if args.live_readonly_snapshot
+            else "startup-backup-manifest.json"
+        )
+        shutil.copy2(manifest_path, artifact_dir / artifact_name)
 
     print(manifest_path)
     return 0

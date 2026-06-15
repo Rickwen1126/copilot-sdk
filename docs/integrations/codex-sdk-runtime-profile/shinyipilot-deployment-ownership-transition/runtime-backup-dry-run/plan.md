@@ -1,8 +1,8 @@
 # ShinyiPilot Runtime Backup Dry-Run Plan
 
 Created: 2026-06-15 13:54
-Last Updated: 2026-06-15 18:10
-Status: Active; dry-run list specified, Item 1 complete
+Last Updated: 2026-06-15 18:42
+Status: Active; Items 1-4b complete, Items 5-7 specified
 
 ## Purpose
 
@@ -228,7 +228,7 @@ container was not stopped, restarted, or replaced. Reserved ports `4800`,
 
 ### Item 2: Local SQLite-Aware Backup Snapshot Dry Run
 
-Status: specified; not executed.
+Status: complete at 2026-06-15 18:30 CST.
 
 Decision:
 
@@ -294,10 +294,47 @@ Pass criteria:
 - No restore is attempted in this item.
 - No LINE canary is sent in this item.
 
+Result:
+
+- PASS.
+
+Evidence snapshot at 2026-06-15 18:30 CST:
+
+- Added and used `--live-readonly-snapshot` in
+  [production-runtime-backup.py](../../shinyipilot-docker-smoke/production-runtime-backup.py).
+- Local backup manifest:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-183041-transition-runtime-live-snapshot/manifest.json`.
+- Manifest records `status=pass`, `snapshotMode=live-readonly-snapshot`,
+  `sourceWasLive=true`, top-level `walCheckpoint=not-requested`, and DB
+  `sourceOpenMode=readonly-uri`.
+- DB integrity:
+  `chatpilot.db`, `tasks.db`, and `files.db` all returned `ok` from read-only
+  immutable SQLite URI checks.
+- DB hashes:
+  `chatpilot.db=a311e5e15abe31f6dcfbe83253dbe2cbae7a44e6869c61e82fc2224db594a6fa`,
+  `tasks.db=3000c371de83fab3d17e8d252149a81d5ea6a471dbf0273e32191dad239f3603`,
+  `files.db=31000a82ee2514ca0871df7a949a024fc42c89fe995ead468fcf7afee4a26ef0`.
+- Row counts:
+  `chatpilot.db` had `source_messages=986`, `memory_observations=336`,
+  `observation_entries=879`, `line_identity_registry=69`, and zero memo /
+  custom prompt / reminder / schedule rows;
+  `tasks.db` had `tasks=0`;
+  `files.db` had `file_assets=752`, `file_notes=0`, `file_relations=0`.
+- Asset allowlist:
+  `file_assets` copied `26` files / `2604970` bytes;
+  `session_contexts` copied `198` files / `48007` bytes;
+  `workspace` copied `200` files / `47897` bytes; route map/label and
+  `unit_images.json` files were copied with tree hashes recorded in the
+  manifest.
+- Exclusions:
+  manifest notes state that Codex auth homes, uv caches, `.env`, and other
+  secret-bearing state are not part of the backup helper.
+- No NAS write, restore, LINE canary, service restart, or host `2999` change was
+  performed in this item.
+
 ### Item 3: NAS Sync Dry Run
 
-Status: specified; not executed. Do not run until Item 2 proves a local
-snapshot.
+Status: complete at 2026-06-15 18:37 CST.
 
 Decision:
 
@@ -339,9 +376,34 @@ Pass criteria:
 - SQLite integrity checks pass against the NAS copy in read-only mode.
 - No source runtime file is modified.
 
+Result:
+
+- PASS.
+
+Evidence snapshot at 2026-06-15 18:37 CST:
+
+- Source:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-183041-transition-runtime-live-snapshot`.
+- NAS target:
+  `/Volumes/home/backup/shinyipilot-codex-line/runtime-backups/20260615-183041-transition-runtime-live-snapshot`.
+- Copy method:
+  target-not-exists preflight, `mkdir -p` for the NAS root, then `cp -a` of the
+  complete local backup directory. No delete, mirror, or overwrite semantics
+  were used.
+- Verification:
+  NAS manifest was readable and recorded `status=pass`,
+  `snapshotMode=live-readonly-snapshot`, and `walCheckpoint=not-requested`.
+- NAS DB verification:
+  `chatpilot.db`, `tasks.db`, and `files.db` all passed read-only immutable
+  SQLite integrity checks. Each DB SHA-256 matched the local snapshot manifest.
+- NAS asset verification:
+  every copied allowlisted asset matched manifest `fileCount`, `bytes`, and
+  `treeSha256`.
+- No source runtime file was modified.
+
 ### Item 4: Restore Rehearsal Dry Run
 
-Status: specified; not executed. Do not run until Item 3 proves NAS copy.
+Status: complete at 2026-06-15 18:38 CST.
 
 Decision:
 
@@ -379,10 +441,36 @@ Pass criteria:
 - No production runtime path is used as restore destination.
 - No service is started from the restored directory.
 
+Result:
+
+- PASS.
+
+Evidence snapshot at 2026-06-15 18:38 CST:
+
+- NAS source:
+  `/Volumes/home/backup/shinyipilot-codex-line/runtime-backups/20260615-183041-transition-runtime-live-snapshot`.
+- Restore destination:
+  `/tmp/shinyipilot-runtime-restore-rehearsal-20260615-183041`.
+- Copy method:
+  target-not-exists preflight, then `cp -a` from the NAS backup into the temp
+  restore root.
+- Restored DB verification:
+  `chatpilot.db`, `tasks.db`, and `files.db` all passed read-only immutable
+  SQLite integrity checks. Each restored DB hash matched the copied manifest.
+- Restored row-count verification:
+  row counts matched the manifest for all recorded tables:
+  `source_messages=986`, `memory_observations=336`,
+  `observation_entries=879`, `line_identity_registry=69`, `tasks=0`, and
+  `file_assets=752`.
+- Restored asset verification:
+  every allowlisted asset matched manifest `fileCount`, `bytes`, and
+  `treeSha256`.
+- No production runtime path was used as restore destination. No service was
+  started in this item.
+
 ### Item 4b: Service-Level Restore Rehearsal
 
-Status: specified; not executed. Do not run until Item 4 proves file-level
-restore from NAS.
+Status: complete at 2026-06-15 18:42 CST.
 
 Decision:
 
@@ -449,6 +537,57 @@ Pass criteria:
 - No host `2999` takeover happens.
 - Rehearsal artifact states whether it used no host port or a temporary host
   port, and records the temp path that maps to the future production path.
+
+Result:
+
+- PASS.
+
+Evidence snapshot at 2026-06-15 18:42 CST:
+
+- Final-layout rehearsal root:
+  `/tmp/shinyipilot-final-layout-rehearsal-20260615-183041`.
+- Temp runtime mounted as `/runtime`:
+  `/tmp/shinyipilot-final-layout-rehearsal-20260615-183041/production/runtime`.
+- Future runtime equivalent recorded in the artifact:
+  `/Users/rickwen/.local/state/shinyipilot/production/runtime`.
+- Rehearsal artifact:
+  `/tmp/shinyipilot-final-layout-rehearsal-20260615-183041/production/artifacts/service-restore-rehearsal-result.json`.
+- Container:
+  `shinyipilot-restore-rehearsal-20260615-183041` used image
+  `copilot-sdk/shinyipilot-codex-production-line:local`, mode `serve`, app
+  `PORT=2999`, and no host port publishing.
+- Health:
+  `docker exec` inside the isolated container returned
+  `{"status":"ok","version":"0.2.0",...}` from
+  `http://127.0.0.1:2999/health`.
+- Ready artifact:
+  `production-line-ready.json` recorded `status=ready`, `mode=serve`,
+  `model=gpt-5.4-mini`, `appBindHost=127.0.0.1`,
+  `containerAppUrl=http://127.0.0.1:2999`, and
+  `adapterUrl=127.0.0.1:4873`.
+- Runtime env proof:
+  the uvicorn process used `CHATPILOT_DB=/runtime/chatpilot.db`,
+  `CHATPILOT_TASK_DB=/runtime/tasks.db`,
+  `CHATPILOT_FILES_DB=/runtime/files.db`,
+  `CHATPILOT_FILE_ASSETS_DIR=/runtime/file_assets`,
+  `CHATPILOT_RUNTIME_BACKEND=codex-adapter`,
+  `ROUTE_SETTINGS_PATH=/host-config/route_settings.yaml`,
+  `ROUTE_BINDINGS_PATH=/host-config/route_bindings.yaml`,
+  `CODEX_ADAPTER_MODEL=gpt-5.4-mini`, and `PORT=2999`.
+- DB proof inside the container:
+  `chatpilot.db`, `tasks.db`, and `files.db` all passed read-only immutable
+  SQLite integrity checks from `/runtime`. Row counts still matched the
+  manifest after app startup.
+- Host boundary:
+  `docker port shinyipilot-restore-rehearsal-20260615-183041` returned no
+  published ports. The existing production-like container
+  `shinyipilot-codex-line-cutover-20260615-1813-adapter-path` remained the only
+  ShinyiPilot host `2999` container, still publishing
+  `127.0.0.1:2999->29999/tcp`.
+- Cleanup:
+  the temporary rehearsal container was stopped after proof. The temp runtime
+  and artifacts remain under `/tmp` for inspection. No Cloudflare config, live
+  runtime path, or LINE canary was touched.
 
 ### Item 5: Final ShinyiPilot Runtime Layout Decision
 

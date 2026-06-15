@@ -1,7 +1,7 @@
 # ShinyiPilot Runtime Backup Dry-Run Plan
 
 Created: 2026-06-15 13:54
-Last Updated: 2026-06-15 16:59
+Last Updated: 2026-06-15 17:17
 Status: Active; dry-run list specified, Item 1 complete
 
 ## Purpose
@@ -16,10 +16,12 @@ The current transition runtime is:
 /Users/rickwen/.local/state/shinyipilot-codex-line/runtime
 ```
 
-The future final owner is `~/code/shinyipilot`, through a ShinyiPilot-owned
-Docker/deploy/config/DB runtime layout and runbook. Until that handoff is
-stable, this dry-run plan is the operational evidence ledger for the transition
-runtime.
+The future final repo owner is `~/code/shinyipilot`, through a
+ShinyiPilot-owned Docker/deploy/config/DB runtime layout and runbook. The
+future final physical runtime path is still outside the git worktree under
+`/Users/rickwen/.local/state/shinyipilot/production/runtime`. Until that
+handoff is stable, this dry-run plan is the operational evidence ledger for the
+transition runtime.
 
 ## Source References
 
@@ -55,6 +57,16 @@ not a second design; it is a staging version of the same data movement.
 
 | Role | Dry-run path | Future ShinyiPilot-owned path | Equivalence rule |
 | --- | --- | --- | --- |
+| Deployment repo owner | This `copilot-sdk` branch documents and runs the transition lane | `/Users/rickwen/code/shinyipilot` owns product deployment docs/scripts | Final production operation should be driven from ShinyiPilot, not from the parent transition runner. |
+| App image source path | `/Users/rickwen/code/shinyipilot` copied by `run-production-line.sh` into a temp build context | `/Users/rickwen/code/shinyipilot` as the Docker build source | Same app source. The production image must not depend on `/Users/rickwen/code/copilot-sdk/shinyipilot-spike`. |
+| Adapter source/package path | `/Users/rickwen/code/copilot-sdk/python/copilot/experimental/codex_adapter` copied into the image as editable `/workspace/python` | A pinned `copilot-sdk` adapter package/source consumed by the ShinyiPilot image build | Same adapter API contract. Final deployment decides the pin method; ShinyiPilot owns only the consumption point. |
+| Dockerfile source | `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/Dockerfile` | A ShinyiPilot-owned Dockerfile, for example `/Users/rickwen/code/shinyipilot/docker/codex-line/Dockerfile` | Port the image shape into ShinyiPilot before final handoff. The parent Dockerfile becomes transition evidence. |
+| Container entrypoint source | `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-production-line.sh` | A ShinyiPilot-owned entrypoint/run script, for example `/Users/rickwen/code/shinyipilot/docker/codex-line/entrypoint.sh` | Preserve env, `/runtime`, Codex home, adapter startup, and app startup semantics; remove parent-specific overlay fallback. |
+| Backup helper source | `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-runtime-backup.py` | A ShinyiPilot-owned backup/restore helper or deploy script | Same manifest/integrity/hash behavior. Add live read-only snapshot mode before recurring use. |
+| Product route config | `/Users/rickwen/code/shinyipilot/config/route_settings.yaml` and `route_bindings.yaml`, mounted read-only to `/host-config/*` | Same ShinyiPilot-owned config files, or a ShinyiPilot-defined production config source | Config is product state. It is mounted/read by Docker and never copied into the image. |
+| Env/secrets | `/Users/rickwen/code/shinyipilot/.env` as an optional env file | ShinyiPilot-defined secret source | Secrets never enter git, build context, Docker image layers, or artifacts. |
+| Codex working repo | `/Users/rickwen/code/copilot-sdk` is currently the controller workspace for transition docs, runner, dry-run plan, and handoff | `/Users/rickwen/code/shinyipilot` becomes the primary Codex working repo for production ShinyiPilot operation | Future sessions should be able to start in ShinyiPilot, read its docs, and operate/debug/deploy without first loading this SDK branch. |
+| Handoff docs | `copilot-sdk` transition docs plus `.progress/progress.md` updates | ShinyiPilot canonical docs, active todo, completed archive, and deployment topic docs | Port the decisions and evidence ledger, not the raw session log. `.progress` remains continuity only. |
 | Current live source runtime | `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime` | `/Users/rickwen/.local/state/shinyipilot/production/runtime` | Current transition source becomes the migration source. Future production runtime has the same DB and asset contract, but lives under ShinyiPilot-owned state. |
 | Local backup bundle | `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/<timestamp>-transition-runtime-live-snapshot` | `/Users/rickwen/.local/state/shinyipilot/production/backups/<timestamp>-production-runtime-live-snapshot` | Same manifest schema, DB hashes, row counts, and asset allowlist. Only owner/root/name changes after final deployment. |
 | NAS backup bundle | `/Volumes/home/backup/shinyipilot-codex-line/runtime-backups/<timestamp>-transition-runtime-live-snapshot` | `/Volumes/home/backup/shinyipilot/production/runtime-backups/<timestamp>-production-runtime-live-snapshot` | Same off-host copy semantics: target directory must not already exist, no delete semantics, manifest and DB hashes must verify after copy. |
@@ -70,6 +82,22 @@ Promotion rule:
   path and then compare the same manifest fields: DB integrity, DB hashes before
   first live write, row counts, asset allowlist, app `/health`, runtime env, and
   port mapping.
+- If Docker source ownership is being promoted at the same time, the promoted
+  ShinyiPilot Dockerfile/entrypoint must be compared against the transition
+  Dockerfile/entrypoint for these contracts: app source path, adapter package
+  install, `/runtime` mount, route config mount, secret exclusion, Codex clean
+  home, `CHATPILOT_RUNTIME_BACKEND=codex-adapter`, app `PORT=2999`, and
+  no-overlay source mode.
+- The promoted ShinyiPilot image must record its adapter source: local rehearsal
+  checkout path, wheel/source artifact, or git SHA. A container proof must show
+  `copilot-codex-adapter` is installed and that runtime env selects protocol v2,
+  `gpt-5.4-mini`, the `/runtime` session store, and the documented approval /
+  sandbox / network policy.
+- If Codex working-repo ownership is being promoted at the same time, the
+  ShinyiPilot docs pack must be compared against this plan for these contracts:
+  live state path, future state path, NAS path, Docker source path, config
+  ownership, backup/restore sequence, host `2999` rule, cleanup guard, and open
+  todos. Missing docs are a handoff failure even if the container starts.
 - If any field differs, stop and explain the difference before proceeding.
   Production migration should not invent a new path, port, DB name, or backup
   semantics that did not appear in the dry run.
@@ -457,6 +485,20 @@ Decision:
 - Route config remains ShinyiPilot-owned:
   `ROUTE_SETTINGS_PATH` and `ROUTE_BINDINGS_PATH` point at ShinyiPilot config
   files, with real local production config remaining untracked.
+- Docker/deploy/config source ownership also returns to ShinyiPilot. The final
+  image should build from `/Users/rickwen/code/shinyipilot`, install or copy a
+  pinned `copilot-sdk` Codex adapter package, and mount external state/config at
+  runtime. It should not copy `shinyipilot-spike/`, real `.env`, real
+  `config/route_settings.yaml`, SQLite DBs, Codex auth state, or NAS backups
+  into the build context.
+- The final image build must choose and document one adapter acquisition mode:
+  local rehearsal copy from `/Users/rickwen/code/copilot-sdk/python`, a pinned
+  wheel/source artifact from a `copilot-sdk` commit, or a pinned git dependency.
+  Production should prefer a pinned artifact or git ref over an unversioned
+  sibling checkout.
+- The current `copilot-sdk` Docker lane remains as transition evidence and
+  adapter-level E2E. After handoff, it should not be the production run command
+  for ShinyiPilot.
 
 Evidence for this decision:
 
@@ -469,6 +511,47 @@ Evidence for this decision:
   `ROUTE_SETTINGS_PATH`, and `ROUTE_BINDINGS_PATH`.
 - `SqliteMemoryStore`, `SqliteTaskStore`, and `SqliteFileStore` create parent
   directories and enable WAL mode.
+
+ShinyiPilot deployment files to create or port before final handoff:
+
+- ShinyiPilot-owned Dockerfile, for example
+  `/Users/rickwen/code/shinyipilot/docker/codex-line/Dockerfile`.
+- ShinyiPilot-owned container entrypoint/run script, for example
+  `/Users/rickwen/code/shinyipilot/docker/codex-line/entrypoint.sh`.
+- ShinyiPilot-owned deploy or run script that mounts
+  `/Users/rickwen/.local/state/shinyipilot/production/runtime:/runtime`,
+  mounts product config read-only, supplies secrets safely, and publishes
+  `127.0.0.1:2999 -> container:2999`.
+- ShinyiPilot-owned adapter build/install documentation that records the active
+  `copilot-sdk` commit/artifact, the install command, and a container-level
+  verification command for `copilot-codex-adapter`.
+- ShinyiPilot-owned backup/restore helper or script with the manifest,
+  integrity, hash, row-count, NAS-copy, and restore-rehearsal behavior proven in
+  this plan.
+- ShinyiPilot-owned production runbook documenting final path layout, migration
+  from `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`, NAS backup
+  cadence/retention, restore rules, and transition-runtime cleanup criteria.
+- ShinyiPilot-owned adapter capability/boundary handoff docs explaining which
+  future changes belong in `~/code/copilot-sdk` and which belong in
+  `~/code/shinyipilot`.
+
+What should remain in `copilot-sdk` after handoff:
+
+- `copilot.experimental.codex_adapter` implementation and packaging.
+- Adapter protocol/conformance tests and semantic observability parity tests.
+- Adapter-level Docker E2E that proves the adapter can run inside a generic app
+  image boundary.
+- Historical ShinyiPilot transition evidence and docs.
+
+What should not remain as `copilot-sdk` responsibility after handoff:
+
+- ShinyiPilot production Docker run command.
+- ShinyiPilot real route config or `.env`.
+- ShinyiPilot production DB/runtime files.
+- ShinyiPilot NAS backup operations.
+- ShinyiPilot Cloudflare/host `2999` operational runbook.
+- ShinyiPilot production handoff/controller docs required for future Codex
+  sessions to continue from `/Users/rickwen/code/shinyipilot`.
 
 ### Item 6: Migration And Cutover Rehearsal
 

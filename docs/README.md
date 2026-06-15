@@ -12,6 +12,7 @@ This repo keeps two layers of documentation:
 - [Completed Todo Archive](./todo-finished.md)
 - [Runtime Backend Guide](./integrations/runtime-backends.md)
 - [Codex SDK Runtime Profile Plan](./integrations/codex-sdk-runtime-profile/plan.md)
+- [ShinyiPilot Deployment Ownership Transition Plan](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md)
 - [Codex Adapter Graduation Decision](./integrations/codex-sdk-runtime-profile/adapter-graduation/spec.md)
 - [Codex Runtime Adapter Refactor Spec](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
 - [Codex Runtime Adapter Refactor Plan](./integrations/codex-sdk-runtime-profile/refactor/plan.md)

@@ -1,7 +1,7 @@
 # ShinyiPilot Codex Docker Smoke
 
 Created: 2026-06-15 00:42
-Last Updated: 2026-06-15 03:03
+Last Updated: 2026-06-15 09:32
 Status: Active production-smoke lane
 
 This folder contains the containerized state-changing smoke for the
@@ -35,6 +35,9 @@ environment.
 
 The production-like LINE cutover lane is tracked separately in
 [production-line-lab.md](./production-line-lab.md).
+
+Repo ownership and the no-hidden-overlay transition guard are tracked in
+[../shinyipilot-deployment-ownership-transition/plan.md](../shinyipilot-deployment-ownership-transition/plan.md).
 
 That lane is intentionally documented in this parent `copilot-sdk` branch.
 `shinyipilot-spike/` is a nested worktree and experiment target, so parent git
@@ -72,14 +75,18 @@ message capture, route identity registry update, ShinyiPilot log evidence, and
 secret redaction booleans.
 
 Because the real ShinyiPilot checkout has not yet accepted the Codex adapter
-runtime patches, the runner overlays only these adapter compatibility files into
-the temporary Docker build context:
+runtime patches, the current runner overlays only these adapter compatibility
+files into the temporary Docker build context:
 
 - `src/chatpilot/sdk/session.py`
 - `src/chatpilot/tools/factory.py`
 
 The original `~/code/shinyipilot` checkout is not modified. The artifact
 directory records `source-overlay-manifest.json` with source and overlay hashes.
+This overlay is a temporary proof bridge. Before host `2999` cutover, the
+accepted subset should be ported into `~/code/shinyipilot`, and the runner
+should default to building from the real ShinyiPilot source with no
+application-code overlay.
 
 Latest passing production-line shadow artifact:
 `~/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`.

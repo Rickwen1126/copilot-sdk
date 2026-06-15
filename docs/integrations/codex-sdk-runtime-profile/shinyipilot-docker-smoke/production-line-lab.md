@@ -1,7 +1,7 @@
 # ShinyiPilot Production LINE Docker Lab
 
 Created: 2026-06-15 02:26
-Last Updated: 2026-06-15 03:03
+Last Updated: 2026-06-15 09:32
 Status: Shadow preflight passed; host 2999 cutover pending
 
 This document records the short-term source of truth for running ShinyiPilot
@@ -28,6 +28,9 @@ The split is:
 After this lane is proven, stable product-owned instructions can be copied into
 `~/code/shinyipilot/docs/`. Until then, do not scatter deployment decisions into
 the nested worktree.
+
+The repo ownership transition and no-hidden-overlay guard are tracked in
+[../shinyipilot-deployment-ownership-transition/plan.md](../shinyipilot-deployment-ownership-transition/plan.md).
 
 ## Target Shape
 
@@ -169,6 +172,10 @@ Current proof:
   `source_messages` row with `capture_policy=observer` and one route identity
   row; ShinyiPilot log contained the line ingress handled marker.
 - Host boundary: no host `2999` listener was published.
+- Source caveat: the proof still used a temporary adapter compatibility overlay
+  for `src/chatpilot/sdk/session.py` and `src/chatpilot/tools/factory.py`.
+  Host `2999` cutover should wait for a no-overlay shadow proof after the
+  accepted ShinyiPilot patch subset is ported into `~/code/shinyipilot`.
 
 ## Host Port Cutover
 
@@ -215,9 +222,10 @@ The first accepted production-line lab proof must include:
 
 ## Open Work
 
-- Decide whether the two adapter compatibility overlays should be copied into
-  `~/code/shinyipilot` as accepted product code before cutover, or kept as a
-  parent-runner overlay for this experimental branch.
+- Port the accepted adapter compatibility subset into `~/code/shinyipilot`.
+- Change the production-line runner so no application-code overlay is the
+  default source mode, with overlay left only as explicit debug fallback.
+- Produce a no-overlay production-line shadow proof before host `2999` cutover.
 - Decide the long-running Codex auth persistence strategy.
 - Prepare the host `2999` cutover and backout checklist.
 - Decide whether `~/code/shinyipilot` product docs should receive the accepted

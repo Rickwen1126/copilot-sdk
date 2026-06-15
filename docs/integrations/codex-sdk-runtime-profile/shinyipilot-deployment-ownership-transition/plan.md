@@ -1,8 +1,8 @@
 # ShinyiPilot Deployment Ownership Transition Plan
 
 Created: 2026-06-15 09:32
-Last Updated: 2026-06-15 09:42
-Status: Active; no-overlay shadow gate complete
+Last Updated: 2026-06-15 11:19
+Status: Active; host 2999 cutover complete, final ownership pending
 
 ## Purpose
 
@@ -10,12 +10,18 @@ This plan records how the ShinyiPilot Codex adapter production-line experiment
 moves from a `copilot-sdk`-owned Docker lab into a cleaner two-repo operating
 model.
 
-The immediate problem is that the current production-line shadow proof uses
-real `~/code/shinyipilot` source/config/env, but temporarily overlays two
-adapter compatibility files from `shinyipilot-spike` inside the Docker build
-context. That is acceptable as a proof technique. It is not acceptable as the
-default production deployment shape because the code running in the container
-would not match the code a reviewer sees in `~/code/shinyipilot`.
+The first production-line shadow proof temporarily overlaid two adapter
+compatibility files from `shinyipilot-spike` inside the Docker build context.
+That was acceptable as a proof technique, but not as a production deployment
+shape because the code running in the container would not match the code a
+reviewer sees in `~/code/shinyipilot`.
+
+The accepted transition state is now no-overlay: the container builds from real
+`~/code/shinyipilot` source/config/env, while this parent `copilot-sdk` branch
+still owns the Docker runner, adapter packaging, E2E evidence, and transition
+docs. The remaining route work is to move final Docker/config/DB/backup
+ownership back into ShinyiPilot and protect the transitional runtime until that
+handoff is stable.
 
 ## Target Ownership
 
@@ -32,14 +38,21 @@ During the transition:
 - ShinyiPilot config remains in `~/code/shinyipilot` during the transition.
   `copilot-sdk` should mount or read it; it should not become the owner of
   product route config.
-- Production-like DB/runtime state stays in a host-backed persistent directory
+- Production-like DB/runtime state currently stays in the host-backed
+  transition directory `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`
   with SQLite-aware startup backups. It must not be treated as disposable image
-  or container state.
+  or container state, and it must not be cleaned up until ShinyiPilot owns the
+  final DB/runtime layout and migration/backup evidence exists.
+- The transition should add non-destructive periodic NAS sync backup under
+  `/Volumes/home/backup`. This is a backup route, not a new source of truth and
+  not a cleanup signal.
 
 In the future complete deployment:
 
 - `shinyipilot` owns Dockerfile/compose/deploy scripts, app config, DB runtime
   layout, backup/restore policy, and production runbooks.
+- The DB/runtime path lives under a ShinyiPilot-owned state layout, with an
+  explicit migration/cutover plan from the current transition runtime.
 - `copilot-sdk` provides the tested Codex adapter source/package and keeps its
   own adapter-level Docker E2E regression harness.
 - `copilot-sdk` no longer owns ShinyiPilot production deployment. It verifies
@@ -56,10 +69,10 @@ Any adapter compatibility overlay must be explicit, artifact-visible, and
 debug-only.
 ```
 
-The current overlay exists only because the real ShinyiPilot checkout has not
-yet accepted the Codex adapter compatibility changes. Before host `2999`
-cutover, the accepted subset should be ported into `~/code/shinyipilot`, then
-the production-line runner should default to no overlay.
+The overlay existed only because the real ShinyiPilot checkout had not yet
+accepted the Codex adapter compatibility changes. After ShinyiPilot commit
+`0946d0b` and the parent runner no-overlay change, the production-line runner
+defaults to no overlay and cutover mode refuses overlay-enabled builds.
 
 Required runner behavior after the port:
 
@@ -148,6 +161,8 @@ Done when:
 
 ### M5: Prepare Host 2999 Cutover And Backout
 
+Status: complete.
+
 Done when:
 
 - The checklist references the latest no-overlay shadow proof.
@@ -156,29 +171,56 @@ Done when:
 - Docker cutover publishes only `127.0.0.1:2999 -> container:29999`.
 - Backout preserves persistent `/runtime` and defines when restore from backup
   is allowed.
+- The executed cutover record captures the running container, cutover artifact,
+  startup backup, source mode, host health, LINE canary evidence, and model
+  policy fix.
 
 ### M6: Move Accepted Deployment Ownership To ShinyiPilot
 
 Done when:
 
 - ShinyiPilot owns its Docker/deploy/config/DB/backup docs.
+- ShinyiPilot defines the final DB/runtime path, migration/cutover from
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`, NAS backup
+  cadence/retention, restore rules, and cleanup criteria for the transition
+  copy.
 - `copilot-sdk` retains only adapter packaging and adapter-level integration
   tests.
 - The `copilot-sdk` production-line lab is marked as historical or transition
   evidence instead of the app deployment source of truth.
 
+### M7: Retire Or Preserve The Transition Runtime Copy
+
+Done when:
+
+- The service has run stably on the ShinyiPilot-owned DB/runtime layout.
+- NAS backup and restore evidence exists for the ShinyiPilot-owned layout.
+- A separate cleanup decision says whether to delete, archive, or keep
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`.
+- No cleanup uses destructive sync or directory delete without an explicit
+  inventory and approval.
+
 ## Current Evidence
 
 - ShinyiPilot compatibility commit:
   `0946d0b feat: support codex adapter runtime backend`
+- ShinyiPilot model default commit:
+  `0dc74d4 chore: default route models to codex compatible model`
 - Production-line shadow runner commit:
   `65b04dd test: add shinyipilot production line shadow runner`
-- Latest passing shadow artifact:
-  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0938-production-line-shadow`
+- Latest pre-cutover shadow artifact:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0950-production-line-shadow`
 - Latest startup backup:
-  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0938-production-line-startup`
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0958-production-line-startup`
+- Executed cutover artifact:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0958-production-line-cutover`
+- Current transition runtime:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`
 - Current source mode:
   `real-shinyipilot-source-no-overlay`
+- Current host ownership:
+  Docker container `shinyipilot-codex-line-cutover-20260615-0958` owns
+  `127.0.0.1:2999 -> container:29999`.
 
 ## Non-Goals
 
@@ -186,8 +228,8 @@ Done when:
 - Do not merge the entire `shinyipilot-spike` worktree into `~/code/shinyipilot`.
 - Do not move ShinyiPilot real config, `.env`, DB files, or runtime assets into
   this repo.
-- Do not publish host `2999` until the no-overlay shadow gate and cutover
-  checklist are complete.
+- Do not repeat cutover, backout, or transition-runtime cleanup without an
+  explicit operational decision.
 
 ## Open Decisions
 
@@ -195,5 +237,6 @@ Done when:
   deployment.
 - Whether long-running production auth uses a controlled writable Codex state
   volume, an API-key/service-account lane, or another explicit mechanism.
-- Which backup/restore automation belongs in ShinyiPilot once deployment
-  ownership moves there.
+- The exact NAS sync cadence, retention, and restore drill for
+  `/Volumes/home/backup`.
+- The final ShinyiPilot-owned DB/runtime path and migration timing.

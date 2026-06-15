@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-15 09:42
+Last Updated: 2026-06-15 11:19
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -50,6 +50,12 @@ Keep that experiment in this `copilot-sdk` branch for now because
 internal docs or config as canonical source. The production-line lane changes
 the state contract: `/runtime` must become a host-backed persistent directory
 with SQLite-aware backups before startup, not discardable container state.
+The current transition runtime is
+`/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`. It remains the
+state for the running cutover container until ShinyiPilot owns the final
+DB/runtime layout. Do not clean it up just because the service now runs in
+Docker. Add a non-destructive periodic NAS backup route under
+`/Volumes/home/backup` while this transition state remains active.
 
 Production-line shadow mode is now available:
 
@@ -57,18 +63,24 @@ Production-line shadow mode is now available:
 docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh
 ```
 
-The latest passing shadow artifact is
-`~/.local/state/shinyipilot-codex-line/artifacts/20260615-0938-production-line-shadow`.
+The latest pre-cutover shadow artifact is
+`~/.local/state/shinyipilot-codex-line/artifacts/20260615-0950-production-line-shadow`.
 That run used real `~/code/shinyipilot` source/config/env with
 `sourceMode=real-shinyipilot-source-no-overlay`, host-backed
 `~/.local/state/shinyipilot-codex-line/runtime:/runtime`, no host port
 publishing, and startup backup
-`~/.local/state/shinyipilot-codex-line/backups/20260615-0938-production-line-startup`.
+`~/.local/state/shinyipilot-codex-line/backups/20260615-0950-production-line-startup`.
 It verified `/health`, `CHATPILOT_RUNTIME_BACKEND=codex-adapter`,
 `gpt-5.4-mini`, a signed synthetic LINE webhook against a real
 `observer_capture_only` route, SQLite `source_messages` read-back, route
 identity read-back, and ShinyiPilot line-ingress log evidence. Host `2999`
-remains cutover-pending.
+cutover later ran with container `shinyipilot-codex-line-cutover-20260615-0958`,
+artifact
+`/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0958-production-line-cutover`,
+startup backup
+`/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0958-production-line-startup`,
+Docker-owned `127.0.0.1:2999 -> container:29999`, and real LINE canary evidence
+after ShinyiPilot route models were corrected to `gpt-5.4-mini`.
 
 The runner now defaults to no application-code overlay. Debug-only overlay
 requires `ALLOW_SHINYIPILOT_COMPAT_OVERLAY=YES`; cutover mode refuses
@@ -95,6 +107,14 @@ startup: the host provides read-only login material, Codex app-server writes any
 refresh/session state into container-local homes, and the container removes that
 state at exit. That is acceptable for short state-changing smokes, but not yet a
 long-running production auth strategy.
+
+DB state follows a different rule from Codex auth state. For the production-line
+cutover, ShinyiPilot SQLite/runtime state is durable host state, not container
+ephemera. Local startup backups are required before the container starts. A NAS
+sync backup under `/Volumes/home/backup` is the accepted transition backup route,
+but it must copy a SQLite-aware snapshot or verified backup manifest and must not
+use destructive delete semantics by default. Restore from any backup remains a
+separate operational decision, not an automatic backout step.
 
 For exploratory tool-calling probes, use the same Docker lane in lab mode. Lab
 mode starts the adapter and ShinyiPilot app inside the container, writes

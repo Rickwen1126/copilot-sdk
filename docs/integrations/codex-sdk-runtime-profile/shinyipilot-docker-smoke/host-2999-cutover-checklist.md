@@ -1,7 +1,7 @@
 # ShinyiPilot Host 2999 Cutover Checklist
 
 Created: 2026-06-15 09:44
-Last Updated: 2026-06-15 10:50
+Last Updated: 2026-06-15 11:19
 Status: Executed; cutover container is running
 
 This checklist was the operational gate for moving host `127.0.0.1:2999` from
@@ -18,9 +18,9 @@ operational decision.
 - `copilot-sdk` runner/docs commit:
   `b0b7b3e test: require shinyipilot no-overlay production shadow`
 - Latest no-overlay shadow artifact:
-  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0938-production-line-shadow`
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0950-production-line-shadow`
 - Latest no-overlay startup backup:
-  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0938-production-line-startup`
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0950-production-line-startup`
 - Required source mode:
   `real-shinyipilot-source-no-overlay`
 
@@ -66,6 +66,29 @@ operational decision.
 - Backout:
   not used.
 
+## Runtime And Backup Ownership
+
+- Current transition runtime:
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`
+- Final DB/runtime owner:
+  `~/code/shinyipilot`, through a future ShinyiPilot-owned Docker/deploy/config
+  and runtime layout.
+- Current cleanup rule:
+  do not delete, move, or overwrite the transition runtime until the
+  ShinyiPilot-owned layout is running stably, NAS backup/restore evidence exists,
+  and a separate cleanup decision chooses whether to delete, archive, or keep
+  this copy.
+- Current backup route:
+  keep local SQLite-aware startup backups and add non-destructive periodic sync
+  to the NAS path `/Volumes/home/backup`.
+- NAS sync requirement:
+  copy a SQLite-aware snapshot or verified backup output with timestamp,
+  integrity result, hashes, and source path; do not use delete semantics by
+  default.
+- Restore rule:
+  restore from local or NAS backup only with a separate restore decision and a
+  selected manifest.
+
 ## Invariants
 
 - Do not edit, delete, move, or migrate old host-local `2999` service data.
@@ -76,6 +99,8 @@ operational decision.
   production config.
 - Do not run destructive cleanup on
   `~/.local/state/shinyipilot-codex-line/runtime`.
+- Do not treat the transition runtime as cleanup-ready just because the service
+  is running in Docker.
 - Do not use adapter compatibility overlay for cutover.
 - Do not touch host `4800`, `4801`, or `4811`.
 - Do not restore a DB backup unless there is concrete corruption evidence and a

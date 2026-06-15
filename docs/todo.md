@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 11:09
+Last Updated: 2026-06-15 11:19
 Status: Active
 
 ## P0: ShinyiPilot Production Agent Cleanup And Capability Gates @2026-06-15-1109
@@ -16,7 +16,7 @@ Section source:
 - Code/Surface: [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), [container-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-production-line.sh), ShinyiPilot `/Users/rickwen/code/shinyipilot`, host-backed `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`
 - Source: user wants to first confirm current production agent capability and then add stronger self-iteration powers, including bounded shell calls and proactive skill-generation records. The agreed order is to clean the codebase and ownership boundary before granting new agent powers.
 
-Current checkpoint @2026-06-15 11:09:
+Current checkpoint @2026-06-15 11:19:
 
 - Docker-backed ShinyiPilot already owns host `127.0.0.1:2999`.
 - Real LINE canaries passed after ShinyiPilot route models were changed to
@@ -24,13 +24,16 @@ Current checkpoint @2026-06-15 11:09:
 - The next work must not assume Docker alone is enough isolation, because the
   running container mounts real `/runtime`, real ShinyiPilot config, and Codex
   auth.
+- The current host-backed runtime copy is allowed to remain where it is during
+  stabilization. It must not be cleaned up until ShinyiPilot owns the final
+  DB/runtime layout and the NAS backup/restore route has evidence.
 - New shell/self-improvement powers are intentionally blocked behind cleanup and
   capability gates.
 
 - [ ] Clean the codebase and ownership boundary before adding new agent powers.
   - Source: current user decision that codebase cleanup should come before shell/self-iteration expansion.
   - Code/Surface: `docs/todo.md`, `docs/todo-finished.md`, `docs/spec.md`, `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/`, `/Users/rickwen/code/shinyipilot`, and the untracked parent paths `shinyipilot-spike/` and `code-trace/`.
-  - Done when: active todo contains only actionable unfinished work; completed-only historical sections are removed from `docs/todo.md` and already represented in `docs/todo-finished.md`; the transition split between `copilot-sdk` and `shinyipilot` is unambiguous; `shinyipilot-spike/` is no longer treated as production source; production config/runtime/DB ownership is explicit; and no runner silently patches ShinyiPilot app code.
+  - Done when: active todo contains only actionable unfinished work; completed-only historical sections are removed from `docs/todo.md` and already represented in `docs/todo-finished.md`; the transition split between `copilot-sdk` and `shinyipilot` is unambiguous; `shinyipilot-spike/` is no longer treated as production source; production config/runtime/DB ownership is explicit; the current copied runtime has a documented keep-until-stable cleanup rule; and no runner silently patches ShinyiPilot app code.
 - [ ] Build a production capability confirmation matrix before unlocking broader autonomy.
   - Source: current user request to "完全確認能力可用+再強化".
   - Code/Surface: real LINE route `line:shinyipaint:*`, ShinyiPilot logs, SQLite read-back under `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`, adapter `semanticLog`, and existing Docker sweep tools such as [run-sweep.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-sweep.sh).
@@ -56,8 +59,12 @@ Section source:
 - Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
 - Source: user accepted keeping short-term ShinyiPilot production-line deployment decisions in the parent `copilot-sdk` branch because `shinyipilot-spike/` is a nested worktree and parent git cannot own its internal files as canonical source.
 - Source update: user clarified the long-term split: `copilot-sdk` owns Codex adapter, Docker lab, and adapter E2E during transition; `shinyipilot` owns minimal app compatibility, product config, and future full Docker/config/DB deployment ownership.
+- Source update: user clarified that final DB/runtime ownership should return
+  to `~/code/shinyipilot`; the current copied runtime can remain during
+  stabilization, but the transition should add periodic sync backup to the NAS
+  path `/Volumes/home/backup`.
 
-Current checkpoint @2026-06-15 10:50:
+Current checkpoint @2026-06-15 11:19:
 
 - `run-production-line.sh` now implements the dedicated production-line shadow
   runner and defaults to no application-code overlay.
@@ -80,13 +87,25 @@ Current checkpoint @2026-06-15 10:50:
   `127.0.0.1:2999 -> container:29999`.
 - Real LINE canary passed after the ShinyiPilot route model policy was corrected
   from `gemini-3-flash` to `gpt-5.4-mini`.
+- The current host-backed runtime at
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime` remains the
+  active transition runtime for the running container. It is not a disposable
+  image layer and should not be cleaned up until the ShinyiPilot-owned runtime
+  layout and backup/restore route are ready.
+- NAS sync backup to `/Volumes/home/backup` is an accepted route but not yet a
+  completed recurring automation proof.
 - Completion evidence is archived in
   [docs/todo-finished.md](./todo-finished.md#completed-shinyipilot-host-2999-codex-cutover-2026-06-15-1050).
+
+- [ ] Add transitional NAS backup automation for the current host-backed runtime.
+  - Source: user decision that the current DB is production-like and should gain a NAS safety copy while final ownership moves back to ShinyiPilot.
+  - Code/Surface: [production-runtime-backup.py](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-runtime-backup.py), [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`, `/Volumes/home/backup`, and the future ShinyiPilot-owned runbook.
+  - Done when: a SQLite-aware snapshot or backup manifest is created before sync; the NAS copy under `/Volumes/home/backup` records source path, timestamp, DB integrity result, hashes, and row-count summary; sync is non-destructive and does not use delete semantics by default; restore requires a separate decision; and the final ShinyiPilot runbook says whether this automation moves into `~/code/shinyipilot` or is retired.
 
 - [ ] Move full ShinyiPilot production deployment ownership back to `~/code/shinyipilot` when the transition ends.
   - Source: [shinyipilot-deployment-ownership-transition/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md) and user decision that future complete deployment should move Docker, config, DB, backup, and runbook ownership back to ShinyiPilot.
   - Code/Surface: current parent Docker lane, ShinyiPilot config/runtime layout, and host-backed `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`.
-  - Done when: ShinyiPilot repo owns the production Docker/deploy/config/DB/backup runbook, while `copilot-sdk` keeps only adapter source/package and adapter-level Docker E2E.
+  - Done when: ShinyiPilot repo owns the production Docker/deploy/config/DB/backup runbook, including the final DB location, migration/cutover steps from the current transition runtime, NAS backup cadence/retention, restore rules, and cleanup criteria for the extra transition copy; `copilot-sdk` keeps only adapter source/package and adapter-level Docker E2E.
 
 ## P1: Codex Adapter Semantic Observability Parity @2026-06-15-0024
 

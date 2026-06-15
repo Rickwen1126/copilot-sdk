@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 19:36
+Last Updated: 2026-06-15 19:42
 Status: Active
 
 ## P0: ShinyiPilot Production Agent Cleanup And Capability Gates @2026-06-15-1109
@@ -124,6 +124,17 @@ Current checkpoint @2026-06-15 18:42:
   `shinyipilot-codex-line-cutover-20260615-1813-adapter-path` still publishes
   `127.0.0.1:2999->29999/tcp`.
 
+Current checkpoint @2026-06-15 19:42:
+
+- Code-surface classification is complete in
+  [code-surface-inventory.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/code-surface-inventory.md).
+- Blocking findings before the formal ShinyiPilot-owned production pass:
+  ShinyiPilot does not yet own Docker/deploy/backup code paths; ShinyiPilot
+  docs do not yet contain the production Codex handoff pack; existing
+  `copilot-sdk` smoke/sweep/lab lanes still depend on `shinyipilot-spike/`;
+  adapter acquisition mode is not finalized; and long-running Codex auth
+  persistence remains open.
+
 - [ ] Add transitional NAS backup automation for the current host-backed runtime.
   - Source: user decision that the current DB is production-like and should gain a NAS safety copy while final ownership moves back to ShinyiPilot.
   - Plan: [runtime-backup-dry-run/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/runtime-backup-dry-run/plan.md)
@@ -131,12 +142,6 @@ Current checkpoint @2026-06-15 18:42:
   - Current evidence: Items 1-4b in [runtime-backup-dry-run/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/runtime-backup-dry-run/plan.md) passed at 2026-06-15 18:42, including local live read-only snapshot, NAS copy, file-level restore, and service-level restore rehearsal.
   - Still active because: recurring/operational backup ownership has not yet moved into the final ShinyiPilot-owned runbook or deploy scripts.
   - Done when: the dry-run plan has settled and recorded the read-only inventory baseline, local SQLite-aware snapshot proof, NAS sync proof, restore rehearsal proof, final ShinyiPilot runtime layout decision, migration/cutover rehearsal rules, and transition-runtime cleanup criteria; sync is non-destructive and does not use delete semantics by default; restore requires a separate decision; and the final ShinyiPilot runbook says whether this automation moves into `~/code/shinyipilot` or is retired.
-
-- [ ] Locate and classify every ShinyiPilot production-line code surface before porting.
-  - Source: user clarified that all code must be positioned before formal production run or cleanup.
-  - Plan: [shinyipilot-deployment-ownership-transition/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md#execution-sequence)
-  - Code/Surface: parent Dockerfile/entrypoint/runner/backup helper, `copilot-sdk/python/copilot/codex_adapter`, ShinyiPilot app source/config/env, current transition runtime, NAS backup path, and docs/controller handoff surfaces.
-  - Done when: each surface is classified as `copilot-sdk remains owner`, `port/recreate in shinyipilot`, `runtime state`, `NAS backup`, `transition evidence`, or `cleanup candidate`; no production operation still depends on `shinyipilot-spike/` or hidden overlay behavior.
 
 - [ ] Run the formal ShinyiPilot-owned production pass by comparing against the dry-run evidence.
   - Source: user clarified that the dry-run result should be the model for the formal run.

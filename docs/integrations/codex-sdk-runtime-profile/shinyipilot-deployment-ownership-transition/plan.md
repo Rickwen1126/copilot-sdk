@@ -1,7 +1,7 @@
 # ShinyiPilot Deployment Ownership Transition Plan
 
 Created: 2026-06-15 09:32
-Last Updated: 2026-06-15 19:36
+Last Updated: 2026-06-15 19:42
 Status: Active; host 2999 cutover complete, final ownership pending
 
 ## Purpose
@@ -28,6 +28,10 @@ The detailed backup/migration dry-run sequence is tracked in
 plan as the evidence ledger for inventory, backup snapshot, NAS sync, restore
 rehearsal, final layout, migration, and cleanup decisions.
 
+The code-surface inventory for the first execution step is tracked in
+[code-surface-inventory.md](./code-surface-inventory.md). Use it before
+porting files or deciding what can be cleaned up.
+
 ## Execution Sequence
 
 The remaining transition work has a fixed order. Do not treat "move the
@@ -41,6 +45,8 @@ backup/deploy/runbook into ShinyiPilot" and "cleanup" as parallel choices.
    - This includes the Dockerfile, entrypoint, runner, backup helper, adapter
      package source, ShinyiPilot config/env inputs, runtime DB/assets, NAS
      backup path, and controller docs.
+   - Current result:
+     [code-surface-inventory.md](./code-surface-inventory.md).
 2. Compare the dry-run result against the formal production run.
    - The dry run already proved the data movement shape. The next operational
      pass should use that evidence as the checklist for the real ShinyiPilot

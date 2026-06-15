@@ -1,10 +1,28 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 10:50
+Last Updated: 2026-06-15 19:42
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: ShinyiPilot Production-Line Code Surface Inventory @2026-06-15-1942
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Active follow-up: [docs/todo.md](./todo.md#p1-shinyipilot-deployment-ownership-transition-2026-06-15-0932)
+- Ownership transition plan: [shinyipilot-deployment-ownership-transition/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md)
+- Inventory: [code-surface-inventory.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/code-surface-inventory.md)
+- Runtime backup dry-run plan: [runtime-backup-dry-run/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/runtime-backup-dry-run/plan.md)
+- Source: user clarified the remaining order: first locate/classify all code surfaces, then compare the dry-run result against a formal production run, then finish teaching/handoff docs, and only then cleanup.
+
+- [x] Located and classified every ShinyiPilot production-line code surface before porting.
+      Completion evidence: [code-surface-inventory.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/code-surface-inventory.md) classifies app source/config, real runtime state, NAS backup, adapter package/tests, transition Docker/deploy/backup prototypes, docs, containers, restore rehearsal artifacts, and cleanup candidates.
+- [x] Confirmed the current production path does not depend on `shinyipilot-spike/`.
+      Completion evidence: the active production-line container is built from real `/Users/rickwen/code/shinyipilot` source through the no-overlay runner, while `shinyipilot-spike/` is classified as transition evidence / cleanup candidate, not production source.
+- [x] Identified the remaining blockers before formal ShinyiPilot-owned production.
+      Completion evidence: the inventory records that ShinyiPilot still needs its own Docker/deploy/backup code path, production Codex handoff docs, adapter acquisition/pinning decision, long-running Codex auth persistence decision, and a decision for `copilot-sdk` smoke/sweep/lab scripts that still depend on `shinyipilot-spike/`.
 
 ## Completed: ShinyiPilot Host 2999 Codex Cutover @2026-06-15-1050
 

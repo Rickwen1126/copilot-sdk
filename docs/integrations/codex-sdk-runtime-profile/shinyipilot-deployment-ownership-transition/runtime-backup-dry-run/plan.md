@@ -1,7 +1,7 @@
 # ShinyiPilot Runtime Backup Dry-Run Plan
 
 Created: 2026-06-15 13:54
-Last Updated: 2026-06-15 16:33
+Last Updated: 2026-06-15 16:59
 Status: Active; dry-run list specified, Item 1 complete
 
 ## Purpose
@@ -46,6 +46,33 @@ runtime.
   `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime` until final
   ShinyiPilot ownership, backup/restore evidence, stable runtime behavior, and a
   separate cleanup approval all exist.
+
+## Dry-Run To Production Path Mapping
+
+The dry-run paths are deliberately shaped so that a successful rehearsal can be
+compared directly with the future ShinyiPilot-owned deployment. The dry run is
+not a second design; it is a staging version of the same data movement.
+
+| Role | Dry-run path | Future ShinyiPilot-owned path | Equivalence rule |
+| --- | --- | --- | --- |
+| Current live source runtime | `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime` | `/Users/rickwen/.local/state/shinyipilot/production/runtime` | Current transition source becomes the migration source. Future production runtime has the same DB and asset contract, but lives under ShinyiPilot-owned state. |
+| Local backup bundle | `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/<timestamp>-transition-runtime-live-snapshot` | `/Users/rickwen/.local/state/shinyipilot/production/backups/<timestamp>-production-runtime-live-snapshot` | Same manifest schema, DB hashes, row counts, and asset allowlist. Only owner/root/name changes after final deployment. |
+| NAS backup bundle | `/Volumes/home/backup/shinyipilot-codex-line/runtime-backups/<timestamp>-transition-runtime-live-snapshot` | `/Volumes/home/backup/shinyipilot/production/runtime-backups/<timestamp>-production-runtime-live-snapshot` | Same off-host copy semantics: target directory must not already exist, no delete semantics, manifest and DB hashes must verify after copy. |
+| File-level restore rehearsal | `/tmp/shinyipilot-runtime-restore-rehearsal-<timestamp>` | A temporary restore candidate before copying into `/Users/rickwen/.local/state/shinyipilot/production/runtime` | Proves the backup can be copied back and read. It is not mounted into production and is never the live runtime. |
+| Service-level restore rehearsal runtime | `/tmp/shinyipilot-final-layout-rehearsal-<timestamp>/production/runtime` | `/Users/rickwen/.local/state/shinyipilot/production/runtime` | Same directory shape and app env contract as final production: mounted as `/runtime`, with `CHATPILOT_DB=/runtime/chatpilot.db`, `CHATPILOT_TASK_DB=/runtime/tasks.db`, `CHATPILOT_FILES_DB=/runtime/files.db`, and `CHATPILOT_FILE_ASSETS_DIR=/runtime/file_assets`. |
+| Service-level rehearsal app port | container app `PORT=2999`, no host `2999` publish | host `127.0.0.1:2999 -> container:2999`, app `PORT=2999` | Container-internal app port matches final deployment. Dry run proves app behavior without taking host `2999`; final cutover publishes the same container port to host `2999`. |
+| Final migration target | not written during dry run | `/Users/rickwen/.local/state/shinyipilot/production/runtime` | Created only during the approved migration. Dry-run success means this path should receive the same verified backup contents that passed file-level and service-level rehearsal. |
+
+Promotion rule:
+
+- If file-level restore and service-level restore both pass, the actual
+  migration should copy the verified backup contents into the future production
+  path and then compare the same manifest fields: DB integrity, DB hashes before
+  first live write, row counts, asset allowlist, app `/health`, runtime env, and
+  port mapping.
+- If any field differs, stop and explain the difference before proceeding.
+  Production migration should not invent a new path, port, DB name, or backup
+  semantics that did not appear in the dry run.
 
 ## Dry-Run List
 
@@ -299,7 +326,7 @@ Decision:
 - The rehearsal copies from the NAS backup into the temp restore root, then
   validates the copy. It does not start ShinyiPilot and does not mount the
   restored directory into a container.
-- A later service-level rehearsal can be added only after this file-level
+- Item 4b service-level restore rehearsal can run only after this file-level
   restore proof passes.
 
 Required command shape:
@@ -323,6 +350,77 @@ Pass criteria:
 - Row counts match the local snapshot manifest.
 - No production runtime path is used as restore destination.
 - No service is started from the restored directory.
+
+### Item 4b: Service-Level Restore Rehearsal
+
+Status: specified; not executed. Do not run until Item 4 proves file-level
+restore from NAS.
+
+Decision:
+
+- Use the restored backup to create a temp final-layout rehearsal directory, then
+  run an isolated ShinyiPilot container against that temp runtime.
+- The dry-run container must not publish host `2999`, must not touch Cloudflare
+  tunnel config, and must not send real LINE webhook/canary traffic.
+- Container-internal app port should be `2999` so the rehearsal matches the
+  future final deployment shape. Health can be checked inside the container or
+  through an explicitly chosen temporary host port after a free-port preflight.
+  Do not use host `2999`, `4800`, `4801`, or `4811`.
+- The rehearsal may exercise read-only app health, config loading, DB open,
+  runtime env, and manifest row-count checks.
+- If a write smoke is needed later, it must write only to the temp restored DB
+  and must record cleanup/discard evidence. The default service-level rehearsal
+  is read-only.
+
+Dry-run directory shape:
+
+```text
+/tmp/shinyipilot-final-layout-rehearsal-<timestamp>/
+  production/
+    runtime/
+      chatpilot.db
+      tasks.db
+      files.db
+      file_assets/
+      route_labels.json
+      ...
+    artifacts/
+```
+
+Required runtime env shape:
+
+```sh
+PORT=2999
+CHATPILOT_DB=/runtime/chatpilot.db
+CHATPILOT_TASK_DB=/runtime/tasks.db
+CHATPILOT_FILES_DB=/runtime/files.db
+CHATPILOT_FILE_ASSETS_DIR=/runtime/file_assets
+ROUTE_SETTINGS_PATH=/host-config/route_settings.yaml
+ROUTE_BINDINGS_PATH=/host-config/route_bindings.yaml
+CHATPILOT_RUNTIME_BACKEND=codex-adapter
+```
+
+Minimum proof:
+
+- Container starts with the temp runtime mounted as `/runtime`.
+- App binds container port `2999`.
+- `/health` returns `status=ok` from inside the isolated service.
+- The app opens `chatpilot.db`, `tasks.db`, and `files.db` from `/runtime`.
+- DB integrity and row counts in the temp runtime match the Item 4 restored
+  manifest before any optional write smoke.
+- Runtime env recorded in the rehearsal artifact matches the future final
+  deployment env shape.
+- No host `2999` listener changes during the rehearsal.
+- No Cloudflare or LINE side effect occurs.
+
+Pass criteria:
+
+- File-level restore passed first.
+- Service-level health and DB-open checks pass using the temp restored runtime.
+- No production runtime path is modified.
+- No host `2999` takeover happens.
+- Rehearsal artifact states whether it used no host port or a temporary host
+  port, and records the temp path that maps to the future production path.
 
 ### Item 5: Final ShinyiPilot Runtime Layout Decision
 

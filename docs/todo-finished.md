@@ -1,7 +1,7 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 09:42
+Last Updated: 2026-06-15 09:44
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
@@ -28,6 +28,8 @@ Section source:
       Completion evidence: `source-overlay-manifest.json` reports `status=not_applied` and `sourceMode=real-shinyipilot-source-no-overlay`; `line-shadow-preflight-result.json` reports `status=pass`, `/health status=ok`, `runtimeBackend=codex-adapter`, `model=gpt-5.4-mini`, signed synthetic LINE webhook HTTP 200, SQLite `source_messages` read-back with `capture_policy=observer` and `retention_class=long`, route identity read-back, and ShinyiPilot line-ingress log proof.
 - [x] Kept the host boundary clean.
       Completion evidence: shadow mode published no host `2999`; post-run `lsof -nP -iTCP:2999 -sTCP:LISTEN` returned no listener, and the shadow container was removed by `--rm`.
+- [x] Prepared the host `2999` cutover and backout checklist.
+      Completion evidence: [host-2999-cutover-checklist.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/host-2999-cutover-checklist.md) records pre-cutover checks, fresh no-overlay shadow proof requirements, old-service stop boundary, cutover start command, health/Cloudflare/canary evidence, and non-destructive backout rules. Actual cutover remains an active todo requiring explicit user approval.
 
 ## Completed: ShinyiPilot Production LINE Shadow Runner @2026-06-15-0303
 

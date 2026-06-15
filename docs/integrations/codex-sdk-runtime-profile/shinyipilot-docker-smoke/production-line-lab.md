@@ -31,6 +31,8 @@ the nested worktree.
 
 The repo ownership transition and no-hidden-overlay guard are tracked in
 [../shinyipilot-deployment-ownership-transition/plan.md](../shinyipilot-deployment-ownership-transition/plan.md).
+Host `2999` cutover is gated by
+[host-2999-cutover-checklist.md](./host-2999-cutover-checklist.md).
 
 ## Target Shape
 
@@ -224,6 +226,7 @@ The first accepted production-line lab proof must include:
 ## Open Work
 
 - Decide the long-running Codex auth persistence strategy.
-- Prepare the host `2999` cutover and backout checklist.
+- Execute host `2999` cutover only after explicit approval, using
+  [host-2999-cutover-checklist.md](./host-2999-cutover-checklist.md).
 - Decide whether `~/code/shinyipilot` product docs should receive the accepted
   subset after the first successful LINE canary.

@@ -43,6 +43,8 @@ The production-like LINE cutover lane is tracked in
 [shinyipilot-docker-smoke/production-line-lab.md](./shinyipilot-docker-smoke/production-line-lab.md).
 The two-repo ownership transition is tracked in
 [shinyipilot-deployment-ownership-transition/plan.md](./shinyipilot-deployment-ownership-transition/plan.md).
+Host `2999` cutover must follow
+[shinyipilot-docker-smoke/host-2999-cutover-checklist.md](./shinyipilot-docker-smoke/host-2999-cutover-checklist.md).
 Keep that experiment in this `copilot-sdk` branch for now because
 `shinyipilot-spike/` is a nested worktree and the parent repo cannot track its
 internal docs or config as canonical source. The production-line lane changes

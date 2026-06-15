@@ -38,6 +38,8 @@ The production-like LINE cutover lane is tracked separately in
 
 Repo ownership and the no-hidden-overlay transition guard are tracked in
 [../shinyipilot-deployment-ownership-transition/plan.md](../shinyipilot-deployment-ownership-transition/plan.md).
+Host `2999` cutover must follow
+[host-2999-cutover-checklist.md](./host-2999-cutover-checklist.md).
 
 That lane is intentionally documented in this parent `copilot-sdk` branch.
 `shinyipilot-spike/` is a nested worktree and experiment target, so parent git

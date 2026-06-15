@@ -1,7 +1,7 @@
 # ShinyiPilot Deployment Ownership Transition Plan
 
 Created: 2026-06-15 09:32
-Last Updated: 2026-06-15 19:42
+Last Updated: 2026-06-15 22:07
 Status: Active; host 2999 cutover complete, final ownership pending
 
 ## Purpose
@@ -62,6 +62,9 @@ backup/deploy/runbook into ShinyiPilot" and "cleanup" as parallel choices.
    - Future Codex sessions should be able to start in
      `/Users/rickwen/code/shinyipilot` and recover the production context from
      ShinyiPilot docs without reading this transition branch first.
+   - Current result: complete at ShinyiPilot commit `09595e7` in
+     `/Users/rickwen/code/shinyipilot/docs/codex-line-production/`, including
+     the adapter build/capability handoff and backup/restore dry-run evidence.
 4. Cleanup only after the above are true.
    - Cleanup means archive/retire transition-only docs, runners, temporary
      copies, and old runtime evidence according to the cleanup criteria. It does

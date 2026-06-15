@@ -1,10 +1,41 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 19:42
+Last Updated: 2026-06-15 22:07
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: ShinyiPilot Codex LINE Production Handoff Pack @2026-06-15-2207
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Active follow-up: [docs/todo.md](./todo.md#p1-shinyipilot-deployment-ownership-transition-2026-06-15-0932)
+- Ownership transition plan: [shinyipilot-deployment-ownership-transition/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md)
+- Inventory: [code-surface-inventory.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/code-surface-inventory.md)
+- ShinyiPilot handoff pack: `/Users/rickwen/code/shinyipilot/docs/codex-line-production/README.md`
+- ShinyiPilot commit: `09595e7 docs: add codex line production handoff`
+- Source: user asked to finish the ShinyiPilot docs handoff pack so future Codex sessions can switch from `~/code/copilot-sdk` to `~/code/shinyipilot`.
+
+- [x] Created the ShinyiPilot-owned handoff pack.
+      Completion evidence: ShinyiPilot commit `09595e7` adds
+      `docs/codex-line-production/README.md`, `spec.md`, `plan.md`,
+      `runbook.md`, `adapter-handoff.md`, and `runtime-backup-dry-run.md`.
+- [x] Preserved the production operating boundary in ShinyiPilot docs.
+      Completion evidence: the pack records the current transition container
+      `shinyipilot-codex-line-cutover-20260615-1813-adapter-path`, current
+      transition runtime `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`,
+      verified NAS backup, future ShinyiPilot runtime root, host `2999` rules,
+      backup/restore guardrails, rollback, and cleanup preconditions.
+- [x] Handed off adapter build and capability boundaries.
+      Completion evidence: `adapter-handoff.md` records adapter acquisition
+      modes, `copilot.codex_adapter` as the new import boundary,
+      `copilot-codex-adapter` verification checks, runtime env contract,
+      capability ownership, and the cross-repo change workflow.
+- [x] Linked the pack from ShinyiPilot canonical docs.
+      Completion evidence: ShinyiPilot `docs/README.md`, `docs/spec.md`,
+      `docs/todo.md`, and `docs/todo-finished.md` point at the handoff pack.
 
 ## Completed: ShinyiPilot Production-Line Code Surface Inventory @2026-06-15-1942
 

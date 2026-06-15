@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 19:42
+Last Updated: 2026-06-15 22:07
 Status: Active
 
 ## P0: ShinyiPilot Production Agent Cleanup And Capability Gates @2026-06-15-1109
@@ -129,11 +129,23 @@ Current checkpoint @2026-06-15 19:42:
 - Code-surface classification is complete in
   [code-surface-inventory.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/code-surface-inventory.md).
 - Blocking findings before the formal ShinyiPilot-owned production pass:
-  ShinyiPilot does not yet own Docker/deploy/backup code paths; ShinyiPilot
-  docs do not yet contain the production Codex handoff pack; existing
+  ShinyiPilot does not yet own Docker/deploy/backup code paths; existing
   `copilot-sdk` smoke/sweep/lab lanes still depend on `shinyipilot-spike/`;
   adapter acquisition mode is not finalized; and long-running Codex auth
   persistence remains open.
+
+Current checkpoint @2026-06-15 22:07:
+
+- ShinyiPilot docs handoff pack is complete in
+  `/Users/rickwen/code/shinyipilot/docs/codex-line-production/`.
+- ShinyiPilot commit `09595e7 docs: add codex line production handoff`
+  adds `README.md`, `spec.md`, `plan.md`, `runbook.md`,
+  `adapter-handoff.md`, and `runtime-backup-dry-run.md`, and links the pack
+  from ShinyiPilot `docs/README.md`, `docs/spec.md`, `docs/todo.md`, and
+  `docs/todo-finished.md`.
+- A future Codex session can now start in `/Users/rickwen/code/shinyipilot`
+  to continue production Docker/deploy/backup ownership work without first
+  reading this SDK branch.
 
 - [ ] Add transitional NAS backup automation for the current host-backed runtime.
   - Source: user decision that the current DB is production-like and should gain a NAS safety copy while final ownership moves back to ShinyiPilot.
@@ -149,15 +161,10 @@ Current checkpoint @2026-06-15 19:42:
   - Code/Surface: future ShinyiPilot-owned Docker/deploy/backup scripts, `/Users/rickwen/.local/state/shinyipilot/production/runtime`, and host `127.0.0.1:2999`.
   - Done when: the formal run records the same proof fields as dry run: local live snapshot, NAS copy, restore candidate, service health, DB hashes/row counts, adapter pin, internal `PORT=2999`, host `2999` ownership, and explicit explanation for any path/port/mount/DB-name/backup semantic that differs from dry run.
 
-- [ ] Finish ShinyiPilot teaching and handoff docs before cleanup.
-  - Source: user clarified that handoff teaching docs must be complete before cleanup.
-  - Code/Surface: future ShinyiPilot `docs/spec.md`, `docs/todo.md`, `docs/todo-finished.md`, and `docs/codex-line-production/` pack.
-  - Done when: a future Codex session can start in `/Users/rickwen/code/shinyipilot`, learn how Docker build/run, adapter pin/build, runtime DB, NAS backup/restore, host `2999`, Cloudflare tunnel, rollback, and code ownership work, and continue without first reading this `copilot-sdk` transition branch.
-
 - [ ] Move full ShinyiPilot production deployment ownership back to `~/code/shinyipilot` when the transition ends.
   - Source: [shinyipilot-deployment-ownership-transition/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md) and user decision that future complete deployment should move Docker, config, DB, backup, and runbook ownership back to ShinyiPilot.
   - Source update: user clarified that Codex should eventually work from `~/code/shinyipilot` as the primary production app workspace. The handoff therefore includes docs/controller context, not just executable deployment files.
-  - Ordering: cleanup happens only after code surfaces are classified, the formal production run is compared against dry-run evidence, and ShinyiPilot teaching/handoff docs are complete.
+  - Ordering: cleanup happens only after code surfaces are classified, the formal production run is compared against dry-run evidence, and ShinyiPilot-owned deployment proof exists. The ShinyiPilot teaching/handoff docs are already complete at commit `09595e7`.
   - Code/Surface: current parent Docker lane, ShinyiPilot config/runtime layout, host-backed `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`, `copilot-sdk` transition docs, ShinyiPilot `docs/spec.md`, ShinyiPilot `docs/todo.md`, and a future ShinyiPilot deployment topic such as `docs/codex-line-production/`.
   - Done when: ShinyiPilot repo owns the production Docker/deploy/config/DB/backup runbook, including the final DB location, migration/cutover steps from the current transition runtime, NAS backup cadence/retention, restore rules, and cleanup criteria for the extra transition copy; ShinyiPilot docs contain the controller handoff needed for future Codex sessions to start in `~/code/shinyipilot`; ShinyiPilot docs explain how the `copilot-sdk` adapter is built or pinned into the Docker image, how to verify `copilot-codex-adapter` inside the container, which adapter capabilities are available, and which future changes belong in `copilot-sdk` versus `shinyipilot`; `copilot-sdk` keeps only adapter source/package, adapter-level Docker E2E, semantic observability parity, and historical transition evidence.
 

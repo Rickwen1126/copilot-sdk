@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 11:19
+Last Updated: 2026-06-15 13:54
 Status: Active
 
 ## P0: ShinyiPilot Production Agent Cleanup And Capability Gates @2026-06-15-1109
@@ -55,6 +55,7 @@ Section source:
 - Docker lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
 - Production LINE lab plan: [production-line-lab.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-line-lab.md)
 - Ownership transition plan: [shinyipilot-deployment-ownership-transition/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md)
+- Runtime backup dry-run plan: [runtime-backup-dry-run/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/runtime-backup-dry-run/plan.md)
 - Host 2999 cutover checklist: [host-2999-cutover-checklist.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/host-2999-cutover-checklist.md)
 - Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
 - Source: user accepted keeping short-term ShinyiPilot production-line deployment decisions in the parent `copilot-sdk` branch because `shinyipilot-spike/` is a nested worktree and parent git cannot own its internal files as canonical source.
@@ -99,8 +100,9 @@ Current checkpoint @2026-06-15 11:19:
 
 - [ ] Add transitional NAS backup automation for the current host-backed runtime.
   - Source: user decision that the current DB is production-like and should gain a NAS safety copy while final ownership moves back to ShinyiPilot.
+  - Plan: [runtime-backup-dry-run/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/runtime-backup-dry-run/plan.md)
   - Code/Surface: [production-runtime-backup.py](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-runtime-backup.py), [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`, `/Volumes/home/backup`, and the future ShinyiPilot-owned runbook.
-  - Done when: a SQLite-aware snapshot or backup manifest is created before sync; the NAS copy under `/Volumes/home/backup` records source path, timestamp, DB integrity result, hashes, and row-count summary; sync is non-destructive and does not use delete semantics by default; restore requires a separate decision; and the final ShinyiPilot runbook says whether this automation moves into `~/code/shinyipilot` or is retired.
+  - Done when: the dry-run plan has settled and recorded the read-only inventory baseline, local SQLite-aware snapshot proof, NAS sync proof, restore rehearsal proof, final ShinyiPilot runtime layout decision, migration/cutover rehearsal rules, and transition-runtime cleanup criteria; sync is non-destructive and does not use delete semantics by default; restore requires a separate decision; and the final ShinyiPilot runbook says whether this automation moves into `~/code/shinyipilot` or is retired.
 
 - [ ] Move full ShinyiPilot production deployment ownership back to `~/code/shinyipilot` when the transition ends.
   - Source: [shinyipilot-deployment-ownership-transition/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md) and user decision that future complete deployment should move Docker, config, DB, backup, and runbook ownership back to ShinyiPilot.

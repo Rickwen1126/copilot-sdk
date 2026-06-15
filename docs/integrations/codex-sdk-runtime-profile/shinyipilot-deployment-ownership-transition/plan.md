@@ -1,7 +1,7 @@
 # ShinyiPilot Deployment Ownership Transition Plan
 
 Created: 2026-06-15 09:32
-Last Updated: 2026-06-15 11:19
+Last Updated: 2026-06-15 13:54
 Status: Active; host 2999 cutover complete, final ownership pending
 
 ## Purpose
@@ -22,6 +22,11 @@ still owns the Docker runner, adapter packaging, E2E evidence, and transition
 docs. The remaining route work is to move final Docker/config/DB/backup
 ownership back into ShinyiPilot and protect the transitional runtime until that
 handoff is stable.
+
+The detailed backup/migration dry-run sequence is tracked in
+[runtime-backup-dry-run/plan.md](./runtime-backup-dry-run/plan.md). Use that
+plan as the evidence ledger for inventory, backup snapshot, NAS sync, restore
+rehearsal, final layout, migration, and cleanup decisions.
 
 ## Target Ownership
 
@@ -184,6 +189,9 @@ Done when:
   `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`, NAS backup
   cadence/retention, restore rules, and cleanup criteria for the transition
   copy.
+- The detailed dry-run decisions are recorded in
+  [runtime-backup-dry-run/plan.md](./runtime-backup-dry-run/plan.md), not only
+  in session context.
 - `copilot-sdk` retains only adapter packaging and adapter-level integration
   tests.
 - The `copilot-sdk` production-line lab is marked as historical or transition

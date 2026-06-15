@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from copilot.experimental.codex_adapter.session_store import (
+from copilot.codex_adapter.session_store import (
     CodexAdapterSessionStore,
     CodexRuntimeSessionRecord,
 )

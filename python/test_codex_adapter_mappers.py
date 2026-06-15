@@ -1,4 +1,4 @@
-from copilot.experimental.codex_adapter import (
+from copilot.codex_adapter import (
     codex_sandbox_policy,
     codex_thread_sandbox_mode,
     dynamic_tools_from_descriptors,
@@ -13,6 +13,16 @@ from copilot.experimental.codex_adapter import (
     plan_dynamic_tool_call_routing,
     tool_descriptors_from_session_create_params,
 )
+
+
+def test_legacy_experimental_import_path_reexports_codex_adapter():
+    from copilot.codex_adapter import CODEX_ADAPTER_CAPABILITIES as current_capabilities
+    from copilot.codex_adapter.server import CodexAdapterOptions as CurrentOptions
+    from copilot.experimental.codex_adapter import CODEX_ADAPTER_CAPABILITIES as legacy_capabilities
+    from copilot.experimental.codex_adapter.server import CodexAdapterOptions as LegacyOptions
+
+    assert legacy_capabilities is current_capabilities
+    assert LegacyOptions is CurrentOptions
 
 
 def test_tool_descriptor_and_dynamic_tool_mapping_matches_node_shape():

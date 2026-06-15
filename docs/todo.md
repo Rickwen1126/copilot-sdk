@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 17:17
+Last Updated: 2026-06-15 18:10
 Status: Active
 
 ## P0: ShinyiPilot Production Agent Cleanup And Capability Gates @2026-06-15-1109
@@ -120,7 +120,7 @@ Section source:
 
 - Spec: [docs/spec.md](./spec.md)
 - Runtime backend guide: [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md)
-- Code/Surface: [python/copilot/experimental/codex_adapter/server.py](../python/copilot/experimental/codex_adapter/server.py), [python/test_codex_adapter_server.py](../python/test_codex_adapter_server.py), [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/src/experimental/codexAppServerGateway.ts](../nodejs/src/experimental/codexAppServerGateway.ts)
+- Code/Surface: [python/copilot/codex_adapter/server.py](../python/copilot/codex_adapter/server.py), [python/test_codex_adapter_server.py](../python/test_codex_adapter_server.py), [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/src/experimental/codexAppServerGateway.ts](../nodejs/src/experimental/codexAppServerGateway.ts)
 - Source: user clarified that Codex raw thread events should become adapter-visible structured classifications before they are logged or replayed.
 
 Current checkpoint @2026-06-15 00:24:
@@ -145,7 +145,7 @@ Section source:
 - Spec: [docs/spec.md](./spec.md)
 - Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
 - Docker smoke lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
-- Code/Surface: [python/copilot/experimental/codex_adapter/gateway.py](../python/copilot/experimental/codex_adapter/gateway.py), [container-smoke.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-smoke.sh)
+- Code/Surface: [python/copilot/codex_adapter/gateway.py](../python/copilot/codex_adapter/gateway.py), [container-smoke.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-smoke.sh)
 - Source: user asked how Docker handles Codex auth before broader Codex + Copilot SDK testing.
 
 Current checkpoint @2026-06-15 01:06:

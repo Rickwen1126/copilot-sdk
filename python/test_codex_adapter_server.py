@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from copilot import CopilotClient, ExternalServerConfig, PermissionHandler, define_tool
-from copilot.experimental.codex_adapter.server import CodexAdapterOptions, CodexCopilotAdapterServer
+from copilot.codex_adapter.server import CodexAdapterOptions, CodexCopilotAdapterServer
 from copilot.session import PermissionRequestResult
 from copilot.tools import ToolResult
 

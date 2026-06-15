@@ -1,8 +1,8 @@
 # Python-Native Codex Adapter Spike
 
 Created: 2026-06-12 15:53
-Last Updated: 2026-06-12 16:50
-Status: Phase 1 implementation, parity tests, and live Codex smoke evidence
+Last Updated: 2026-06-15 18:10
+Status: Phase 1 implementation, parity tests, live Codex smoke evidence, and package-path graduation shim
 
 This spike ports the selected Node.js Codex adapter profile into a Python-native
 experimental surface without switching ShinyiPilot or Chatpilot production
@@ -12,15 +12,18 @@ Node sidecar.
 
 ## Package Boundary
 
-Code surface:
+Current code surface:
 
-- `python/copilot/experimental/codex_adapter/`
+- `python/copilot/codex_adapter/`
 - CLI entrypoint: `copilot-codex-adapter`
-- Public import path: `copilot.experimental.codex_adapter`
+- Public import path: `copilot.codex_adapter`
+- Legacy compatibility import path: `copilot.experimental.codex_adapter`
 
 The root `copilot` package does not re-export adapter internals. The adapter is
-still experimental because downstream ShinyiPilot smoke and any production
-route switch need separate proof beyond this Phase 1 adapter package/CLI gate.
+still not re-exported from the root SDK package because downstream production
+lanes need explicit adapter pinning and proof. The old
+`copilot.experimental.codex_adapter` path remains as a compatibility shim for
+existing tests, docs, and artifacts.
 
 ## Runtime Layers
 
@@ -111,7 +114,7 @@ Result:
 ```
 
 ```sh
-cd python && uv run --extra dev ruff check copilot/experimental examples/codex_adapter_live_smoke.py test_codex_adapter_mappers.py test_codex_adapter_server.py test_codex_adapter_session_store.py test_codex_adapter_parity_snapshot.py
+cd python && uv run --extra dev ruff check copilot/codex_adapter copilot/experimental examples/codex_adapter_live_smoke.py test_codex_adapter_mappers.py test_codex_adapter_server.py test_codex_adapter_session_store.py test_codex_adapter_parity_snapshot.py
 ```
 
 Result:
@@ -121,11 +124,11 @@ All checks passed!
 ```
 
 ```sh
-cd python && uv run python -m compileall copilot/experimental copilot/generated examples/codex_adapter_live_smoke.py test_codex_adapter_mappers.py test_codex_adapter_server.py test_codex_adapter_session_store.py test_codex_adapter_parity_snapshot.py
+cd python && uv run python -m compileall copilot/codex_adapter copilot/experimental copilot/generated examples/codex_adapter_live_smoke.py test_codex_adapter_mappers.py test_codex_adapter_server.py test_codex_adapter_session_store.py test_codex_adapter_parity_snapshot.py
 ```
 
-Result: all targeted experimental adapter modules, generated permission-event
-models, smoke scripts, and parity tests compile.
+Result: all targeted adapter modules, compatibility wrappers, generated
+permission-event models, smoke scripts, and parity tests compile.
 
 ```sh
 cd python && uv run python examples/codex_adapter_live_smoke.py --out ../docs/integrations/codex-sdk-runtime-profile/artifacts/python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json

@@ -1,7 +1,7 @@
 # ShinyiPilot Deployment Ownership Transition Plan
 
 Created: 2026-06-15 09:32
-Last Updated: 2026-06-15 17:17
+Last Updated: 2026-06-15 18:10
 Status: Active; host 2999 cutover complete, final ownership pending
 
 ## Purpose
@@ -87,7 +87,7 @@ inside the git repo".
 | NAS backups | `/Volumes/home/backup/shinyipilot-codex-line/runtime-backups` | `/Volumes/home/backup/shinyipilot/production/runtime-backups` | NAS is backup/restore evidence, not the live source of truth. No delete semantics by default. |
 | Dockerfile and entrypoint | `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/Dockerfile` and `container-production-line.sh` | ShinyiPilot deployment files, for example `docker/codex-line/Dockerfile`, `docker/codex-line/entrypoint.sh`, and a ShinyiPilot-owned run/deploy script | Final Docker ownership moves to ShinyiPilot. The current files are transition prototypes/evidence until ported. |
 | Backup helper | `production-runtime-backup.py` in the `copilot-sdk` Docker lane | ShinyiPilot-owned backup/restore helper or deploy script | Port the behavior, not necessarily the exact file path. Add live read-only snapshot mode before using it as recurring backup. |
-| Codex adapter source/package | `copilot-sdk/python/copilot/experimental/codex_adapter` copied into the transition image as editable `/workspace/python` | A pinned `copilot-sdk` adapter package/source consumed by ShinyiPilot image build | This is the thin adapter surface that remains in `copilot-sdk`: runtime backend implementation, package, protocol tests, semantic-log parity, and adapter E2E. |
+| Codex adapter source/package | `copilot-sdk/python/copilot/codex_adapter` copied into the transition image as editable `/workspace/python`, with legacy import wrappers under `copilot.experimental.codex_adapter` | A pinned `copilot-sdk` adapter package/source consumed by ShinyiPilot image build | This is the thin adapter surface that remains in `copilot-sdk`: runtime backend implementation, package, protocol tests, semantic-log parity, compatibility shim, and adapter E2E. |
 | Adapter E2E / behavior sweep | `copilot-sdk` Docker smoke/sweep/lab docs and artifacts | `copilot-sdk` keeps adapter-level regression; ShinyiPilot keeps product deployment E2E | SDK tests prove the adapter can run inside an app image. ShinyiPilot tests prove the product deployment, config, DB, and LINE behavior. |
 | Controller docs and handoff | `copilot-sdk/docs/spec.md`, `docs/todo.md`, this transition plan, dry-run plan, production-line lab docs, cutover checklist, and `.progress/progress.md` updates | ShinyiPilot `docs/spec.md`, `docs/todo.md`, `docs/todo-finished.md`, and a ShinyiPilot deployment topic such as `docs/codex-line-production/` | Final handoff must let a future agent start in `/Users/rickwen/code/shinyipilot` and recover the production context without depending on session memory or reading this SDK branch first. |
 

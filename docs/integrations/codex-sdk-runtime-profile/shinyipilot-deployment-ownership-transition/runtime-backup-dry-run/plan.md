@@ -1,7 +1,7 @@
 # ShinyiPilot Runtime Backup Dry-Run Plan
 
 Created: 2026-06-15 13:54
-Last Updated: 2026-06-15 17:17
+Last Updated: 2026-06-15 18:10
 Status: Active; dry-run list specified, Item 1 complete
 
 ## Purpose
@@ -59,7 +59,7 @@ not a second design; it is a staging version of the same data movement.
 | --- | --- | --- | --- |
 | Deployment repo owner | This `copilot-sdk` branch documents and runs the transition lane | `/Users/rickwen/code/shinyipilot` owns product deployment docs/scripts | Final production operation should be driven from ShinyiPilot, not from the parent transition runner. |
 | App image source path | `/Users/rickwen/code/shinyipilot` copied by `run-production-line.sh` into a temp build context | `/Users/rickwen/code/shinyipilot` as the Docker build source | Same app source. The production image must not depend on `/Users/rickwen/code/copilot-sdk/shinyipilot-spike`. |
-| Adapter source/package path | `/Users/rickwen/code/copilot-sdk/python/copilot/experimental/codex_adapter` copied into the image as editable `/workspace/python` | A pinned `copilot-sdk` adapter package/source consumed by the ShinyiPilot image build | Same adapter API contract. Final deployment decides the pin method; ShinyiPilot owns only the consumption point. |
+| Adapter source/package path | `/Users/rickwen/code/copilot-sdk/python/copilot/codex_adapter` copied into the image as editable `/workspace/python`, with legacy wrappers under `copilot.experimental.codex_adapter` | A pinned `copilot-sdk` adapter package/source consumed by the ShinyiPilot image build | Same adapter API contract. Final deployment decides the pin method; ShinyiPilot owns only the consumption point. |
 | Dockerfile source | `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/Dockerfile` | A ShinyiPilot-owned Dockerfile, for example `/Users/rickwen/code/shinyipilot/docker/codex-line/Dockerfile` | Port the image shape into ShinyiPilot before final handoff. The parent Dockerfile becomes transition evidence. |
 | Container entrypoint source | `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-production-line.sh` | A ShinyiPilot-owned entrypoint/run script, for example `/Users/rickwen/code/shinyipilot/docker/codex-line/entrypoint.sh` | Preserve env, `/runtime`, Codex home, adapter startup, and app startup semantics; remove parent-specific overlay fallback. |
 | Backup helper source | `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-runtime-backup.py` | A ShinyiPilot-owned backup/restore helper or deploy script | Same manifest/integrity/hash behavior. Add live read-only snapshot mode before recurring use. |
@@ -537,7 +537,8 @@ ShinyiPilot deployment files to create or port before final handoff:
 
 What should remain in `copilot-sdk` after handoff:
 
-- `copilot.experimental.codex_adapter` implementation and packaging.
+- `copilot.codex_adapter` implementation and packaging, plus temporary
+  `copilot.experimental.codex_adapter` compatibility wrappers.
 - Adapter protocol/conformance tests and semantic observability parity tests.
 - Adapter-level Docker E2E that proves the adapter can run inside a generic app
   image boundary.

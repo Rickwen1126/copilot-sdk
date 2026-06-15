@@ -1,8 +1,48 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 10:50
+Last Updated: 2026-06-15 11:09
 Status: Active
+
+## P0: ShinyiPilot Production Agent Cleanup And Capability Gates @2026-06-15-1109
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Cutover archive: [docs/todo-finished.md](./todo-finished.md#completed-shinyipilot-host-2999-codex-cutover-2026-06-15-1050)
+- Cutover checklist: [host-2999-cutover-checklist.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/host-2999-cutover-checklist.md)
+- Ownership transition plan: [shinyipilot-deployment-ownership-transition/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md)
+- Docker lane: [docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/)
+- Code/Surface: [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), [container-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/container-production-line.sh), ShinyiPilot `/Users/rickwen/code/shinyipilot`, host-backed `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`
+- Source: user wants to first confirm current production agent capability and then add stronger self-iteration powers, including bounded shell calls and proactive skill-generation records. The agreed order is to clean the codebase and ownership boundary before granting new agent powers.
+
+Current checkpoint @2026-06-15 11:09:
+
+- Docker-backed ShinyiPilot already owns host `127.0.0.1:2999`.
+- Real LINE canaries passed after ShinyiPilot route models were changed to
+  `gpt-5.4-mini`.
+- The next work must not assume Docker alone is enough isolation, because the
+  running container mounts real `/runtime`, real ShinyiPilot config, and Codex
+  auth.
+- New shell/self-improvement powers are intentionally blocked behind cleanup and
+  capability gates.
+
+- [ ] Clean the codebase and ownership boundary before adding new agent powers.
+  - Source: current user decision that codebase cleanup should come before shell/self-iteration expansion.
+  - Code/Surface: `docs/todo.md`, `docs/todo-finished.md`, `docs/spec.md`, `docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/`, `/Users/rickwen/code/shinyipilot`, and the untracked parent paths `shinyipilot-spike/` and `code-trace/`.
+  - Done when: active todo contains only actionable unfinished work; completed-only historical sections are removed from `docs/todo.md` and already represented in `docs/todo-finished.md`; the transition split between `copilot-sdk` and `shinyipilot` is unambiguous; `shinyipilot-spike/` is no longer treated as production source; production config/runtime/DB ownership is explicit; and no runner silently patches ShinyiPilot app code.
+- [ ] Build a production capability confirmation matrix before unlocking broader autonomy.
+  - Source: current user request to "完全確認能力可用+再強化".
+  - Code/Surface: real LINE route `line:shinyipaint:*`, ShinyiPilot logs, SQLite read-back under `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime`, adapter `semanticLog`, and existing Docker sweep tools such as [run-sweep.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-sweep.sh).
+  - Done when: the matrix proves real production-like behavior for normal reply, memo save/list/delete, reminder and schedule CRUD, custom prompt list/delete after the prefix gap is fixed, warehouse/query-style tool use, observer capture, and file/image ingress if in scope. Each row must include input, expected behavior, DB/log/adapter evidence, cleanup/backout proof if state-changing, and a clear pass/fail result.
+- [ ] Design bounded shell and self-improvement capability before implementation.
+  - Source: current user request to "完全解放 agent 自我迭代的能力也就是準 shell 能call" and add "自我強化能力（主動 skill 生成記錄）".
+  - Code/Surface: ShinyiPilot tool registry, Codex adapter permission/sandbox settings, Docker production-line runtime, skill storage policy, audit logs, and future ShinyiPilot-owned deploy/runbook.
+  - Done when: there is a documented design for an admin-only bounded command runner with fixed working directories, command allowlist/denylist, timeout, output cap, environment redaction, audit log, state-changing preflight/backup policy, no destructive defaults, and container/host mount boundaries; skill generation writes only to an approved staging area, records provenance, runs a smoke test, and updates a registry or docs entry before being activated.
+- [ ] Implement shell/self-improvement only after the cleanup and capability gates pass.
+  - Source: safety ordering from the current discussion.
+  - Code/Surface: future ShinyiPilot implementation and `copilot-sdk` adapter-level tests.
+  - Done when: implementation is covered by Docker E2E with DB/log/audit evidence, proves denied unsafe commands, proves allowed read-only and bounded write commands, proves skill-generation staging/activation flow, and documents rollback/backout.
 
 ## P1: ShinyiPilot Deployment Ownership Transition @2026-06-15-0932
 
@@ -133,34 +173,3 @@ Current checkpoint @2026-06-15 01:26:
   - Source: Docker lab probe using `gpt-5.4-mini` and natural-language CLI turns.
   - Code/Surface: ShinyiPilot `delete_custom_prompt.py`, `list_custom_prompts.py`, and matching unit tests in the nested ShinyiPilot worktree.
   - Done when: a user can ask to list and delete a preference by the displayed ID, DB read-back confirms deletion, ShinyiPilot logs show `status=success`, and adapter `semanticLog` records `tool.sdk_result success=true`.
-
-## P1: Runtime Adapter Refactor Architecture Guard @2026-06-03-1141
-
-Section source:
-
-- Spec: [docs/integrations/codex-sdk-runtime-profile/refactor/spec.md](./integrations/codex-sdk-runtime-profile/refactor/spec.md)
-- Plan: [docs/integrations/codex-sdk-runtime-profile/refactor/plan.md](./integrations/codex-sdk-runtime-profile/refactor/plan.md)
-- Code/Surface: [nodejs/src/experimental/codexAdapter.ts](../nodejs/src/experimental/codexAdapter.ts), [nodejs/src/experimental/codexAdapterServer.ts](../nodejs/src/experimental/codexAdapterServer.ts), [nodejs/examples/copilot-codex-adapter-spike.ts](../nodejs/examples/copilot-codex-adapter-spike.ts), [nodejs/examples/chatpilot-runtime-acceptance.ts](../nodejs/examples/chatpilot-runtime-acceptance.ts), [nodejs/test/codex-adapter.test.ts](../nodejs/test/codex-adapter.test.ts)
-- References: [runtime adapter architecture boundary](./reference/runtime-adapter-architecture-boundary.md), [runtime adapter design patterns](./reference/runtime-adapter-design-patterns.md), [runtime adapter testing evidence](./reference/runtime-adapter-testing-evidence.md), [SHIP](../.ship/SHIP-codex-adapter-module-cleanup@2026-06-01.md), [learning packet](./integrations/codex-sdk-runtime-profile/learning-design-patterns-architecture-testing.md), [prior cleanup draft](./integrations/codex-sdk-runtime-profile/module-cleanup-plan.md), and [runtime backend code map](./architecture/runtime-backend-code-map.md)
-- Source: user request to consolidate side-thread learning/refactor context into canonical spec/plan before implementation
-
-No active P1 Runtime Adapter Refactor Architecture Guard phases remain. Completed Phase 5-7 work has been moved to [docs/todo-finished.md](./todo-finished.md).
-
-Current milestone state:
-
-- Canonical spec: [docs/spec.md](./spec.md)
-- Architecture diagram: [docs/architecture/skyeye.html](./architecture/skyeye.html)
-- Python adapter sky eye: [docs/architecture/python-codex-adapter-skyeye.html](./architecture/python-codex-adapter-skyeye.html)
-- Code map: [docs/architecture/runtime-backend-code-map.md](./architecture/runtime-backend-code-map.md)
-- Python adapter CodeTour: [.tours/03-python-codex-adapter-skyeye-copilot-sdk.tour](../.tours/03-python-codex-adapter-skyeye-copilot-sdk.tour)
-- Runtime backend guide: [docs/integrations/runtime-backends.md](./integrations/runtime-backends.md)
-- Runtime profile plan: [docs/integrations/codex-sdk-runtime-profile/plan.md](./integrations/codex-sdk-runtime-profile/plan.md)
-- Production readiness inventory: [docs/integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md](./integrations/codex-sdk-runtime-profile/production-readiness@2026-06-04-1953.md)
-- Production capability spike: [codex-app-server-capability-spike@2026-06-04-2028.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/codex-app-server-capability-spike@2026-06-04-2028.summary.json)
-- Python-native adapter spike: [docs/integrations/codex-sdk-runtime-profile/python-native-codex-adapter-spike/spec.md](./integrations/codex-sdk-runtime-profile/python-native-codex-adapter-spike/spec.md)
-- Python-native adapter live smoke: [python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json](./integrations/codex-sdk-runtime-profile/artifacts/python-native-codex-adapter-live-smoke@2026-06-12-1650.summary.json)
-- Conformance artifacts: [docs/integrations/codex-sdk-runtime-profile/conformance-artifacts.md](./integrations/codex-sdk-runtime-profile/conformance-artifacts.md)
-- Unsupported capabilities: [docs/integrations/codex-sdk-runtime-profile/unsupported-capabilities.md](./integrations/codex-sdk-runtime-profile/unsupported-capabilities.md)
-- Completed todo archive: [docs/todo-finished.md](./todo-finished.md)
-
-Completed work for the milestone has been moved to [docs/todo-finished.md](./todo-finished.md).

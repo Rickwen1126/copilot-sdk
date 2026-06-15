@@ -10,6 +10,15 @@ MODEL="${CODEX_ADAPTER_MODEL:-gpt-5.4-mini}"
 PRODUCTION_LINE_MODE="${PRODUCTION_LINE_MODE:-shadow}"
 APP_PORT="${APP_PORT:-29999}"
 ADAPTER_PORT="${CODEX_ADAPTER_PORT:-4873}"
+APP_BIND_HOST="${APP_BIND_HOST:-}"
+if [[ -z "${APP_BIND_HOST}" ]]; then
+    if [[ "${PRODUCTION_LINE_MODE}" == "serve" || "${PRODUCTION_LINE_MODE}" == "cutover" ]]; then
+        APP_BIND_HOST="0.0.0.0"
+    else
+        APP_BIND_HOST="127.0.0.1"
+    fi
+fi
+APP_INTERNAL_HOST="127.0.0.1"
 
 ADAPTER_PID=""
 APP_PID=""
@@ -148,15 +157,15 @@ ADAPTER_PID="$!"
 wait_for_tcp "127.0.0.1" "${ADAPTER_PORT}" "codex adapter"
 
 /workspace/shinyipilot/.venv/bin/uvicorn chatpilot.server:create_app \
-    --factory --host 127.0.0.1 --port "${APP_PORT}" \
+    --factory --host "${APP_BIND_HOST}" --port "${APP_PORT}" \
     > "${ARTIFACT_DIR}/shinyipilot.log" 2>&1 &
 APP_PID="$!"
-wait_for_http "http://127.0.0.1:${APP_PORT}/health" "ShinyiPilot"
+wait_for_http "http://${APP_INTERNAL_HOST}:${APP_PORT}/health" "ShinyiPilot"
 
 if [[ "${PRODUCTION_LINE_MODE}" == "shadow" ]]; then
     ARTIFACT_DIR="${ARTIFACT_DIR}" \
     RUNTIME_DIR="${RUNTIME_DIR}" \
-    APP_URL="http://127.0.0.1:${APP_PORT}" \
+    APP_URL="http://${APP_INTERNAL_HOST}:${APP_PORT}" \
     ROUTE_SETTINGS_PATH="${ROUTE_SETTINGS_PATH}" \
     ROUTE_BINDINGS_PATH="${ROUTE_BINDINGS_PATH}" \
     CHATPILOT_DB="${CHATPILOT_DB}" \
@@ -183,6 +192,7 @@ fi
 
 MODEL="${MODEL}" \
 APP_PORT="${APP_PORT}" \
+APP_BIND_HOST="${APP_BIND_HOST}" \
 ADAPTER_PORT="${ADAPTER_PORT}" \
 PRODUCTION_LINE_MODE="${PRODUCTION_LINE_MODE}" \
 python - "${ARTIFACT_DIR}/production-line-ready.json" <<'PY'
@@ -198,7 +208,8 @@ Path(sys.argv[1]).write_text(
             "status": "ready",
             "mode": os.environ["PRODUCTION_LINE_MODE"],
             "model": os.environ["MODEL"],
-            "appUrl": f"http://127.0.0.1:{os.environ['APP_PORT']}",
+            "appBindHost": os.environ["APP_BIND_HOST"],
+            "containerAppUrl": f"http://127.0.0.1:{os.environ['APP_PORT']}",
             "adapterUrl": f"127.0.0.1:{os.environ['ADAPTER_PORT']}",
             "readyAt": datetime.now(timezone.utc).isoformat(),
         },

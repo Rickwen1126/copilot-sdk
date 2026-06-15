@@ -1,7 +1,7 @@
 # ShinyiPilot Deployment Ownership Transition Plan
 
 Created: 2026-06-15 09:32
-Last Updated: 2026-06-15 18:10
+Last Updated: 2026-06-15 19:36
 Status: Active; host 2999 cutover complete, final ownership pending
 
 ## Purpose
@@ -27,6 +27,42 @@ The detailed backup/migration dry-run sequence is tracked in
 [runtime-backup-dry-run/plan.md](./runtime-backup-dry-run/plan.md). Use that
 plan as the evidence ledger for inventory, backup snapshot, NAS sync, restore
 rehearsal, final layout, migration, and cleanup decisions.
+
+## Execution Sequence
+
+The remaining transition work has a fixed order. Do not treat "move the
+backup/deploy/runbook into ShinyiPilot" and "cleanup" as parallel choices.
+
+1. Locate and classify every code surface.
+   - Identify which current files are transition prototypes, which files remain
+     adapter-owned in `copilot-sdk`, which files must be recreated or ported
+     into `~/code/shinyipilot`, and which paths are runtime state rather than
+     source code.
+   - This includes the Dockerfile, entrypoint, runner, backup helper, adapter
+     package source, ShinyiPilot config/env inputs, runtime DB/assets, NAS
+     backup path, and controller docs.
+2. Compare the dry-run result against the formal production run.
+   - The dry run already proved the data movement shape. The next operational
+     pass should use that evidence as the checklist for the real ShinyiPilot
+     owned layout: local snapshot, NAS copy, restore candidate, service health,
+     DB hashes/row counts, internal `PORT=2999`, and host `2999` ownership.
+   - Any production path, port, DB name, mount, adapter pin, or backup semantic
+     that did not appear in the dry run is a stop-and-explain difference.
+3. Finish teaching and handoff documentation.
+   - ShinyiPilot docs must explain how to build the image, pin or consume the
+     `copilot-sdk` adapter, mount runtime/config/secrets, back up and restore
+     SQLite state, operate host `2999` / Cloudflare, roll back, and decide
+     whether future changes belong in `copilot-sdk` or `shinyipilot`.
+   - Future Codex sessions should be able to start in
+     `/Users/rickwen/code/shinyipilot` and recover the production context from
+     ShinyiPilot docs without reading this transition branch first.
+4. Cleanup only after the above are true.
+   - Cleanup means archive/retire transition-only docs, runners, temporary
+     copies, and old runtime evidence according to the cleanup criteria. It does
+     not mean deleting production-like DB state just because the formal layout
+     exists.
+   - Directory deletion still requires explicit approval with absolute path
+     inventory.
 
 ## Target Ownership
 

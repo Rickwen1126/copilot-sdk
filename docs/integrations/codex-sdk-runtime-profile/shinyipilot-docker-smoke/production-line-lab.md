@@ -1,8 +1,8 @@
 # ShinyiPilot Production LINE Docker Lab
 
 Created: 2026-06-15 02:26
-Last Updated: 2026-06-15 09:32
-Status: Shadow preflight passed; host 2999 cutover pending
+Last Updated: 2026-06-15 09:42
+Status: No-overlay shadow preflight passed; host 2999 cutover pending
 
 This document records the short-term source of truth for running ShinyiPilot
 through the Python Codex adapter as a production-like LINE service.
@@ -156,13 +156,14 @@ Current proof:
 
 - Runner: `run-production-line.sh`
 - Artifact:
-  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0938-production-line-shadow`
 - Startup backup:
-  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-030207-production-line-startup`
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0938-production-line-startup`
 - Result file: `line-shadow-preflight-result.json`
-- Source shape: real `/Users/rickwen/code/shinyipilot` source/config/env, with
-  only `src/chatpilot/sdk/session.py` and `src/chatpilot/tools/factory.py`
-  overlaid from `shinyipilot-spike` inside the temporary Docker build context.
+- Source shape: real `/Users/rickwen/code/shinyipilot` source/config/env with no
+  application-code overlay. `source-overlay-manifest.json` reports
+  `status=not_applied` and
+  `sourceMode=real-shinyipilot-source-no-overlay`.
 - Runtime shape:
   `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime:/runtime`.
 - Pass evidence: `/health` returned `status=ok`; `runtimeBackend` was
@@ -172,10 +173,10 @@ Current proof:
   `source_messages` row with `capture_policy=observer` and one route identity
   row; ShinyiPilot log contained the line ingress handled marker.
 - Host boundary: no host `2999` listener was published.
-- Source caveat: the proof still used a temporary adapter compatibility overlay
-  for `src/chatpilot/sdk/session.py` and `src/chatpilot/tools/factory.py`.
-  Host `2999` cutover should wait for a no-overlay shadow proof after the
-  accepted ShinyiPilot patch subset is ported into `~/code/shinyipilot`.
+- Compatibility source: ShinyiPilot commit `0946d0b` now owns the accepted
+  `src/chatpilot/sdk/session.py` and `src/chatpilot/tools/factory.py`
+  compatibility behavior. The old overlay proof remains historical evidence at
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`.
 
 ## Host Port Cutover
 
@@ -222,10 +223,6 @@ The first accepted production-line lab proof must include:
 
 ## Open Work
 
-- Port the accepted adapter compatibility subset into `~/code/shinyipilot`.
-- Change the production-line runner so no application-code overlay is the
-  default source mode, with overlay left only as explicit debug fallback.
-- Produce a no-overlay production-line shadow proof before host `2999` cutover.
 - Decide the long-running Codex auth persistence strategy.
 - Prepare the host `2999` cutover and backout checklist.
 - Decide whether `~/code/shinyipilot` product docs should receive the accepted

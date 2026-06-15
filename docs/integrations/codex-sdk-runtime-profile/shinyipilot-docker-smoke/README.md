@@ -1,7 +1,7 @@
 # ShinyiPilot Codex Docker Smoke
 
 Created: 2026-06-15 00:42
-Last Updated: 2026-06-15 09:32
+Last Updated: 2026-06-15 09:42
 Status: Active production-smoke lane
 
 This folder contains the containerized state-changing smoke for the
@@ -74,27 +74,33 @@ from the real route bindings, and verifies `/health`, route policy, source
 message capture, route identity registry update, ShinyiPilot log evidence, and
 secret redaction booleans.
 
-Because the real ShinyiPilot checkout has not yet accepted the Codex adapter
-runtime patches, the current runner overlays only these adapter compatibility
-files into the temporary Docker build context:
+Production-line builds now default to the real ShinyiPilot checkout with no
+application-code overlay. The runner writes `source-overlay-manifest.json` for
+every run; in the accepted path it reports:
+
+```text
+status=not_applied
+sourceMode=real-shinyipilot-source-no-overlay
+```
+
+The runner fails fast if the real source is missing Codex adapter compatibility
+markers for:
 
 - `src/chatpilot/sdk/session.py`
 - `src/chatpilot/tools/factory.py`
 
-The original `~/code/shinyipilot` checkout is not modified. The artifact
-directory records `source-overlay-manifest.json` with source and overlay hashes.
-This overlay is a temporary proof bridge. Before host `2999` cutover, the
-accepted subset should be ported into `~/code/shinyipilot`, and the runner
-should default to building from the real ShinyiPilot source with no
-application-code overlay.
+Debug-only overlay remains available with
+`ALLOW_SHINYIPILOT_COMPAT_OVERLAY=YES`. Cutover mode refuses overlay-enabled
+builds.
 
 Latest passing production-line shadow artifact:
-`~/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`.
+`~/.local/state/shinyipilot-codex-line/artifacts/20260615-0938-production-line-shadow`.
 
 That run used `gpt-5.4-mini`, did not publish host `2999`, wrote startup backup
-`~/.local/state/shinyipilot-codex-line/backups/20260615-030207-production-line-startup`,
+`~/.local/state/shinyipilot-codex-line/backups/20260615-0938-production-line-startup`,
 and verified one synthetic `source_messages` row with `capture_policy=observer`
-and one route identity row.
+and one route identity row. Its source manifest reports
+`sourceMode=real-shinyipilot-source-no-overlay`.
 
 ## Default Model
 

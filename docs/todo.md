@@ -1,7 +1,7 @@
 # Active Todo
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 09:32
+Last Updated: 2026-06-15 09:42
 Status: Active
 
 ## P1: ShinyiPilot Deployment Ownership Transition @2026-06-15-0932
@@ -16,42 +16,28 @@ Section source:
 - Source: user accepted keeping short-term ShinyiPilot production-line deployment decisions in the parent `copilot-sdk` branch because `shinyipilot-spike/` is a nested worktree and parent git cannot own its internal files as canonical source.
 - Source update: user clarified the long-term split: `copilot-sdk` owns Codex adapter, Docker lab, and adapter E2E during transition; `shinyipilot` owns minimal app compatibility, product config, and future full Docker/config/DB deployment ownership.
 
-Current checkpoint @2026-06-15 09:32:
+Current checkpoint @2026-06-15 09:42:
 
 - `run-production-line.sh` now implements the dedicated production-line shadow
-  runner.
+  runner and defaults to no application-code overlay.
 - The runner uses real `~/code/shinyipilot` source/config/env and host-backed
   `/Users/rickwen/.local/state/shinyipilot-codex-line/runtime:/runtime`.
-- Because the real ShinyiPilot checkout has not yet accepted the Codex adapter
-  runtime patches, the runner overlays only `src/chatpilot/sdk/session.py` and
-  `src/chatpilot/tools/factory.py` from `shinyipilot-spike` into the temporary
-  Docker build context. The original checkout is not modified.
-- That overlay is now classified as a temporary proof bridge, not the default
-  production source mode. Production cutover should wait until the accepted
-  ShinyiPilot patch subset is ported into `~/code/shinyipilot`, and a
-  no-overlay shadow proof passes.
+- ShinyiPilot commit `0946d0b` owns the accepted adapter compatibility subset in
+  `src/chatpilot/sdk/session.py` and `src/chatpilot/tools/factory.py`.
+- `run-production-line.sh` now treats overlay as explicit debug fallback only:
+  `ALLOW_SHINYIPILOT_COMPAT_OVERLAY=YES`. Cutover mode refuses overlay-enabled
+  builds.
 - Startup backup passed at
-  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-030207-production-line-startup`.
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0938-production-line-startup`.
 - Shadow preflight passed at
-  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`.
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0938-production-line-shadow`
+  with `sourceMode=real-shinyipilot-source-no-overlay`.
   It verified health, real LINE config env presence, route policy,
   source-message capture, route identity registry update, and log evidence.
 - Host `2999` was not published; post-run `lsof` found no listener.
 - The old host-local `2999` service may be stopped for cutover, but stopping it
   must not edit, delete, or migrate its data.
 
-- [ ] Port the accepted ShinyiPilot adapter compatibility subset into `~/code/shinyipilot`.
-  - Source: ownership transition plan M2 and user decision to keep long-term interaction as `~/code/copilot-sdk` + `~/code/shinyipilot`.
-  - Code/Surface: `/Users/rickwen/code/shinyipilot/src/chatpilot/sdk/session.py`, `/Users/rickwen/code/shinyipilot/src/chatpilot/tools/factory.py`, matching ShinyiPilot unit tests, and the current reference files under `shinyipilot-spike`.
-  - Done when: ShinyiPilot supports `CHATPILOT_RUNTIME_BACKEND=codex-adapter` and SDK `ToolInvocation` normalization from its own source, tests pass, and no `.env`, route config, DB, runtime asset, or production data file is modified.
-- [ ] Make `run-production-line.sh` no-overlay by default.
-  - Source: ownership transition plan M3 no-hidden-overlay guard.
-  - Code/Surface: [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), `source-overlay-manifest.json` artifact behavior, production runbook, and Docker lab README.
-  - Done when: shadow mode builds from `~/code/shinyipilot` as-is by default, overlay requires an explicit debug flag and artifact evidence, and cutover mode refuses overlay-enabled builds.
-- [ ] Produce a no-overlay production-line shadow proof.
-  - Source: ownership transition plan M4 and current overlay caveat in [production-line-lab.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-line-lab.md).
-  - Code/Surface: production-line runner, startup backup helper, synthetic LINE webhook preflight, host-backed `/runtime`, artifact result JSON, ShinyiPilot logs, and adapter summary.
-  - Done when: the latest artifact records source mode as no overlay, `/health` passes, synthetic LINE webhook DB/log read-back passes, startup backup passes, and host `2999`, `4800`, `4801`, and `4811` remain untouched.
 - [ ] Prepare host `2999` cutover and backout checklist.
   - Source: user said the old `2999` service can be stopped directly, but data must not be modified.
   - Code/Surface: [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), [production-line-lab.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-line-lab.md), production runbook, and runner flags for `127.0.0.1:2999:29999`.

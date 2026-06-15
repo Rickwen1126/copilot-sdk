@@ -1,8 +1,8 @@
 # ShinyiPilot Deployment Ownership Transition Plan
 
 Created: 2026-06-15 09:32
-Last Updated: 2026-06-15 09:32
-Status: Active
+Last Updated: 2026-06-15 09:42
+Status: Active; no-overlay shadow gate complete
 
 ## Purpose
 
@@ -109,6 +109,8 @@ Done when:
 
 ### M2: Port Minimal ShinyiPilot Compatibility
 
+Status: complete.
+
 Done when:
 
 - The accepted `session.py` and `factory.py` behavior is ported or
@@ -120,6 +122,8 @@ Done when:
 
 ### M3: Make Production Runner No-Overlay By Default
 
+Status: complete.
+
 Done when:
 
 - `run-production-line.sh` builds from `~/code/shinyipilot` as-is by default.
@@ -130,6 +134,8 @@ Done when:
 - Cutover mode refuses overlay-enabled builds.
 
 ### M4: Produce No-Overlay Shadow Proof
+
+Status: complete.
 
 Done when:
 
@@ -163,14 +169,16 @@ Done when:
 
 ## Current Evidence
 
+- ShinyiPilot compatibility commit:
+  `0946d0b feat: support codex adapter runtime backend`
 - Production-line shadow runner commit:
   `65b04dd test: add shinyipilot production line shadow runner`
 - Latest passing shadow artifact:
-  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0938-production-line-shadow`
 - Latest startup backup:
-  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-030207-production-line-startup`
+  `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0938-production-line-startup`
 - Current source mode:
-  `real-shinyipilot-source-with-adapter-compat-overlay`
+  `real-shinyipilot-source-no-overlay`
 
 ## Non-Goals
 

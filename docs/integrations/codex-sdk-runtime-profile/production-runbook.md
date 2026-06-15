@@ -1,7 +1,7 @@
 # Codex Adapter Production Runbook
 
 Created: 2026-06-09 11:45
-Last Updated: 2026-06-15 09:32
+Last Updated: 2026-06-15 09:42
 Status: P0 operational contract for selected Chatpilot Codex adapter profile
 
 This runbook is for operating the experimental Codex adapter as a Copilot SDK-compatible runtime backend.
@@ -56,21 +56,21 @@ docs/integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-product
 ```
 
 The latest passing shadow artifact is
-`~/.local/state/shinyipilot-codex-line/artifacts/20260615-030207-production-line-shadow`.
-That run used real `~/code/shinyipilot` config/env, host-backed
+`~/.local/state/shinyipilot-codex-line/artifacts/20260615-0938-production-line-shadow`.
+That run used real `~/code/shinyipilot` source/config/env with
+`sourceMode=real-shinyipilot-source-no-overlay`, host-backed
 `~/.local/state/shinyipilot-codex-line/runtime:/runtime`, no host port
 publishing, and startup backup
-`~/.local/state/shinyipilot-codex-line/backups/20260615-030207-production-line-startup`.
+`~/.local/state/shinyipilot-codex-line/backups/20260615-0938-production-line-startup`.
 It verified `/health`, `CHATPILOT_RUNTIME_BACKEND=codex-adapter`,
 `gpt-5.4-mini`, a signed synthetic LINE webhook against a real
 `observer_capture_only` route, SQLite `source_messages` read-back, route
 identity read-back, and ShinyiPilot line-ingress log evidence. Host `2999`
 remains cutover-pending.
 
-That shadow proof still used a temporary adapter compatibility overlay in the
-Docker build context. Before host `2999` cutover, port the accepted compatibility
-subset into `~/code/shinyipilot`, make production-line builds no-overlay by
-default, and rerun shadow mode with source mode recorded as no overlay.
+The runner now defaults to no application-code overlay. Debug-only overlay
+requires `ALLOW_SHINYIPILOT_COMPAT_OVERLAY=YES`; cutover mode refuses
+overlay-enabled builds.
 
 The default model for this Codex-backed daily-office experiment lane is
 `gpt-5.4-mini`. This is a Codex runtime model policy, not a GitHub Copilot SDK

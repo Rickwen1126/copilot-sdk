@@ -11,6 +11,7 @@ CODEX_AUTH_HOME="${CODEX_AUTH_HOME:-${HOME}/.codex}"
 CODEX_ADAPTER_MODEL="${CODEX_ADAPTER_MODEL:-gpt-5.4-mini}"
 SHINYIPILOT_SOURCE="${SHINYIPILOT_SOURCE:-${HOME}/code/shinyipilot}"
 SHINYIPILOT_ADAPTER_COMPAT_SOURCE="${SHINYIPILOT_ADAPTER_COMPAT_SOURCE:-${REPO_ROOT}/shinyipilot-spike}"
+ALLOW_SHINYIPILOT_COMPAT_OVERLAY="${ALLOW_SHINYIPILOT_COMPAT_OVERLAY:-NO}"
 ROUTE_SETTINGS_SOURCE="${ROUTE_SETTINGS_SOURCE:-${SHINYIPILOT_SOURCE}/config/route_settings.yaml}"
 ROUTE_BINDINGS_SOURCE="${ROUTE_BINDINGS_SOURCE:-${SHINYIPILOT_SOURCE}/config/route_bindings.yaml}"
 STATE_ROOT="${STATE_ROOT:-${HOME}/.local/state/shinyipilot-codex-line}"
@@ -41,10 +42,19 @@ if [[ "${PRODUCTION_LINE_MODE}" == "cutover" ]]; then
         echo "Refusing cutover without ALLOW_HOST_2999_CUTOVER=YES" >&2
         exit 1
     fi
+    if [[ "${ALLOW_SHINYIPILOT_COMPAT_OVERLAY}" == "YES" ]]; then
+        echo "Refusing cutover with ALLOW_SHINYIPILOT_COMPAT_OVERLAY=YES; cutover requires real source with no overlay." >&2
+        exit 1
+    fi
     if lsof -nP -iTCP:2999 -sTCP:LISTEN >/dev/null 2>&1; then
         echo "Host 2999 already has a listener. Stop the old service intentionally before cutover." >&2
         exit 1
     fi
+fi
+
+if [[ "${ALLOW_SHINYIPILOT_COMPAT_OVERLAY}" != "NO" && "${ALLOW_SHINYIPILOT_COMPAT_OVERLAY}" != "YES" ]]; then
+    echo "Unsupported ALLOW_SHINYIPILOT_COMPAT_OVERLAY=${ALLOW_SHINYIPILOT_COMPAT_OVERLAY}; expected NO or YES" >&2
+    exit 1
 fi
 
 if docker ps -a --format '{{.Names}}' | grep -Fx "${CONTAINER_NAME}" >/dev/null; then
@@ -95,23 +105,24 @@ if [[ -r "${SHINYIPILOT_SOURCE}/README.md" ]]; then
     cp -a "${SHINYIPILOT_SOURCE}/README.md" "${BUILD_CONTEXT}/shinyipilot/README.md"
 fi
 
-if [[ ! -d "${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}" ]]; then
-    echo "Missing adapter compatibility source: ${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}" >&2
-    echo "Set SHINYIPILOT_ADAPTER_COMPAT_SOURCE to a ShinyiPilot worktree with Codex adapter patches." >&2
-    exit 1
-fi
 ADAPTER_COMPAT_FILE_LIST="src/chatpilot/sdk/session.py src/chatpilot/tools/factory.py"
-for rel in ${ADAPTER_COMPAT_FILE_LIST}; do
-    if [[ ! -r "${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}/${rel}" ]]; then
-        echo "Missing adapter compatibility file: ${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}/${rel}" >&2
+if [[ "${ALLOW_SHINYIPILOT_COMPAT_OVERLAY}" == "YES" ]]; then
+    if [[ ! -d "${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}" ]]; then
+        echo "Missing adapter compatibility source: ${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}" >&2
+        echo "Set SHINYIPILOT_ADAPTER_COMPAT_SOURCE to a ShinyiPilot worktree with Codex adapter patches." >&2
         exit 1
     fi
-    cp -a "${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}/${rel}" "${BUILD_CONTEXT}/shinyipilot/${rel}"
-done
-python3 - "${ARTIFACT_DIR}/source-overlay-manifest.json" \
-    "${SHINYIPILOT_SOURCE}" \
-    "${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}" \
-    ${ADAPTER_COMPAT_FILE_LIST} <<'PY'
+    for rel in ${ADAPTER_COMPAT_FILE_LIST}; do
+        if [[ ! -r "${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}/${rel}" ]]; then
+            echo "Missing adapter compatibility file: ${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}/${rel}" >&2
+            exit 1
+        fi
+        cp -a "${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}/${rel}" "${BUILD_CONTEXT}/shinyipilot/${rel}"
+    done
+    python3 - "${ARTIFACT_DIR}/source-overlay-manifest.json" \
+        "${SHINYIPILOT_SOURCE}" \
+        "${SHINYIPILOT_ADAPTER_COMPAT_SOURCE}" \
+        ${ADAPTER_COMPAT_FILE_LIST} <<'PY'
 import hashlib
 import json
 import sys
@@ -154,6 +165,71 @@ out.write_text(
     encoding="utf-8",
 )
 PY
+else
+    python3 - "${ARTIFACT_DIR}/source-overlay-manifest.json" \
+        "${SHINYIPILOT_SOURCE}" \
+        ${ADAPTER_COMPAT_FILE_LIST} <<'PY'
+import hashlib
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+out = Path(sys.argv[1])
+source_root = Path(sys.argv[2])
+files = sys.argv[3:]
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+required_markers = {
+    "src/chatpilot/sdk/session.py": [
+        "CHATPILOT_RUNTIME_BACKEND",
+        "CHATPILOT_COPILOT_CLI_URL",
+        "codex-adapter",
+    ],
+    "src/chatpilot/tools/factory.py": [
+        "_invocation_to_dict",
+        "_tool_result_status_text",
+    ],
+}
+checks = []
+missing = []
+for rel, markers in required_markers.items():
+    path = source_root / rel
+    text = path.read_text(encoding="utf-8")
+    for marker in markers:
+        ok = marker in text
+        checks.append({"path": rel, "marker": marker, "present": ok})
+        if not ok:
+            missing.append(f"{rel}: {marker}")
+
+payload = {
+    "status": "not_applied" if not missing else "failed",
+    "createdAt": datetime.now(timezone.utc).isoformat(),
+    "sourceMode": "real-shinyipilot-source-no-overlay",
+    "shinyipilotSource": str(source_root),
+    "compatibilityChecks": checks,
+    "sourceFiles": [
+        {
+            "path": rel,
+            "sourceSha256": sha256(source_root / rel),
+        }
+        for rel in files
+    ],
+}
+out.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+if missing:
+    raise SystemExit(
+        "Real ShinyiPilot source is missing Codex adapter compatibility markers: "
+        + "; ".join(missing)
+    )
+PY
+fi
 
 cp -a "${SCRIPT_DIR}/Dockerfile" "${BUILD_CONTEXT}/Dockerfile"
 cp -a "${SCRIPT_DIR}/container-smoke.sh" "${BUILD_CONTEXT}/container-smoke.sh"

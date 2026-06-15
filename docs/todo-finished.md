@@ -1,10 +1,33 @@
 # Completed Todo Archive
 
 Created: 2026-05-16
-Last Updated: 2026-06-15 03:03
+Last Updated: 2026-06-15 09:42
 Status: Archived
 
 This archive was bootstrapped from session continuity and live adapter work. Missing historical links mean the older notes did not record them, not that the retention rule is optional.
+
+## Completed: ShinyiPilot No-Overlay Production-Line Gate @2026-06-15-0942
+
+Section source:
+
+- Spec: [docs/spec.md](./spec.md)
+- Ownership transition plan: [shinyipilot-deployment-ownership-transition/plan.md](./integrations/codex-sdk-runtime-profile/shinyipilot-deployment-ownership-transition/plan.md)
+- Production LINE lab plan: [production-line-lab.md](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/production-line-lab.md)
+- Production runbook: [docs/integrations/codex-sdk-runtime-profile/production-runbook.md](./integrations/codex-sdk-runtime-profile/production-runbook.md)
+- Code/Surface: [run-production-line.sh](./integrations/codex-sdk-runtime-profile/shinyipilot-docker-smoke/run-production-line.sh), ShinyiPilot `/Users/rickwen/code/shinyipilot/src/chatpilot/sdk/session.py`, ShinyiPilot `/Users/rickwen/code/shinyipilot/src/chatpilot/tools/factory.py`
+- ShinyiPilot commit: `0946d0b feat: support codex adapter runtime backend`
+- Artifact directory: `/Users/rickwen/.local/state/shinyipilot-codex-line/artifacts/20260615-0938-production-line-shadow`
+- Startup backup: `/Users/rickwen/.local/state/shinyipilot-codex-line/backups/20260615-0938-production-line-startup`
+- Source: user clarified that transition builds must not silently patch app code; `copilot-sdk` owns Docker/Codex/E2E during transition while ShinyiPilot owns the minimal app compatibility and product config.
+
+- [x] Ported the accepted adapter compatibility subset into `~/code/shinyipilot`.
+      Completion evidence: ShinyiPilot commit `0946d0b` adds `CHATPILOT_RUNTIME_BACKEND=codex-adapter` / `CHATPILOT_COPILOT_CLI_URL` support in `src/chatpilot/sdk/session.py`, normalizes SDK `ToolInvocation` objects in `src/chatpilot/tools/factory.py`, and adds unit coverage. Targeted ShinyiPilot tests passed: `uv run pytest tests/unit/test_sdk_session.py tests/unit/test_tool_factory.py` with 14 tests passing.
+- [x] Made production-line builds no-overlay by default.
+      Completion evidence: `run-production-line.sh` defaults `ALLOW_SHINYIPILOT_COMPAT_OVERLAY=NO`, writes `source-overlay-manifest.json` on every run, validates real-source compatibility markers, leaves overlay available only with `ALLOW_SHINYIPILOT_COMPAT_OVERLAY=YES`, and refuses overlay-enabled `cutover` mode.
+- [x] Produced a no-overlay production-line shadow proof.
+      Completion evidence: `source-overlay-manifest.json` reports `status=not_applied` and `sourceMode=real-shinyipilot-source-no-overlay`; `line-shadow-preflight-result.json` reports `status=pass`, `/health status=ok`, `runtimeBackend=codex-adapter`, `model=gpt-5.4-mini`, signed synthetic LINE webhook HTTP 200, SQLite `source_messages` read-back with `capture_policy=observer` and `retention_class=long`, route identity read-back, and ShinyiPilot line-ingress log proof.
+- [x] Kept the host boundary clean.
+      Completion evidence: shadow mode published no host `2999`; post-run `lsof -nP -iTCP:2999 -sTCP:LISTEN` returned no listener, and the shadow container was removed by `--rm`.
 
 ## Completed: ShinyiPilot Production LINE Shadow Runner @2026-06-15-0303
 

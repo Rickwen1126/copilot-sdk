@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import mimetypes
 import os
 import tempfile
 import time
@@ -147,6 +148,65 @@ def _now_iso() -> str:
 
 def _is_record(value: Any) -> bool:
     return isinstance(value, dict)
+
+
+def _attachment_display_name(attachment: dict[str, Any]) -> str | None:
+    display_name = attachment.get("displayName")
+    return display_name if isinstance(display_name, str) and display_name.strip() else None
+
+
+def _attachment_mime_type(path: str, attachment: dict[str, Any]) -> str:
+    mime_type = attachment.get("mimeType")
+    if isinstance(mime_type, str) and mime_type.strip():
+        return mime_type
+    guessed, _ = mimetypes.guess_type(path)
+    return guessed or "application/octet-stream"
+
+
+def _is_image_mime_type(mime_type: str) -> bool:
+    return mime_type.lower().startswith("image/")
+
+
+def _codex_inputs_from_attachments(attachments: Any) -> list[dict[str, Any]]:
+    if not isinstance(attachments, list):
+        return []
+
+    inputs: list[dict[str, Any]] = []
+    for attachment in attachments:
+        if not _is_record(attachment):
+            continue
+        attachment_type = attachment.get("type")
+        if attachment_type == "blob":
+            data = attachment.get("data")
+            mime_type = attachment.get("mimeType")
+            if not isinstance(data, str) or not isinstance(mime_type, str):
+                continue
+            if not _is_image_mime_type(mime_type):
+                continue
+            inputs.append(
+                {
+                    "type": "image",
+                    "url": f"data:{mime_type};base64,{data}",
+                    "detail": "auto",
+                }
+            )
+        elif attachment_type == "file":
+            path = attachment.get("path")
+            if not isinstance(path, str) or not path.strip():
+                continue
+            mime_type = _attachment_mime_type(path, attachment)
+            if _is_image_mime_type(mime_type):
+                inputs.append({"type": "localImage", "path": path, "detail": "auto"})
+            else:
+                label = _attachment_display_name(attachment) or path
+                inputs.append(
+                    {
+                        "type": "text",
+                        "text": f"Attached file: {label} ({path})",
+                        "text_elements": [],
+                    }
+                )
+    return inputs
 
 
 def _stable_stringify(value: Any) -> str:
@@ -830,6 +890,12 @@ class CodexCopilotAdapterServer:
                 {"content": prompt, "messageId": user_message_id},
             ),
         )
+        attachments = params.get("attachments")
+        attachment_inputs = _codex_inputs_from_attachments(attachments)
+        turn_input = [
+            {"type": "text", "text": prompt, "text_elements": []},
+            *attachment_inputs,
+        ]
         self._record_semantic(
             "turn.lifecycle",
             "started",
@@ -839,13 +905,15 @@ class CodexCopilotAdapterServer:
                 "messageId": user_message_id,
                 "promptChars": len(prompt),
                 "model": session.model or self.options.model,
+                "attachmentCount": len(attachments) if isinstance(attachments, list) else 0,
+                "inputCount": len(turn_input),
             },
         )
         response = await self.codex.request(
             "turn/start",
             {
                 "threadId": session.thread_id,
-                "input": [{"type": "text", "text": prompt, "text_elements": []}],
+                "input": turn_input,
                 "model": session.model or self.options.model,
                 "approvalPolicy": self.options.approval_policy,
                 "approvalsReviewer": self.options.approvals_reviewer,

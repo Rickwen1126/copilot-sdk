@@ -261,6 +261,61 @@ async def test_network_access_can_be_enabled_for_workspace_sandbox(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_image_attachments_are_mapped_to_codex_turn_input(tmp_path):
+    image_path = tmp_path / "sample.png"
+    image_path.write_bytes(
+        bytes.fromhex(
+            "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753"
+            "de0000000c49444154789c63606060000000040001f61738550000000049454e44ae426082"
+        )
+    )
+    fake = FakeCodexGateway()
+    server = CodexCopilotAdapterServer(
+        CodexAdapterOptions(runtime_session_store_path=str(tmp_path / "sessions.json")),
+        gateway=fake,
+    )
+    await server.start()
+    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    await client.start()
+    try:
+        session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
+        await session.send_and_wait(
+            "Describe the attachments.",
+            attachments=[
+                {"type": "file", "path": str(image_path)},
+                {
+                    "type": "blob",
+                    "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1Pe",
+                    "mimeType": "image/png",
+                    "displayName": "inline.png",
+                },
+            ],
+            timeout=2,
+        )
+
+        turn_start = next(params for method, params in fake.requests if method == "turn/start")
+        assert turn_start["input"] == [
+            {"type": "text", "text": "Describe the attachments.", "text_elements": []},
+            {"type": "localImage", "path": str(image_path), "detail": "auto"},
+            {
+                "type": "image",
+                "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1Pe",
+                "detail": "auto",
+            },
+        ]
+        assert any(
+            entry["category"] == "turn.lifecycle"
+            and entry["event"] == "started"
+            and entry["data"]["attachmentCount"] == 2
+            and entry["data"]["inputCount"] == 3
+            for entry in server.summary()["semanticLog"]
+        )
+    finally:
+        await client.force_stop()
+        await server.stop()
+
+
+@pytest.mark.asyncio
 async def test_logs_but_allows_concurrent_threads_in_same_explicit_workspace(tmp_path):
     fake = FakeCodexGateway()
     explicit_workspace = tmp_path / "shared-workspace"

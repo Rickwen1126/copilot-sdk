@@ -464,6 +464,42 @@ async def test_protocol_v3_dynamic_tool_call_round_trips_through_pending_tool_ca
 
 
 @pytest.mark.asyncio
+async def test_protocol_v3_oversized_dynamic_tool_result_fails_fast(adapter, monkeypatch):
+    monkeypatch.setenv("CODEX_ADAPTER_DYNAMIC_TOOL_TEXT_CHAR_LIMIT", "1000")
+    server, fake = adapter
+    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    await client.start()
+    try:
+        result_text = "x" * 1200
+
+        @define_tool(description="Return oversized source data")
+        def oversized_lookup(_args):
+            return ToolResult(text_result_for_llm=result_text, result_type="success")
+
+        await client.create_session(
+            on_permission_request=PermissionHandler.approve_all, tools=[oversized_lookup]
+        )
+        result = await fake.emit_request(
+            "item/tool/call",
+            {
+                "threadId": "thread-1",
+                "tool": "oversized_lookup",
+                "callId": "oversized-call-1",
+                "arguments": {},
+            },
+        )
+
+        tool_response = result["result"]
+        assert tool_response["success"] is False
+        text = tool_response["contentItems"][0]["text"]
+        assert "Tool result was too large" in text
+        assert "1200 chars" in text
+        assert result_text not in text
+    finally:
+        await client.force_stop()
+
+
+@pytest.mark.asyncio
 async def test_resume_after_restart_rejects_missing_tool_fingerprint_before_thread_resume(tmp_path):
     store_path = str(tmp_path / "sessions.json")
     fake_one = FakeCodexGateway()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Literal, TypedDict
 
 
@@ -21,6 +22,20 @@ SandboxMode = Literal[
     "workspaceWrite",
     "workspace-write",
 ]
+
+DEFAULT_DYNAMIC_TOOL_TEXT_CHAR_LIMIT = 60_000
+DYNAMIC_TOOL_TEXT_CHAR_LIMIT_ENV = "CODEX_ADAPTER_DYNAMIC_TOOL_TEXT_CHAR_LIMIT"
+
+
+def _dynamic_tool_text_char_limit() -> int:
+    raw = os.environ.get(DYNAMIC_TOOL_TEXT_CHAR_LIMIT_ENV)
+    if raw:
+        try:
+            value = int(raw)
+        except ValueError:
+            value = DEFAULT_DYNAMIC_TOOL_TEXT_CHAR_LIMIT
+        return max(1_000, value)
+    return DEFAULT_DYNAMIC_TOOL_TEXT_CHAR_LIMIT
 
 
 def _is_record(value: Any) -> bool:
@@ -74,11 +89,18 @@ def map_sdk_tool_result_to_codex_dynamic_tool_response(result: Any, error: Any) 
         return {"contentItems": [{"type": "inputText", "text": error}], "success": False}
 
     if isinstance(result, str):
+        oversized = _oversized_dynamic_tool_text(result)
+        if oversized:
+            return oversized
         return {"contentItems": [{"type": "inputText", "text": result}], "success": True}
 
     if _is_record(result):
         text = result.get("textResultForLlm")
         result_type = result.get("resultType")
+        if isinstance(text, str):
+            oversized = _oversized_dynamic_tool_text(text)
+            if oversized:
+                return oversized
         return {
             "contentItems": [
                 {
@@ -99,6 +121,26 @@ def map_sdk_tool_result_to_codex_dynamic_tool_response(result: Any, error: Any) 
             }
         ],
         "success": True,
+    }
+
+
+def _oversized_dynamic_tool_text(text: str) -> dict[str, Any] | None:
+    limit = _dynamic_tool_text_char_limit()
+    if len(text) <= limit:
+        return None
+    return {
+        "contentItems": [
+            {
+                "type": "inputText",
+                "text": (
+                    "Tool result was too large for the Codex dynamic tool transport "
+                    f"({len(text)} chars; safe limit {limit}). The result was not sent "
+                    "to avoid a silent adapter turn stall. Retry with a narrower query, "
+                    "pagination, or a tool-specific summary/compaction mode."
+                ),
+            }
+        ],
+        "success": False,
     }
 
 

@@ -85,6 +85,8 @@ class CodexAppServerGateway:
         )
         self._reader_task = asyncio.create_task(self._read_stdout())
         self._stderr_task = asyncio.create_task(self._read_stderr())
+        if self._reader_task:
+            self._reader_task.add_done_callback(self._handle_reader_done)
         response = await self.request(
             "initialize",
             {
@@ -103,6 +105,12 @@ class CodexAppServerGateway:
         if response.get("error"):
             raise RuntimeError(response["error"].get("message", "codex initialize failed"))
         self.notify("initialized", {})
+
+    def _handle_reader_done(self, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        error = task.exception()
+        self._fail_pending_requests(error or RuntimeError("codex app-server stdout closed"))
 
     async def _ensure_started(self) -> None:
         if self.process is None:
@@ -125,6 +133,12 @@ class CodexAppServerGateway:
             return await asyncio.wait_for(future, self.options.request_timeout_ms / 1000)
         finally:
             self.pending.pop(request_id, None)
+
+    def _fail_pending_requests(self, error: Exception) -> None:
+        for future in list(self.pending.values()):
+            if not future.done():
+                future.set_exception(error)
+        self.pending.clear()
 
     def notify(self, method: str, params: Any = None) -> None:
         if self.process is None or self.process.stdin is None:
@@ -195,9 +209,12 @@ class CodexAppServerGateway:
             self.process.kill()
             await self.process.wait()
         self.process = None
+        self._fail_pending_requests(RuntimeError("codex app-server stopped"))
         for task in (self._reader_task, self._stderr_task):
             if task:
                 task.cancel()
+        self._reader_task = None
+        self._stderr_task = None
 
     def summary(self) -> dict[str, Any]:
         return {"codexHome": self.codex_home, "transcripts": self.transcript}

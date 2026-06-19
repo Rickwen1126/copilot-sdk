@@ -21,11 +21,19 @@ class FakeCodexGateway:
         self.request_handler = None
         self.next_thread = 1
         self.pending_codex_requests: dict[Any, asyncio.Future] = {}
+        self.start_count = 0
+        self.stop_count = 0
 
     async def start(self):
+        self.start_count += 1
         return None
 
     async def stop(self):
+        self.stop_count += 1
+        for future in list(self.pending_codex_requests.values()):
+            if not future.done():
+                future.set_exception(RuntimeError("fake gateway stopped"))
+        self.pending_codex_requests.clear()
         return None
 
     async def request(self, method, params=None):
@@ -555,6 +563,41 @@ async def test_characterizes_create_send_destroy_resume_and_delete_lifecycle(tmp
         with pytest.raises(Exception, match="Unknown session"):
             await client.resume_session(
                 resumed.session_id,
+                model="gpt-test",
+                on_permission_request=PermissionHandler.approve_all,
+            )
+    finally:
+        await client.force_stop()
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_session_abort_invalidates_session_and_restarts_gateway(tmp_path):
+    fake = FakeCodexGateway()
+    server = CodexCopilotAdapterServer(
+        CodexAdapterOptions(runtime_session_store_path=str(tmp_path / "sessions.json")),
+        gateway=fake,
+    )
+    await server.start()
+    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    await client.start()
+    try:
+        session = await client.create_session(
+            model="gpt-test", on_permission_request=PermissionHandler.approve_all
+        )
+
+        await session.abort()
+
+        assert fake.stop_count == 1
+        assert fake.start_count == 2
+        assert server.summary()["sessions"] == []
+        semantic_events = {
+            (entry["category"], entry["event"]) for entry in server.summary()["semanticLog"]
+        }
+        assert ("session.lifecycle", "aborted") in semantic_events
+        with pytest.raises(Exception, match="Unknown session"):
+            await client.resume_session(
+                session.session_id,
                 model="gpt-test",
                 on_permission_request=PermissionHandler.approve_all,
             )

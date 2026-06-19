@@ -72,6 +72,15 @@ CODEX_ADAPTER_CAPABILITIES = {
         {"id": "session.resume", "status": "supported"},
         {"id": "session.getMessages", "status": "supported"},
         {"id": "session.send", "status": "supported"},
+        {
+            "id": "session.abort",
+            "status": "supported",
+            "reason": (
+                "Codex app-server has no single-turn cancel RPC; the adapter aborts by "
+                "invalidating the SDK session and restarting the app-server to release "
+                "the pending turn/start request."
+            ),
+        },
         {"id": "session.destroy", "status": "supported"},
         {"id": "session.delete", "status": "supported"},
         {"id": "command approval", "status": "supported"},
@@ -573,6 +582,7 @@ class CodexCopilotAdapterServer:
             "session.resume": self._handle_session_resume,
             "session.getMessages": self._handle_session_get_messages,
             "session.send": self._handle_session_send,
+            "session.abort": self._handle_session_abort,
             "session.destroy": self._handle_session_destroy,
             "session.delete": self._handle_session_delete,
             "session.tools.handlePendingToolCall": self._handle_pending_tool_call,
@@ -925,6 +935,41 @@ class CodexCopilotAdapterServer:
         if response.get("error"):
             raise RuntimeError(response["error"].get("message", "turn/start failed"))
         return {"messageId": user_message_id}
+
+    async def _handle_session_abort(self, params: Any, _connection_id: str) -> dict[str, Any]:
+        session_id = (
+            params.get("sessionId")
+            if _is_record(params) and isinstance(params.get("sessionId"), str)
+            else None
+        )
+        if not session_id:
+            return {"success": False, "error": "session.abort requires sessionId"}
+        session = self.sessions.get(session_id)
+        if not session:
+            return {"success": False, "error": f"Unknown session: {session_id}"}
+        abort_time = _now_iso()
+        await self._emit_lifecycle("session.aborted", session_id, {"abortTime": abort_time})
+        self.sessions.pop(session_id, None)
+        self.thread_to_session.pop(session.thread_id, None)
+        self.session_store.delete(session_id)
+        self._delete_pending_tool_calls_for_session(session_id)
+        self._record_semantic(
+            "session.lifecycle",
+            "aborted",
+            session_id=session_id,
+            thread_id=session.thread_id,
+            data={"cwd": session.cwd, "model": session.model or self.options.model},
+        )
+        await self._restart_codex_after_abort(session)
+        return {"success": True, "gatewayRestarted": True}
+
+    async def _restart_codex_after_abort(self, session: SessionState) -> None:
+        self._record(
+            "adapter.session.abort.gateway_restart",
+            {"sessionId": session.session_id, "threadId": session.thread_id},
+        )
+        await self.codex.stop()
+        await self.codex.start()
 
     async def _handle_session_destroy(self, params: Any, connection_id: str) -> dict[str, Any]:
         session_id = (

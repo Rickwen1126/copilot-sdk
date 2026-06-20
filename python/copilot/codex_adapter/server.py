@@ -495,6 +495,13 @@ class CodexCopilotAdapterServer:
         self.codex.on_request(
             lambda request: asyncio.create_task(self._handle_codex_request(request))
         )
+        on_fatal_error = getattr(self.codex, "on_fatal_error", None)
+        if callable(on_fatal_error):
+            on_fatal_error(
+                lambda error, metadata: asyncio.create_task(
+                    self._handle_codex_gateway_fatal(error, metadata)
+                )
+            )
         self.server = await asyncio.start_server(
             self._handle_client, self.options.host, self.options.port or 0
         )
@@ -1077,6 +1084,54 @@ class CodexCopilotAdapterServer:
             {"sessionId": session_id, "event": event},
             session.attached_connection_ids if session else None,
         )
+
+    async def _handle_codex_gateway_fatal(
+        self,
+        error: Exception,
+        metadata: dict[str, Any],
+    ) -> None:
+        stream_limit = metadata.get("streamLimitBytes")
+        error_name = metadata.get("errorName") or error.__class__.__name__
+        error_message = metadata.get("errorMessage") or str(error)
+        message = (
+            "Codex adapter transport failed while reading app-server output. "
+            "The payload likely exceeded the subprocess stream limit; chunk or "
+            "spill large payloads before returning them to the adapter. "
+            f"error_code=codex_gateway_reader_failed stream_limit_bytes={stream_limit} "
+            f"error={error_name}: {error_message}"
+        )
+        data = {
+            "errorName": error_name,
+            "errorMessage": error_message,
+            "streamLimitBytes": stream_limit,
+            "sessionCount": len(self.sessions),
+        }
+        self._record("codex.gateway.reader_failed", data)
+        self._record_semantic("codex.gateway", "reader_failed", data=data)
+        for session in list(self.sessions.values()):
+            self._record_semantic(
+                "runtime.error",
+                "codex_gateway_reader_failed",
+                session_id=session.session_id,
+                thread_id=session.thread_id,
+                data=data,
+            )
+            await self._emit_session_event(
+                session.session_id,
+                self._create_session_event(
+                    session,
+                    "session.error",
+                    {
+                        "errorType": "adapter_transport",
+                        "errorCode": "codex_gateway_reader_failed",
+                        "message": message,
+                        "providerCallId": "codex_gateway_reader_failed",
+                        "streamLimitBytes": stream_limit,
+                        "errorName": error_name,
+                        "errorMessage": error_message,
+                    },
+                ),
+            )
 
     async def _notify_connections(
         self, method: str, params: Any, connection_ids: set[str] | None = None

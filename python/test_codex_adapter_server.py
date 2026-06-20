@@ -8,6 +8,11 @@ from typing import Any
 import pytest
 
 from copilot import CopilotClient, ExternalServerConfig, PermissionHandler, define_tool
+from copilot.codex_adapter.gateway import (
+    CodexAppServerGateway,
+    CodexAppServerGatewayOptions,
+    CodexAppServerGatewayReaderError,
+)
 from copilot.codex_adapter.server import CodexAdapterOptions, CodexCopilotAdapterServer
 from copilot.session import PermissionRequestResult
 from copilot.tools import ToolResult
@@ -19,6 +24,7 @@ class FakeCodexGateway:
         self.responses: list[tuple[Any, Any, Any]] = []
         self.notification_handler = None
         self.request_handler = None
+        self.fatal_error_handler = None
         self.next_thread = 1
         self.pending_codex_requests: dict[Any, asyncio.Future] = {}
         self.start_count = 0
@@ -77,6 +83,10 @@ class FakeCodexGateway:
         self.request_handler = handler
         return lambda: None
 
+    def on_fatal_error(self, handler):
+        self.fatal_error_handler = handler
+        return lambda: None
+
     def summary(self):
         return {"requests": self.requests, "responses": self.responses}
 
@@ -90,6 +100,13 @@ class FakeCodexGateway:
         elif asyncio.iscoroutine(outcome):
             await outcome
         return await asyncio.wait_for(future, 2)
+
+    async def emit_fatal_error(self, error, metadata):
+        outcome = self.fatal_error_handler(error, metadata)
+        if isinstance(outcome, asyncio.Task):
+            await outcome
+        elif asyncio.iscoroutine(outcome):
+            await outcome
 
     async def _complete_turn(self, thread_id):
         await asyncio.sleep(0.01)
@@ -171,6 +188,124 @@ async def test_python_sdk_can_ping_status_auth_models_and_send(adapter):
         assert ("turn.lifecycle", "completed") in semantic_events
     finally:
         await client.force_stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_reader_failure_emits_session_error(adapter):
+    server, fake = adapter
+    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    await client.start()
+    try:
+        session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
+
+        await fake.emit_fatal_error(
+            RuntimeError("Separator is found, but chunk is longer than limit"),
+            {
+                "errorName": "ValueError",
+                "errorMessage": "Separator is found, but chunk is longer than limit",
+                "streamLimitBytes": 1024,
+            },
+        )
+        messages = await session.get_messages()
+        error_events = [event for event in messages if event.type.value == "session.error"]
+
+        assert error_events
+        assert error_events[-1].data.error_type == "adapter_transport"
+        assert error_events[-1].data.provider_call_id == "codex_gateway_reader_failed"
+        assert "chunk or spill" in error_events[-1].data.message
+        assert "stream_limit_bytes=1024" in error_events[-1].data.message
+        semantic_events = {
+            (entry["category"], entry["event"]) for entry in server.summary()["semanticLog"]
+        }
+        assert ("codex.gateway", "reader_failed") in semantic_events
+        assert ("runtime.error", "codex_gateway_reader_failed") in semantic_events
+    finally:
+        await client.force_stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_transcript_spills_oversized_payload(tmp_path):
+    gateway = CodexAppServerGateway(
+        CodexAppServerGatewayOptions(
+            codex_home=str(tmp_path / "codex-home"),
+            isolate_codex_home=False,
+            payload_spill_threshold_bytes=40,
+            transcript_payload_preview_chars=12,
+            payload_spill_dir=str(tmp_path / "spill"),
+        )
+    )
+    payload = {
+        "method": "item/completed",
+        "params": {
+            "threadId": "thread-large",
+            "item": {
+                "id": "item-large",
+                "type": "commandExecution",
+                "aggregatedOutput": "x" * 200,
+            },
+        },
+    }
+
+    gateway._record("codex->adapter", payload)
+    entry = gateway.summary()["transcripts"][0]["message"]
+
+    assert entry["oversized"] is True
+    assert entry["method"] == "item/completed"
+    assert entry["threadId"] == "thread-large"
+    assert entry["itemId"] == "item-large"
+    assert entry["itemType"] == "commandExecution"
+    assert entry["payloadBytes"] > 40
+    assert len(entry["preview"]) == 12
+    assert entry["spillPath"].endswith(".json.gz")
+    assert Path(entry["spillPath"]).exists()
+
+
+@pytest.mark.asyncio
+async def test_gateway_reader_limit_failure_fails_pending_requests(tmp_path):
+    class FailingStdout:
+        async def readline(self):
+            raise ValueError("Separator is found, but chunk is longer than limit")
+
+    class FakeProcess:
+        stdout = FailingStdout()
+        returncode = None
+        terminated = False
+        killed = False
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.killed = True
+
+        async def wait(self):
+            self.returncode = 1
+
+    gateway = CodexAppServerGateway(
+        CodexAppServerGatewayOptions(
+            codex_home=str(tmp_path / "codex-home"),
+            isolate_codex_home=False,
+            subprocess_stream_limit_bytes=65536,
+        )
+    )
+    fake_process = FakeProcess()
+    gateway.process = fake_process
+    pending = asyncio.get_running_loop().create_future()
+    gateway.pending["pending"] = pending
+    captured = []
+    gateway.on_fatal_error(lambda error, metadata: captured.append((error, metadata)))
+
+    task = asyncio.create_task(gateway._read_stdout())
+    task.add_done_callback(gateway._handle_reader_done)
+    await asyncio.sleep(0.01)
+
+    with pytest.raises(CodexAppServerGatewayReaderError):
+        await pending
+    assert captured
+    assert captured[-1][1]["streamLimitBytes"] == 65536
+    assert captured[-1][1]["originalErrorName"] == "ValueError"
+    assert gateway.process is None
+    assert fake_process.terminated is True
 
 
 @pytest.mark.asyncio

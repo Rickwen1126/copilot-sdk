@@ -3,21 +3,31 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
+import hashlib
 import json
 import os
 import shutil
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 JsonRpcHandler = Callable[[dict[str, Any]], None]
+FatalErrorHandler = Callable[[Exception, dict[str, Any]], None]
 DEFAULT_SUBPROCESS_STREAM_LIMIT_BYTES = 16 * 1024 * 1024
+DEFAULT_TRANSCRIPT_PAYLOAD_PREVIEW_CHARS = 2_000
+DEFAULT_PAYLOAD_SPILL_THRESHOLD_BYTES = 64 * 1024
 SUBPROCESS_STREAM_LIMIT_ENV = "CODEX_ADAPTER_SUBPROCESS_STREAM_LIMIT_BYTES"
+TRANSCRIPT_PAYLOAD_PREVIEW_CHARS_ENV = "CODEX_ADAPTER_TRANSCRIPT_PAYLOAD_PREVIEW_CHARS"
+PAYLOAD_SPILL_THRESHOLD_ENV = "CODEX_ADAPTER_PAYLOAD_SPILL_THRESHOLD_BYTES"
+PAYLOAD_SPILL_DIR_ENV = "CODEX_ADAPTER_PAYLOAD_SPILL_DIR"
 
 
-def _env_int(name: str, default: int) -> int:
+def _env_int(name: str, default: int, *, minimum: int = 65_536) -> int:
     raw = os.environ.get(name)
     if not raw:
         return default
@@ -25,7 +35,21 @@ def _env_int(name: str, default: int) -> int:
         value = int(raw)
     except ValueError:
         return default
-    return max(65_536, value)
+    return max(minimum, value)
+
+
+class CodexAppServerGatewayReaderError(RuntimeError):
+    """Fatal stdout-reader failure for the line-delimited app-server transport."""
+
+    def __init__(self, error: Exception, *, stream_limit_bytes: int):
+        self.stream_limit_bytes = stream_limit_bytes
+        self.original_error_name = error.__class__.__name__
+        self.original_error_message = str(error)
+        super().__init__(
+            "codex app-server stdout reader failed "
+            f"(stream_limit_bytes={stream_limit_bytes}): "
+            f"{self.original_error_name}: {self.original_error_message}"
+        )
 
 
 @dataclass
@@ -39,6 +63,21 @@ class CodexAppServerGatewayOptions:
         default_factory=lambda: _env_int(
             SUBPROCESS_STREAM_LIMIT_ENV, DEFAULT_SUBPROCESS_STREAM_LIMIT_BYTES
         )
+    )
+    transcript_payload_preview_chars: int = field(
+        default_factory=lambda: _env_int(
+            TRANSCRIPT_PAYLOAD_PREVIEW_CHARS_ENV,
+            DEFAULT_TRANSCRIPT_PAYLOAD_PREVIEW_CHARS,
+            minimum=0,
+        )
+    )
+    payload_spill_threshold_bytes: int = field(
+        default_factory=lambda: _env_int(
+            PAYLOAD_SPILL_THRESHOLD_ENV, DEFAULT_PAYLOAD_SPILL_THRESHOLD_BYTES, minimum=1
+        )
+    )
+    payload_spill_dir: str | None = field(
+        default_factory=lambda: os.environ.get(PAYLOAD_SPILL_DIR_ENV) or None
     )
     client_info: dict[str, str | None] = field(default_factory=dict)
 
@@ -57,6 +96,7 @@ class CodexAppServerGateway:
         self.pending: dict[Any, asyncio.Future[dict[str, Any]]] = {}
         self.notification_handlers: set[JsonRpcHandler] = set()
         self.request_handlers: set[JsonRpcHandler] = set()
+        self.fatal_error_handlers: set[FatalErrorHandler] = set()
         self.transcript: list[dict[str, Any]] = []
         self.codex_home = self._prepare_codex_home()
         self.codex_bin = self.options.codex_bin or shutil.which("codex") or "codex"
@@ -81,10 +121,95 @@ class CodexAppServerGateway:
 
     def _record(self, direction: str, message: Any) -> None:
         self.transcript.append(
-            {"at": _now_loop_time_ms(), "direction": direction, "message": message}
+            {
+                "at": _now_loop_time_ms(),
+                "direction": direction,
+                "message": self._transcript_message(direction, message),
+            }
         )
         if len(self.transcript) > self.options.transcript_limit:
             del self.transcript[: len(self.transcript) - self.options.transcript_limit]
+
+    def _transcript_message(self, direction: str, message: Any) -> Any:
+        text = self._serialize_for_transcript(message)
+        payload_bytes = len(text.encode("utf-8"))
+        if payload_bytes <= self.options.payload_spill_threshold_bytes:
+            return message
+
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        preview_chars = self.options.transcript_payload_preview_chars
+        metadata: dict[str, Any] = {
+            "oversized": True,
+            "payloadBytes": payload_bytes,
+            "sha256": digest,
+            "preview": text[:preview_chars] if preview_chars > 0 else "",
+            "previewTruncated": len(text) > preview_chars,
+            "spillThresholdBytes": self.options.payload_spill_threshold_bytes,
+            **self._message_identity(message),
+        }
+        spill_path, spill_error = self._write_payload_spill(
+            direction=direction,
+            message=message,
+            text=text,
+            digest=digest,
+        )
+        if spill_path:
+            metadata["spillPath"] = spill_path
+        if spill_error:
+            metadata["spillError"] = spill_error
+        return metadata
+
+    def _serialize_for_transcript(self, message: Any) -> str:
+        try:
+            return json.dumps(message, ensure_ascii=False, separators=(",", ":"), default=str)
+        except TypeError:
+            return repr(message)
+
+    def _message_identity(self, message: Any) -> dict[str, Any]:
+        if not isinstance(message, dict):
+            return {}
+        params = message.get("params") if isinstance(message.get("params"), dict) else {}
+        item = params.get("item") if isinstance(params.get("item"), dict) else {}
+        thread = params.get("thread") if isinstance(params.get("thread"), dict) else {}
+        return {
+            key: value
+            for key, value in {
+                "id": message.get("id"),
+                "method": message.get("method"),
+                "threadId": params.get("threadId") or thread.get("id"),
+                "itemId": params.get("itemId") or item.get("id"),
+                "itemType": item.get("type"),
+            }.items()
+            if value is not None
+        }
+
+    def _write_payload_spill(
+        self,
+        *,
+        direction: str,
+        message: Any,
+        text: str,
+        digest: str,
+    ) -> tuple[str | None, str | None]:
+        if not self.options.payload_spill_dir:
+            return None, None
+        try:
+            identity = self._message_identity(message)
+            method = _safe_filename(str(identity.get("method") or "message"))
+            direction_name = _safe_filename(direction)
+            now = datetime.now(UTC)
+            directory = Path(self.options.payload_spill_dir).expanduser() / now.strftime("%Y-%m-%d")
+            directory.mkdir(parents=True, exist_ok=True)
+            filename = (
+                f"{now.strftime('%H%M%S')}-{direction_name}-{method}-"
+                f"{digest[:12]}-{uuid4().hex[:8]}.json.gz"
+            )
+            path = directory / filename
+            with gzip.open(path, "wt", encoding="utf-8") as handle:
+                handle.write(text)
+            return path.as_posix(), None
+        except Exception as exc:
+            return None, f"{exc.__class__.__name__}: {exc}"
 
     async def start(self) -> None:
         if self.process is not None:
@@ -128,8 +253,46 @@ class CodexAppServerGateway:
     def _handle_reader_done(self, task: asyncio.Task[None]) -> None:
         if task.cancelled():
             return
-        error = task.exception()
-        self._fail_pending_requests(error or RuntimeError("codex app-server stdout closed"))
+        error = task.exception() or RuntimeError("codex app-server stdout closed")
+        metadata = self._reader_error_metadata(error)
+        self._record("codex-gateway.reader_failed", {"error": metadata})
+        self._fail_pending_requests(error)
+        for handler in list(self.fatal_error_handlers):
+            handler(error, metadata)
+        self._detach_failed_process()
+
+    def _reader_error_metadata(self, error: Exception) -> dict[str, Any]:
+        metadata = {
+            "errorName": error.__class__.__name__,
+            "errorMessage": str(error),
+            "streamLimitBytes": self.options.subprocess_stream_limit_bytes,
+        }
+        if isinstance(error, CodexAppServerGatewayReaderError):
+            metadata.update(
+                {
+                    "originalErrorName": error.original_error_name,
+                    "originalErrorMessage": error.original_error_message,
+                    "streamLimitBytes": error.stream_limit_bytes,
+                }
+            )
+        return metadata
+
+    def _detach_failed_process(self) -> None:
+        process = self.process
+        self.process = None
+        if self._stderr_task:
+            self._stderr_task.cancel()
+            self._stderr_task = None
+        if process and process.returncode is None:
+            asyncio.create_task(self._terminate_failed_process(process))
+
+    async def _terminate_failed_process(self, process: asyncio.subprocess.Process) -> None:
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), 0.5)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
 
     async def _ensure_started(self) -> None:
         if self.process is None:
@@ -178,7 +341,13 @@ class CodexAppServerGateway:
     async def _read_stdout(self) -> None:
         assert self.process and self.process.stdout
         while True:
-            line = await self.process.stdout.readline()
+            try:
+                line = await self.process.stdout.readline()
+            except Exception as exc:
+                raise CodexAppServerGatewayReaderError(
+                    exc,
+                    stream_limit_bytes=self.options.subprocess_stream_limit_bytes,
+                ) from exc
             if not line:
                 break
             try:
@@ -217,6 +386,10 @@ class CodexAppServerGateway:
         self.request_handlers.add(handler)
         return lambda: self.request_handlers.discard(handler)
 
+    def on_fatal_error(self, handler: FatalErrorHandler) -> Callable[[], None]:
+        self.fatal_error_handlers.add(handler)
+        return lambda: self.fatal_error_handlers.discard(handler)
+
     async def stop(self) -> None:
         if self.process is None:
             return
@@ -237,3 +410,8 @@ class CodexAppServerGateway:
 
     def summary(self) -> dict[str, Any]:
         return {"codexHome": self.codex_home, "transcripts": self.transcript}
+
+
+def _safe_filename(value: str) -> str:
+    cleaned = "".join(char if char.isalnum() or char in "._-" else "-" for char in value)
+    return cleaned.strip(".-")[:80] or "payload"

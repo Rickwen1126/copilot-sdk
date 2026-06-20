@@ -979,6 +979,7 @@ async def test_experimental_raw_events_option_is_sent_to_codex_thread_only(tmp_p
         turn_start = next(params for method, params in fake.requests if method == "turn/start")
         assert thread_start["experimentalRawEvents"] is True
         assert "experimentalRawEvents" not in turn_start
+        assert server.summary()["options"]["experimentalRawEvents"] is True
     finally:
         await client.force_stop()
         await server.stop()

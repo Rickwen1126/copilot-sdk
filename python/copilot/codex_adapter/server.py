@@ -641,6 +641,7 @@ class CodexCopilotAdapterServer:
                 "protocolVersion": self.options.protocol_version,
                 "sandboxMode": self.options.sandbox_mode,
                 "networkAccess": self.options.network_access,
+                "experimentalRawEvents": self.options.experimental_raw_events,
             },
             "capabilities": self.capabilities(),
             "sessions": [

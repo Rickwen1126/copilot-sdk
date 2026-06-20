@@ -959,7 +959,7 @@ async def test_codex_mcp_tool_call_events_are_forwarded_as_typed_tool_events(ada
 
 
 @pytest.mark.asyncio
-async def test_experimental_raw_events_option_is_sent_to_codex_thread_and_turn(tmp_path):
+async def test_experimental_raw_events_option_is_sent_to_codex_thread_only(tmp_path):
     fake = FakeCodexGateway()
     server = CodexCopilotAdapterServer(
         CodexAdapterOptions(
@@ -978,7 +978,7 @@ async def test_experimental_raw_events_option_is_sent_to_codex_thread_and_turn(t
         thread_start = next(params for method, params in fake.requests if method == "thread/start")
         turn_start = next(params for method, params in fake.requests if method == "turn/start")
         assert thread_start["experimentalRawEvents"] is True
-        assert turn_start["experimentalRawEvents"] is True
+        assert "experimentalRawEvents" not in turn_start
     finally:
         await client.force_stop()
         await server.stop()

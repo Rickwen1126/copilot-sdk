@@ -1039,7 +1039,6 @@ class CodexCopilotAdapterServer:
                 "sandboxPolicy": codex_sandbox_policy(
                     self.options.sandbox_mode, self.options.network_access
                 ),
-                "experimentalRawEvents": self.options.experimental_raw_events,
             },
         )
         if response.get("error"):

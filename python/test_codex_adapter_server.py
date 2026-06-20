@@ -599,6 +599,179 @@ async def test_protocol_v3_dynamic_tool_call_round_trips_through_pending_tool_ca
 
 
 @pytest.mark.asyncio
+async def test_codex_native_events_are_forwarded_as_sdk_session_events(adapter):
+    server, fake = adapter
+    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    await client.start()
+    try:
+        captured = []
+
+        @define_tool(description="Lookup source data")
+        def lookup(args):
+            return f"lookup:{args['query']}"
+
+        session = await client.create_session(
+            model="gpt-test",
+            on_permission_request=PermissionHandler.approve_all,
+            tools=[lookup],
+        )
+        session.on(captured.append)
+
+        fake.notification_handler(
+            {
+                "method": "turn/started",
+                "params": {"threadId": "thread-1", "turn": {"id": "turn-1", "status": "running"}},
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "item/agentMessage/delta",
+                "params": {
+                    "threadId": "thread-1",
+                    "itemId": "assistant-1",
+                    "delta": "我先確認工具和資料。",
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "thread/tokenUsage/updated",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "tokenUsage": {
+                        "last": {
+                            "inputTokens": 12,
+                            "outputTokens": 7,
+                            "cachedInputTokens": 3,
+                            "reasoningOutputTokens": 2,
+                        },
+                        "modelContextWindow": 128000,
+                    },
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "item/started",
+                "params": {
+                    "threadId": "thread-1",
+                    "item": {
+                        "id": "call-1",
+                        "type": "dynamicToolCall",
+                        "toolName": "lookup",
+                        "arguments": {"query": "v3"},
+                    },
+                },
+            }
+        )
+        result = await fake.emit_request(
+            "item/tool/call",
+            {
+                "threadId": "thread-1",
+                "toolName": "lookup",
+                "callId": "call-1",
+                "arguments": {"query": "v3"},
+            },
+        )
+        fake.notification_handler(
+            {
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "item": {
+                        "id": "call-1",
+                        "type": "dynamicToolCall",
+                        "toolName": "lookup",
+                        "status": "completed",
+                        "success": True,
+                        "durationMs": 25,
+                        "contentItems": [{"type": "inputText", "text": "lookup:v3"}],
+                    },
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "item": {"id": "reasoning-empty", "type": "reasoning", "content": []},
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "turn/completed",
+                "params": {"threadId": "thread-1", "turn": {"id": "turn-1", "status": "completed"}},
+            }
+        )
+
+        await _wait_for_event_types(
+            captured,
+            {
+                "assistant.turn_start",
+                "assistant.message_delta",
+                "assistant.usage",
+                "tool.execution_start",
+                "assistant.message",
+                "tool.execution_complete",
+                "codex.raw",
+                "assistant.turn_end",
+                "session.idle",
+            },
+        )
+
+        assert result["result"] == {
+            "contentItems": [{"type": "inputText", "text": "lookup:v3"}],
+            "success": True,
+        }
+        by_type = {_event_type(event): event for event in captured}
+
+        assert by_type["assistant.turn_start"].data.turn_id == "turn-1"
+        assert by_type["assistant.message_delta"].data.message_id == "assistant-1"
+        assert by_type["assistant.message_delta"].data.delta_content == "我先確認工具和資料。"
+        assert by_type["assistant.usage"].data.input_tokens == 12
+        assert by_type["assistant.usage"].data.output_tokens == 7
+        assert by_type["tool.execution_start"].data.tool_name == "lookup"
+        assert by_type["tool.execution_start"].data.tool_call_id == "call-1"
+
+        tool_request_event = next(
+            event
+            for event in captured
+            if _event_type(event) == "assistant.message" and event.data.tool_requests
+        )
+        assert tool_request_event.data.phase == "tool_call"
+        assert tool_request_event.data.tool_requests[0].name == "lookup"
+        assert tool_request_event.data.tool_requests[0].tool_call_id == "call-1"
+        assert tool_request_event.data.tool_requests[0].arguments == {"query": "v3"}
+
+        complete = by_type["tool.execution_complete"].data
+        assert complete.tool_call_id == "call-1"
+        assert complete.success is True
+        assert complete.result.content == "lookup:v3"
+        assert complete.tool_telemetry["toolName"] == "lookup"
+
+        raw = by_type["codex.raw"]
+        assert raw.type.value == "unknown"
+        assert raw.raw_type == "codex.raw"
+        assert raw.data.raw["reason"] == "reasoning_completed_without_readable_content"
+        assert raw.data.raw["method"] == "item/completed"
+        assert by_type["assistant.turn_end"].data.turn_id == "turn-1"
+
+        semantic_events = {
+            (entry["category"], entry["event"]) for entry in server.summary()["semanticLog"]
+        }
+        assert ("assistant.message", "delta") in semantic_events
+        assert ("assistant.usage", "updated") in semantic_events
+        assert ("tool.execution", "codex_started") in semantic_events
+        assert ("tool.execution", "codex_completed") in semantic_events
+        assert ("codex.raw", "item.completed") in semantic_events
+    finally:
+        await client.force_stop()
+
+
+@pytest.mark.asyncio
 async def test_protocol_v3_oversized_dynamic_tool_result_fails_fast(adapter, monkeypatch):
     monkeypatch.setenv("CODEX_ADAPTER_DYNAMIC_TOOL_TEXT_CHAR_LIMIT", "1000")
     server, fake = adapter
@@ -632,6 +805,21 @@ async def test_protocol_v3_oversized_dynamic_tool_result_fails_fast(adapter, mon
         assert result_text not in text
     finally:
         await client.force_stop()
+
+
+def _event_type(event) -> str:
+    return event.raw_type if event.type.value == "unknown" and event.raw_type else event.type.value
+
+
+async def _wait_for_event_types(captured, expected: set[str], timeout: float = 1.0):
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        seen = {_event_type(event) for event in captured}
+        if expected <= seen:
+            return
+        await asyncio.sleep(0.01)
+    seen = [_event_type(event) for event in captured]
+    raise AssertionError(f"missing events {sorted(expected - set(seen))}; saw {seen}")
 
 
 @pytest.mark.asyncio

@@ -324,6 +324,47 @@ def _preview_fields(prefix: str, value: Any) -> dict[str, Any]:
     }
 
 
+def _first_text_from_content_items(content_items: Any, *, limit: int = 500) -> str:
+    if not isinstance(content_items, list):
+        return ""
+    pieces: list[str] = []
+    for item in content_items:
+        if not _is_record(item):
+            continue
+        text = item.get("text")
+        if isinstance(text, str) and text:
+            pieces.append(text)
+    text = "\n".join(pieces)
+    return text[:limit] + "..." if len(text) > limit else text
+
+
+def _reasoning_content(item: dict[str, Any]) -> str:
+    """Return readable reasoning only when Codex actually provides it.
+
+    Codex often emits reasoning lifecycle items with an empty ``[]`` content
+    placeholder. Those events are useful for fidelity/debugging, but they are
+    not user-readable reasoning. The adapter must not fabricate thinking text
+    just to make downstream timelines look busy.
+    """
+    for key in ("text", "summary", "content"):
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+        if isinstance(value, list):
+            parts = [part for part in value if isinstance(part, str) and part.strip()]
+            if parts:
+                return "\n".join(parts)
+    return ""
+
+
+def _first_string_field(value: dict[str, Any], *names: str) -> str | None:
+    for name in names:
+        item = value.get(name)
+        if isinstance(item, str) and item:
+            return item
+    return None
+
+
 def tool_fingerprint_from_descriptors(tools: list[ToolDescriptor]) -> str:
     normalized = [
         {
@@ -1085,6 +1126,59 @@ class CodexCopilotAdapterServer:
             session.attached_connection_ids if session else None,
         )
 
+    def _emit_codex_session_event(
+        self,
+        session: SessionState,
+        event_type: str,
+        data: dict[str, Any],
+        *,
+        ephemeral: bool = False,
+    ) -> None:
+        """Bridge one Codex app-server event into the SDK session event stream.
+
+        This helper intentionally lives at the adapter boundary. Product tools
+        should not synthesize UI progress just because the frontend wants more
+        detail; the adapter is the layer that still sees the native Codex
+        runtime events and can preserve them with the right SDK event type.
+        """
+        asyncio.create_task(
+            self._emit_session_event(
+                session.session_id,
+                self._create_session_event(session, event_type, data, ephemeral),
+            )
+        )
+
+    def _emit_codex_raw_event(
+        self,
+        session: SessionState,
+        *,
+        method: str,
+        params: dict[str, Any],
+        reason: str,
+    ) -> None:
+        """Preserve unmatched Codex events without dumping large raw payloads.
+
+        The full raw JSON-RPC event remains in the gateway transcript/spill
+        files. The SDK event carries enough identity and preview data for UI
+        and log correlation while keeping the normal session event stream small
+        and safe.
+        """
+        payload = {
+            "source": "codex.app_server",
+            "method": method,
+            "reason": reason,
+            "threadId": session.thread_id,
+            **_preview_fields("params", params),
+        }
+        self._record_semantic(
+            "codex.raw",
+            method.replace("/", "."),
+            session_id=session.session_id,
+            thread_id=session.thread_id,
+            data={"reason": reason, **_preview_fields("params", params)},
+        )
+        self._emit_codex_session_event(session, "codex.raw", payload, ephemeral=True)
+
     async def _handle_codex_gateway_fatal(
         self,
         error: Exception,
@@ -1171,7 +1265,88 @@ class CodexCopilotAdapterServer:
         if not session:
             return
         method = notification.get("method")
-        if method == "item/started":
+        if method == "turn/started":
+            turn = params.get("turn") if _is_record(params.get("turn")) else {}
+            turn_id = turn.get("id") if isinstance(turn.get("id"), str) else None
+            self._record_semantic(
+                "turn.lifecycle",
+                "codex_started",
+                session_id=session_id,
+                thread_id=thread_id,
+                data={"turnId": turn_id, "status": turn.get("status")},
+            )
+            if turn_id:
+                self._emit_codex_session_event(
+                    session,
+                    "assistant.turn_start",
+                    {"turnId": turn_id},
+                )
+        elif method == "item/agentMessage/delta":
+            # Codex app-server streams assistant text as item/agentMessage/delta.
+            # The SDK already has assistant.message_delta for this exact shape,
+            # so forwarding it here preserves the CLI-like working stream
+            # without making individual product tools invent progress text.
+            item_id = params.get("itemId") if isinstance(params.get("itemId"), str) else None
+            delta = params.get("delta") if isinstance(params.get("delta"), str) else ""
+            if item_id and delta:
+                self._record_semantic(
+                    "assistant.message",
+                    "delta",
+                    session_id=session_id,
+                    thread_id=thread_id,
+                    data={"messageId": item_id, "deltaChars": len(delta)},
+                )
+                self._emit_codex_session_event(
+                    session,
+                    "assistant.message_delta",
+                    {"messageId": item_id, "deltaContent": delta},
+                    ephemeral=True,
+                )
+            else:
+                self._emit_codex_raw_event(
+                    session,
+                    method=method,
+                    params=params,
+                    reason="missing_agent_message_delta_identity",
+                )
+        elif method == "thread/tokenUsage/updated":
+            token_usage = params.get("tokenUsage") if _is_record(params.get("tokenUsage")) else {}
+            last = token_usage.get("last") if _is_record(token_usage.get("last")) else {}
+            turn_id = params.get("turnId") if isinstance(params.get("turnId"), str) else None
+            self._record_semantic(
+                "assistant.usage",
+                "updated",
+                session_id=session_id,
+                thread_id=thread_id,
+                data={
+                    "turnId": turn_id,
+                    "inputTokens": last.get("inputTokens"),
+                    "outputTokens": last.get("outputTokens"),
+                    "reasoningTokens": last.get("reasoningOutputTokens"),
+                    "modelContextWindow": token_usage.get("modelContextWindow"),
+                },
+            )
+            self._emit_codex_session_event(
+                session,
+                "assistant.usage",
+                {
+                    "model": session.model or self.options.model,
+                    "providerCallId": turn_id,
+                    "inputTokens": last.get("inputTokens"),
+                    "outputTokens": last.get("outputTokens"),
+                    "cacheReadTokens": last.get("cachedInputTokens"),
+                    "reasoningTokens": last.get("reasoningOutputTokens"),
+                },
+                ephemeral=True,
+            )
+        elif method == "thread/status/changed":
+            self._emit_codex_raw_event(
+                session,
+                method=method,
+                params=params,
+                reason="thread_status_provenance",
+            )
+        elif method == "item/started":
             item = params.get("item") if _is_record(params.get("item")) else {}
             if item.get("type") == "commandExecution":
                 item_id = item.get("id") if isinstance(item.get("id"), str) else None
@@ -1204,6 +1379,56 @@ class CodexCopilotAdapterServer:
                             True,
                         ),
                     )
+                )
+            elif item.get("type") == "dynamicToolCall":
+                # Codex-native dynamic tool lifecycle. This is separate from
+                # the SDK tool.call callback: the lifecycle says what Codex is
+                # doing, while tool.call is the transport used to obtain the
+                # product tool result.
+                tool_call_id = item.get("id") if isinstance(item.get("id"), str) else None
+                tool_name = _first_string_field(item, "tool", "toolName", "name")
+                if tool_call_id and tool_name:
+                    self._record_semantic(
+                        "tool.execution",
+                        "codex_started",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        data={
+                            "toolName": tool_name,
+                            "toolCallId": tool_call_id,
+                            **_preview_fields("arguments", item.get("arguments")),
+                        },
+                    )
+                    self._emit_codex_session_event(
+                        session,
+                        "tool.execution_start",
+                        {
+                            "toolName": tool_name,
+                            "toolCallId": tool_call_id,
+                            "arguments": item.get("arguments"),
+                        },
+                        ephemeral=True,
+                    )
+                else:
+                    self._emit_codex_raw_event(
+                        session,
+                        method=method,
+                        params=params,
+                        reason="dynamic_tool_started_missing_identity",
+                    )
+            elif item.get("type") == "reasoning":
+                self._emit_codex_raw_event(
+                    session,
+                    method=method,
+                    params=params,
+                    reason="reasoning_started_without_readable_content",
+                )
+            else:
+                self._emit_codex_raw_event(
+                    session,
+                    method=method,
+                    params=params,
+                    reason="unmapped_item_started",
                 )
         elif method == "item/commandExecution/outputDelta":
             item_id = params.get("itemId") if isinstance(params.get("itemId"), str) else None
@@ -1312,6 +1537,90 @@ class CodexCopilotAdapterServer:
                         ),
                     )
                 )
+            elif item.get("type") == "dynamicToolCall":
+                tool_call_id = item.get("id") if isinstance(item.get("id"), str) else None
+                tool_name = _first_string_field(item, "tool", "toolName", "name")
+                status = item.get("status") if isinstance(item.get("status"), str) else None
+                success = (
+                    bool(item.get("success"))
+                    if item.get("success") is not None
+                    else status == "completed"
+                )
+                content_preview = _first_text_from_content_items(item.get("contentItems"))
+                if tool_call_id:
+                    self._record_semantic(
+                        "tool.execution",
+                        "codex_completed",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        data={
+                            "toolName": tool_name,
+                            "toolCallId": tool_call_id,
+                            "status": status,
+                            "success": success,
+                            "durationMs": item.get("durationMs"),
+                            "contentPreviewChars": len(content_preview),
+                        },
+                    )
+                    self._emit_codex_session_event(
+                        session,
+                        "tool.execution_complete",
+                        {
+                            "toolCallId": tool_call_id,
+                            "success": success,
+                            "model": session.model or self.options.model,
+                            "toolTelemetry": {
+                                "toolName": tool_name,
+                                "status": status,
+                                "durationMs": item.get("durationMs"),
+                                "contentPreviewChars": len(content_preview),
+                            },
+                            "result": {"content": content_preview}
+                            if content_preview
+                            else None,
+                            **(
+                                {}
+                                if success
+                                else {
+                                    "error": {
+                                        "message": f"dynamic tool status={status}",
+                                    }
+                                }
+                            ),
+                        },
+                        ephemeral=True,
+                    )
+                else:
+                    self._emit_codex_raw_event(
+                        session,
+                        method=method,
+                        params=params,
+                        reason="dynamic_tool_completed_missing_identity",
+                    )
+            elif item.get("type") == "reasoning":
+                reasoning_id = item.get("id") if isinstance(item.get("id"), str) else None
+                content = _reasoning_content(item)
+                if reasoning_id and content:
+                    self._record_semantic(
+                        "assistant.reasoning",
+                        "completed",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        data={"reasoningId": reasoning_id, "contentChars": len(content)},
+                    )
+                    self._emit_codex_session_event(
+                        session,
+                        "assistant.reasoning",
+                        {"reasoningId": reasoning_id, "content": content},
+                        ephemeral=True,
+                    )
+                else:
+                    self._emit_codex_raw_event(
+                        session,
+                        method=method,
+                        params=params,
+                        reason="reasoning_completed_without_readable_content",
+                    )
             elif item.get("type") == "commandExecution":
                 item_id = item.get("id") if isinstance(item.get("id"), str) else None
                 aggregated = (
@@ -1372,13 +1681,20 @@ class CodexCopilotAdapterServer:
         elif method == "turn/completed":
             turn = params.get("turn") if _is_record(params.get("turn")) else {}
             status = turn.get("status") if isinstance(turn.get("status"), str) else "completed"
+            turn_id = turn.get("id") if isinstance(turn.get("id"), str) else None
             self._record_semantic(
                 "turn.lifecycle",
                 "completed",
                 session_id=session_id,
                 thread_id=thread_id,
-                data={"status": status},
+                data={"turnId": turn_id, "status": status},
             )
+            if turn_id:
+                self._emit_codex_session_event(
+                    session,
+                    "assistant.turn_end",
+                    {"turnId": turn_id},
+                )
             event = (
                 self._create_session_event(session, "session.idle", {})
                 if status == "completed"
@@ -1542,7 +1858,7 @@ class CodexCopilotAdapterServer:
         session: SessionState,
         connection: JsonRpcConnection,
     ) -> None:
-        tool_name = params.get("tool") if isinstance(params.get("tool"), str) else None
+        tool_name = _first_string_field(params, "tool", "toolName", "name")
         tool_call_id = (
             params.get("callId")
             if isinstance(params.get("callId"), str)
@@ -1597,6 +1913,29 @@ class CodexCopilotAdapterServer:
                 "mode": routing["mode"],
                 **_preview_fields("arguments", params.get("arguments")),
             },
+        )
+        # Preserve the assistant's tool decision as an assistant.message with
+        # toolRequests before the transport callback runs. This is the SDK's
+        # native "the agent is about to call tool X" shape and gives Chat UI a
+        # CLI-like step marker without asking the tool implementation to fake
+        # progress.
+        self._emit_codex_session_event(
+            session,
+            "assistant.message",
+            {
+                "content": "",
+                "messageId": f"tool-request-{tool_call_id}",
+                "phase": "tool_call",
+                "toolRequests": [
+                    {
+                        "name": tool_name,
+                        "toolCallId": tool_call_id,
+                        "arguments": params.get("arguments"),
+                        "type": "function",
+                    }
+                ],
+            },
+            ephemeral=True,
         )
         if routing["mode"] == "protocol-v2-sdk-request":
             try:

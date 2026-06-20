@@ -13,6 +13,19 @@ from pathlib import Path
 from typing import Any
 
 JsonRpcHandler = Callable[[dict[str, Any]], None]
+DEFAULT_SUBPROCESS_STREAM_LIMIT_BYTES = 16 * 1024 * 1024
+SUBPROCESS_STREAM_LIMIT_ENV = "CODEX_ADAPTER_SUBPROCESS_STREAM_LIMIT_BYTES"
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(65_536, value)
 
 
 @dataclass
@@ -22,6 +35,11 @@ class CodexAppServerGatewayOptions:
     isolate_codex_home: bool = True
     request_timeout_ms: int = 45_000
     transcript_limit: int = 500
+    subprocess_stream_limit_bytes: int = field(
+        default_factory=lambda: _env_int(
+            SUBPROCESS_STREAM_LIMIT_ENV, DEFAULT_SUBPROCESS_STREAM_LIMIT_BYTES
+        )
+    )
     client_info: dict[str, str | None] = field(default_factory=dict)
 
 
@@ -82,6 +100,7 @@ class CodexAppServerGateway:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            limit=self.options.subprocess_stream_limit_bytes,
         )
         self._reader_task = asyncio.create_task(self._read_stdout())
         self._stderr_task = asyncio.create_task(self._read_stderr())

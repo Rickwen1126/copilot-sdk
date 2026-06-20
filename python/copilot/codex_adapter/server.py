@@ -47,6 +47,8 @@ SEMANTIC_PREVIEW_MAX_ITEMS = 8
 SEMANTIC_PREVIEW_MAX_DEPTH = 4
 REDACTED_PREVIEW = "[redacted]"
 TRUNCATED_PREVIEW = "[truncated]"
+COMMAND_OUTPUT_PREVIEW_CHARS = 240
+COMMAND_OUTPUT_WARNING_CHARS = 60_000
 SENSITIVE_KEY_MARKERS = (
     "api_key",
     "apikey",
@@ -450,6 +452,8 @@ class CodexCopilotAdapterServer:
         self.connections: dict[str, JsonRpcConnection] = {}
         self.file_change_snapshots: dict[str, list[Any]] = {}
         self.pending_dynamic_tool_calls: dict[str, PendingDynamicToolCall] = {}
+        self.command_output_chars: dict[str, int] = {}
+        self.command_output_warning_emitted: set[str] = set()
         self.transcript: list[dict[str, Any]] = []
         self.semantic_log: list[dict[str, Any]] = []
         self.server: asyncio.AbstractServer | None = None
@@ -1112,7 +1116,112 @@ class CodexCopilotAdapterServer:
         if not session:
             return
         method = notification.get("method")
-        if method == "item/completed":
+        if method == "item/started":
+            item = params.get("item") if _is_record(params.get("item")) else {}
+            if item.get("type") == "commandExecution":
+                item_id = item.get("id") if isinstance(item.get("id"), str) else None
+                command = item.get("command") if isinstance(item.get("command"), str) else ""
+                if item_id:
+                    self.command_output_chars[item_id] = 0
+                self._record_semantic(
+                    "command.execution",
+                    "started",
+                    session_id=session_id,
+                    thread_id=thread_id,
+                    data={
+                        "itemId": item_id,
+                        "commandChars": len(command),
+                        "cwd": item.get("cwd") if isinstance(item.get("cwd"), str) else None,
+                        **_preview_fields("command", command),
+                    },
+                )
+                asyncio.create_task(
+                    self._emit_session_event(
+                        session_id,
+                        self._create_session_event(
+                            session,
+                            "tool.execution_start",
+                            {
+                                "toolName": "exec_command",
+                                "toolCallId": item_id,
+                                "arguments": {"command": command},
+                            },
+                            True,
+                        ),
+                    )
+                )
+        elif method == "item/commandExecution/outputDelta":
+            item_id = params.get("itemId") if isinstance(params.get("itemId"), str) else None
+            delta = params.get("delta") if isinstance(params.get("delta"), str) else ""
+            total = self.command_output_chars.get(item_id or "", 0) + len(delta)
+            if item_id:
+                self.command_output_chars[item_id] = total
+            preview = delta[:COMMAND_OUTPUT_PREVIEW_CHARS]
+            self._record_semantic(
+                "command.execution",
+                "output_delta",
+                session_id=session_id,
+                thread_id=thread_id,
+                data={
+                    "itemId": item_id,
+                    "deltaChars": len(delta),
+                    "totalOutputChars": total,
+                    "preview": preview,
+                    "previewTruncated": len(delta) > COMMAND_OUTPUT_PREVIEW_CHARS,
+                },
+            )
+            asyncio.create_task(
+                self._emit_session_event(
+                    session_id,
+                    self._create_session_event(
+                        session,
+                        "tool.execution_progress",
+                        {
+                            "toolCallId": item_id,
+                            "progressMessage": (
+                                "exec_command output received "
+                                f"(deltaChars={len(delta)} totalOutputChars={total})"
+                            ),
+                        },
+                        True,
+                    ),
+                )
+            )
+            if item_id and total > COMMAND_OUTPUT_WARNING_CHARS:
+                warning_key = f"{session_id}:{item_id}"
+                if warning_key not in self.command_output_warning_emitted:
+                    self.command_output_warning_emitted.add(warning_key)
+                    self._record_semantic(
+                        "runtime.warning",
+                        "command_output_over_safe_limit",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        data={
+                            "itemId": item_id,
+                            "totalOutputChars": total,
+                            "safeLimitChars": COMMAND_OUTPUT_WARNING_CHARS,
+                        },
+                    )
+                    asyncio.create_task(
+                        self._emit_session_event(
+                            session_id,
+                            self._create_session_event(
+                                session,
+                                "session.warning",
+                                {
+                                    "warningType": "command_output_over_safe_limit",
+                                    "message": (
+                                        "Codex command output exceeded the adapter safe "
+                                        f"visibility limit ({total} chars > "
+                                        f"{COMMAND_OUTPUT_WARNING_CHARS}). Use a narrower "
+                                        "query or redirect large output to a file."
+                                    ),
+                                },
+                                True,
+                            ),
+                        )
+                    )
+        elif method == "item/completed":
             item = params.get("item") if _is_record(params.get("item")) else {}
             if item.get("type") == "agentMessage":
                 text = item.get("text") if isinstance(item.get("text"), str) else ""
@@ -1145,6 +1254,63 @@ class CodexCopilotAdapterServer:
                                 if isinstance(item.get("phase"), str)
                                 else None,
                             },
+                        ),
+                    )
+                )
+            elif item.get("type") == "commandExecution":
+                item_id = item.get("id") if isinstance(item.get("id"), str) else None
+                aggregated = (
+                    item.get("aggregatedOutput")
+                    if isinstance(item.get("aggregatedOutput"), str)
+                    else ""
+                )
+                output_chars = len(aggregated) or self.command_output_chars.get(item_id or "", 0)
+                exit_code = item.get("exitCode")
+                status = item.get("status") if isinstance(item.get("status"), str) else None
+                if item_id:
+                    self.command_output_chars.pop(item_id, None)
+                    self.command_output_warning_emitted.discard(f"{session_id}:{item_id}")
+                self._record_semantic(
+                    "command.execution",
+                    "completed",
+                    session_id=session_id,
+                    thread_id=thread_id,
+                    data={
+                        "itemId": item_id,
+                        "status": status,
+                        "exitCode": exit_code,
+                        "outputChars": output_chars,
+                        "durationMs": item.get("durationMs"),
+                    },
+                )
+                asyncio.create_task(
+                    self._emit_session_event(
+                        session_id,
+                        self._create_session_event(
+                            session,
+                            "tool.execution_complete",
+                            {
+                                "toolCallId": item_id,
+                                "success": status == "completed" and exit_code in (0, None),
+                                "model": session.model or self.options.model,
+                                "toolTelemetry": {
+                                    "outputChars": output_chars,
+                                    "status": status,
+                                    "exitCode": exit_code,
+                                },
+                                **(
+                                    {}
+                                    if status == "completed" and exit_code in (0, None)
+                                    else {
+                                        "error": {
+                                            "message": (
+                                                f"command status={status} exitCode={exit_code}"
+                                            )
+                                        }
+                                    }
+                                ),
+                            },
+                            True,
                         ),
                     )
                 )

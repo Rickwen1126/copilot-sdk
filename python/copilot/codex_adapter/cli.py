@@ -49,6 +49,7 @@ def build_options() -> CodexAdapterOptions:
         transcript_limit=_env_int("CODEX_ADAPTER_TRANSCRIPT_LIMIT") or 500,
         runtime_session_store_path=_env_string("CODEX_ADAPTER_RUNTIME_SESSION_STORE_PATH"),
         fallback_workspace_parent=_env_string("CODEX_ADAPTER_FALLBACK_WORKSPACE_PARENT"),
+        experimental_raw_events=_env_bool("CODEX_ADAPTER_EXPERIMENTAL_RAW_EVENTS") or False,
         client_info={
             "name": _env_string("CODEX_ADAPTER_CLIENT_NAME"),
             "title": _env_string("CODEX_ADAPTER_CLIENT_TITLE"),

@@ -7,6 +7,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import tempfile
 import time
 import uuid
@@ -128,6 +129,7 @@ class CodexAdapterOptions:
     runtime_session_store_path: str | None = None
     fallback_workspace_parent: str | None = None
     client_info: dict[str, str | None] = field(default_factory=dict)
+    experimental_raw_events: bool = False
 
 
 @dataclass
@@ -142,6 +144,9 @@ class SessionState:
     events: list[dict[str, Any]] = field(default_factory=list)
     attached_connection_ids: set[str] = field(default_factory=set)
     resume_count: int = 0
+    raw_tool_call_ids: set[str] = field(default_factory=set)
+    raw_tool_output_call_ids: set[str] = field(default_factory=set)
+    raw_tool_names: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -336,6 +341,58 @@ def _first_text_from_content_items(content_items: Any, *, limit: int = 500) -> s
             pieces.append(text)
     text = "\n".join(pieces)
     return text[:limit] + "..." if len(text) > limit else text
+
+
+def _json_object_from_string(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _text_from_mcp_result(result: Any, *, limit: int = 500) -> str:
+    if not _is_record(result):
+        return ""
+    content = result.get("content")
+    if not isinstance(content, list):
+        return ""
+    pieces: list[str] = []
+    for item in content:
+        if not _is_record(item):
+            continue
+        text = item.get("text")
+        if isinstance(text, str) and text:
+            pieces.append(text)
+    text = "\n".join(pieces)
+    return text[:limit] + "..." if len(text) > limit else text
+
+
+def _tool_output_preview(text: str, *, limit: int = 500) -> tuple[str, bool]:
+    return (text[:limit] + "...", True) if len(text) > limit else (text, False)
+
+
+def _exit_code_from_command_output(text: str) -> int | None:
+    match = re.search(r"Process exited with code (-?\d+)", text)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _mcp_tool_name(item: dict[str, Any]) -> tuple[str, str | None, str | None]:
+    server = item.get("server") if isinstance(item.get("server"), str) else None
+    tool = item.get("tool") if isinstance(item.get("tool"), str) else None
+    if server and tool:
+        return f"{server}.{tool}", server, tool
+    if tool:
+        return tool, server, tool
+    name = _first_string_field(item, "toolName", "name") or "mcp_tool"
+    return name, server, tool
 
 
 def _reasoning_content(item: dict[str, Any]) -> str:
@@ -753,7 +810,7 @@ class CodexCopilotAdapterServer:
             "approvalsReviewer": self.options.approvals_reviewer,
             "sandbox": codex_thread_sandbox_mode(self.options.sandbox_mode),
             "ephemeral": False,
-            "experimentalRawEvents": False,
+            "experimentalRawEvents": self.options.experimental_raw_events,
             "persistExtendedHistory": False,
         }
         base_instructions = self._extract_base_instructions(params)
@@ -982,6 +1039,7 @@ class CodexCopilotAdapterServer:
                 "sandboxPolicy": codex_sandbox_policy(
                     self.options.sandbox_mode, self.options.network_access
                 ),
+                "experimentalRawEvents": self.options.experimental_raw_events,
             },
         )
         if response.get("error"):
@@ -1265,7 +1323,119 @@ class CodexCopilotAdapterServer:
         if not session:
             return
         method = notification.get("method")
-        if method == "turn/started":
+        if method == "rawResponseItem/completed":
+            item = params.get("item") if _is_record(params.get("item")) else {}
+            item_type = item.get("type") if isinstance(item.get("type"), str) else ""
+            if item_type == "function_call":
+                tool_name = item.get("name") if isinstance(item.get("name"), str) else "function_call"
+                tool_call_id = (
+                    item.get("call_id") if isinstance(item.get("call_id"), str) else None
+                )
+                raw_arguments = item.get("arguments")
+                parsed_arguments = _json_object_from_string(raw_arguments)
+                argument_source = parsed_arguments if parsed_arguments is not None else raw_arguments
+                argument_preview, redacted, truncated = _preview_value(argument_source)
+                if tool_call_id:
+                    session.raw_tool_call_ids.add(tool_call_id)
+                    session.raw_tool_names[tool_call_id] = tool_name
+                    self._record_semantic(
+                        "tool.execution",
+                        "raw_function_call",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        data={
+                            "toolName": tool_name,
+                            "toolCallId": tool_call_id,
+                            "argumentsPreviewRedacted": redacted,
+                            "argumentsPreviewTruncated": truncated,
+                        },
+                    )
+                    self._emit_codex_session_event(
+                        session,
+                        "tool.execution_start",
+                        {
+                            "toolName": tool_name,
+                            "toolCallId": tool_call_id,
+                            "arguments": argument_preview,
+                        },
+                        ephemeral=True,
+                    )
+                else:
+                    self._emit_codex_raw_event(
+                        session,
+                        method=method,
+                        params=params,
+                        reason="raw_function_call_missing_call_id",
+                    )
+            elif item_type == "function_call_output":
+                tool_call_id = (
+                    item.get("call_id") if isinstance(item.get("call_id"), str) else None
+                )
+                output = item.get("output") if isinstance(item.get("output"), str) else ""
+                output_preview, truncated = _tool_output_preview(
+                    output, limit=COMMAND_OUTPUT_PREVIEW_CHARS
+                )
+                exit_code = _exit_code_from_command_output(output)
+                success = exit_code in (0, None)
+                if tool_call_id:
+                    session.raw_tool_output_call_ids.add(tool_call_id)
+                    tool_name = session.raw_tool_names.get(tool_call_id)
+                    self._record_semantic(
+                        "tool.execution",
+                        "raw_function_call_output",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        data={
+                            "toolCallId": tool_call_id,
+                            "success": success,
+                            "exitCode": exit_code,
+                            "outputChars": len(output),
+                            "previewTruncated": truncated,
+                        },
+                    )
+                    self._emit_codex_session_event(
+                        session,
+                        "tool.execution_complete",
+                        {
+                            "toolCallId": tool_call_id,
+                            "success": success,
+                            "model": session.model or self.options.model,
+                            "toolTelemetry": {
+                                "toolName": tool_name,
+                                "source": "rawResponseItem",
+                                "itemType": item_type,
+                                "outputChars": len(output),
+                                "outputPreviewTruncated": truncated,
+                                "exitCode": exit_code,
+                            },
+                            "result": {"content": output_preview} if output_preview else None,
+                            **(
+                                {}
+                                if success
+                                else {
+                                    "error": {
+                                        "message": f"function call output exitCode={exit_code}",
+                                    }
+                                }
+                            ),
+                        },
+                        ephemeral=True,
+                    )
+                else:
+                    self._emit_codex_raw_event(
+                        session,
+                        method=method,
+                        params=params,
+                        reason="raw_function_call_output_missing_call_id",
+                    )
+            elif item_type in {"tool_search_call", "tool_search_output"}:
+                self._emit_codex_raw_event(
+                    session,
+                    method=method,
+                    params=params,
+                    reason="raw_tool_search_provenance",
+                )
+        elif method == "turn/started":
             turn = params.get("turn") if _is_record(params.get("turn")) else {}
             turn_id = turn.get("id") if isinstance(turn.get("id"), str) else None
             self._record_semantic(
@@ -1365,6 +1535,8 @@ class CodexCopilotAdapterServer:
                         **_preview_fields("command", command),
                     },
                 )
+                if item_id in session.raw_tool_call_ids:
+                    return
                 asyncio.create_task(
                     self._emit_session_event(
                         session_id,
@@ -1380,6 +1552,42 @@ class CodexCopilotAdapterServer:
                         ),
                     )
                 )
+            elif item.get("type") == "mcpToolCall":
+                tool_call_id = item.get("id") if isinstance(item.get("id"), str) else None
+                tool_name, server_name, mcp_tool_name = _mcp_tool_name(item)
+                if tool_call_id:
+                    self._record_semantic(
+                        "tool.execution",
+                        "mcp_started",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        data={
+                            "toolName": tool_name,
+                            "toolCallId": tool_call_id,
+                            "server": server_name,
+                            "mcpTool": mcp_tool_name,
+                            **_preview_fields("arguments", item.get("arguments")),
+                        },
+                    )
+                    self._emit_codex_session_event(
+                        session,
+                        "tool.execution_start",
+                        {
+                            "toolName": tool_name,
+                            "toolCallId": tool_call_id,
+                            "arguments": item.get("arguments"),
+                            "mcpServerName": server_name,
+                            "mcpToolName": mcp_tool_name,
+                        },
+                        ephemeral=True,
+                    )
+                else:
+                    self._emit_codex_raw_event(
+                        session,
+                        method=method,
+                        params=params,
+                        reason="mcp_tool_started_missing_identity",
+                    )
             elif item.get("type") == "dynamicToolCall":
                 # Codex-native dynamic tool lifecycle. This is separate from
                 # the SDK tool.call callback: the lifecycle says what Codex is
@@ -1455,13 +1663,10 @@ class CodexCopilotAdapterServer:
                     session_id,
                     self._create_session_event(
                         session,
-                        "tool.execution_progress",
+                        "tool.execution_partial_result",
                         {
                             "toolCallId": item_id,
-                            "progressMessage": (
-                                "exec_command output received "
-                                f"(deltaChars={len(delta)} totalOutputChars={total})"
-                            ),
+                            "partialOutput": preview,
                         },
                         True,
                     ),
@@ -1537,6 +1742,70 @@ class CodexCopilotAdapterServer:
                         ),
                     )
                 )
+            elif item.get("type") == "mcpToolCall":
+                tool_call_id = item.get("id") if isinstance(item.get("id"), str) else None
+                tool_name, server_name, mcp_tool_name = _mcp_tool_name(item)
+                status = item.get("status") if isinstance(item.get("status"), str) else None
+                error_value = item.get("error")
+                success = status == "completed" and error_value in (None, "")
+                result_text = _text_from_mcp_result(item.get("result"))
+                result_preview, result_truncated = _tool_output_preview(
+                    result_text, limit=COMMAND_OUTPUT_PREVIEW_CHARS
+                )
+                if tool_call_id:
+                    self._record_semantic(
+                        "tool.execution",
+                        "mcp_completed",
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        data={
+                            "toolName": tool_name,
+                            "toolCallId": tool_call_id,
+                            "status": status,
+                            "success": success,
+                            "durationMs": item.get("durationMs"),
+                            "resultChars": len(result_text),
+                            "previewTruncated": result_truncated,
+                        },
+                    )
+                    self._emit_codex_session_event(
+                        session,
+                        "tool.execution_complete",
+                        {
+                            "toolCallId": tool_call_id,
+                            "success": success,
+                            "model": session.model or self.options.model,
+                            "toolTelemetry": {
+                                "toolName": tool_name,
+                                "mcpServerName": server_name,
+                                "mcpToolName": mcp_tool_name,
+                                "status": status,
+                                "durationMs": item.get("durationMs"),
+                                "resultChars": len(result_text),
+                                "resultPreviewTruncated": result_truncated,
+                            },
+                            "result": {"content": result_preview}
+                            if result_preview
+                            else None,
+                            **(
+                                {}
+                                if success
+                                else {
+                                    "error": {
+                                        "message": str(error_value or f"mcp tool status={status}"),
+                                    }
+                                }
+                            ),
+                        },
+                        ephemeral=True,
+                    )
+                else:
+                    self._emit_codex_raw_event(
+                        session,
+                        method=method,
+                        params=params,
+                        reason="mcp_tool_completed_missing_identity",
+                    )
             elif item.get("type") == "dynamicToolCall":
                 tool_call_id = item.get("id") if isinstance(item.get("id"), str) else None
                 tool_name = _first_string_field(item, "tool", "toolName", "name")
@@ -1647,6 +1916,8 @@ class CodexCopilotAdapterServer:
                         "durationMs": item.get("durationMs"),
                     },
                 )
+                if item_id in session.raw_tool_call_ids:
+                    return
                 asyncio.create_task(
                     self._emit_session_event(
                         session_id,

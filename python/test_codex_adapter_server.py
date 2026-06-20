@@ -772,6 +772,219 @@ async def test_codex_native_events_are_forwarded_as_sdk_session_events(adapter):
 
 
 @pytest.mark.asyncio
+async def test_codex_raw_function_call_events_are_forwarded_as_typed_tool_events(adapter):
+    server, fake = adapter
+    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    await client.start()
+    try:
+        captured = []
+        session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
+        session.on(captured.append)
+
+        fake.notification_handler(
+            {
+                "method": "rawResponseItem/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "item": {
+                        "type": "function_call",
+                        "name": "exec_command",
+                        "call_id": "call-raw-1",
+                        "arguments": '{"cmd":"pwd","workdir":"/tmp/demo"}',
+                    },
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "item/started",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "item": {
+                        "type": "commandExecution",
+                        "id": "call-raw-1",
+                        "command": "/bin/zsh -lc pwd",
+                        "status": "inProgress",
+                    },
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "item/commandExecution/outputDelta",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "itemId": "call-raw-1",
+                    "delta": "/tmp/demo\n",
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "rawResponseItem/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "item": {
+                        "type": "function_call_output",
+                        "call_id": "call-raw-1",
+                        "output": (
+                            "Chunk ID: abc\nWall time: 0.0000 seconds\n"
+                            "Process exited with code 0\nOutput:\n/tmp/demo\n"
+                        ),
+                    },
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "item": {
+                        "type": "commandExecution",
+                        "id": "call-raw-1",
+                        "status": "completed",
+                        "exitCode": 0,
+                    },
+                },
+            }
+        )
+
+        await _wait_for_event_types(
+            captured,
+            {
+                "tool.execution_start",
+                "tool.execution_partial_result",
+                "tool.execution_complete",
+            },
+        )
+
+        starts = [event for event in captured if _event_type(event) == "tool.execution_start"]
+        completes = [event for event in captured if _event_type(event) == "tool.execution_complete"]
+        assert len(starts) == 1
+        assert len(completes) == 1
+        assert starts[0].data.tool_name == "exec_command"
+        assert starts[0].data.tool_call_id == "call-raw-1"
+        assert starts[0].data.arguments == {"cmd": "pwd", "workdir": "/tmp/demo"}
+        partial = next(event for event in captured if _event_type(event) == "tool.execution_partial_result")
+        assert partial.data.partial_output == "/tmp/demo\n"
+        complete = completes[0].data
+        assert complete.success is True
+        assert complete.result.content.endswith("/tmp/demo\n")
+        assert complete.tool_telemetry["toolName"] == "exec_command"
+        assert complete.tool_telemetry["source"] == "rawResponseItem"
+        assert complete.tool_telemetry["outputChars"] > 0
+        assert complete.tool_telemetry["exitCode"] == 0
+    finally:
+        await client.force_stop()
+
+
+@pytest.mark.asyncio
+async def test_codex_mcp_tool_call_events_are_forwarded_as_typed_tool_events(adapter):
+    server, fake = adapter
+    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    await client.start()
+    try:
+        captured = []
+        session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
+        session.on(captured.append)
+
+        fake.notification_handler(
+            {
+                "method": "item/started",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "item": {
+                        "type": "mcpToolCall",
+                        "id": "call-mcp-1",
+                        "server": "codex",
+                        "tool": "list_mcp_resources",
+                        "status": "inProgress",
+                        "arguments": {"cursor": "abc"},
+                    },
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "item": {
+                        "type": "mcpToolCall",
+                        "id": "call-mcp-1",
+                        "server": "codex",
+                        "tool": "list_mcp_resources",
+                        "status": "completed",
+                        "arguments": {"cursor": "abc"},
+                        "result": {
+                            "content": [
+                                {"type": "text", "text": '{"resources":[{"name":"demo"}]}'}
+                            ]
+                        },
+                        "error": None,
+                        "durationMs": 11,
+                    },
+                },
+            }
+        )
+
+        await _wait_for_event_types(
+            captured,
+            {
+                "tool.execution_start",
+                "tool.execution_complete",
+            },
+        )
+
+        start = next(event for event in captured if _event_type(event) == "tool.execution_start")
+        complete = next(event for event in captured if _event_type(event) == "tool.execution_complete")
+        assert start.data.tool_name == "codex.list_mcp_resources"
+        assert start.data.mcp_server_name == "codex"
+        assert start.data.mcp_tool_name == "list_mcp_resources"
+        assert start.data.arguments == {"cursor": "abc"}
+        assert complete.data.success is True
+        assert complete.data.result.content == '{"resources":[{"name":"demo"}]}'
+        assert complete.data.tool_telemetry["mcpServerName"] == "codex"
+        assert complete.data.tool_telemetry["mcpToolName"] == "list_mcp_resources"
+    finally:
+        await client.force_stop()
+
+
+@pytest.mark.asyncio
+async def test_experimental_raw_events_option_is_sent_to_codex_thread_and_turn(tmp_path):
+    fake = FakeCodexGateway()
+    server = CodexCopilotAdapterServer(
+        CodexAdapterOptions(
+            runtime_session_store_path=str(tmp_path / "sessions.json"),
+            experimental_raw_events=True,
+        ),
+        gateway=fake,
+    )
+    await server.start()
+    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    await client.start()
+    try:
+        session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
+        await session.send_and_wait("hello", timeout=2)
+
+        thread_start = next(params for method, params in fake.requests if method == "thread/start")
+        turn_start = next(params for method, params in fake.requests if method == "turn/start")
+        assert thread_start["experimentalRawEvents"] is True
+        assert turn_start["experimentalRawEvents"] is True
+    finally:
+        await client.force_stop()
+        await server.stop()
+
+
+@pytest.mark.asyncio
 async def test_protocol_v3_oversized_dynamic_tool_result_fails_fast(adapter, monkeypatch):
     monkeypatch.setenv("CODEX_ADAPTER_DYNAMIC_TOOL_TEXT_CHAR_LIMIT", "1000")
     server, fake = adapter

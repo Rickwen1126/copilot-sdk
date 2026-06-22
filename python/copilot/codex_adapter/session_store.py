@@ -19,6 +19,7 @@ class CodexRuntimeSessionRecord:
     createdAt: str
     updatedAt: str
     model: str | None = None
+    reasoningEffort: str | None = None
     codexHomeIdentity: str | None = None
 
 
@@ -45,6 +46,12 @@ def _parse_record(value: object) -> CodexRuntimeSessionRecord | None:
         codexThreadId=value["codexThreadId"],
         cwd=value["cwd"],
         model=value.get("model") if isinstance(value.get("model"), str) else None,
+        reasoningEffort=(
+            value.get("reasoningEffort")
+            if isinstance(value.get("reasoningEffort"), str)
+            or value.get("reasoningEffort") is None
+            else None
+        ),
         toolFingerprint=value["toolFingerprint"],
         codexHomeIdentity=value.get("codexHomeIdentity")
         if isinstance(value.get("codexHomeIdentity"), str)

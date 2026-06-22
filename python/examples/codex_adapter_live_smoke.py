@@ -41,6 +41,43 @@ def _extract_codex_methods(summary: dict[str, Any]) -> list[str]:
     return methods
 
 
+def _adapter_transcript_entries(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    entries = summary.get("adapterTranscript")
+    return entries if isinstance(entries, list) else []
+
+
+def _codex_transcript_entries(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    codex = summary.get("codex")
+    entries = codex.get("transcripts") if _is_record(codex) else None
+    return entries if isinstance(entries, list) else []
+
+
+def _find_adapter_request(summary: dict[str, Any], method: str) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for entry in _adapter_transcript_entries(summary):
+        if not _is_record(entry) or entry.get("direction") != "sdk->adapter.request":
+            continue
+        message = entry.get("message")
+        if not _is_record(message) or message.get("method") != method:
+            continue
+        params = message.get("params")
+        matches.append(params if _is_record(params) else {})
+    return matches
+
+
+def _find_codex_request(summary: dict[str, Any], method: str) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for entry in _codex_transcript_entries(summary):
+        if not _is_record(entry) or entry.get("direction") != "adapter->codex":
+            continue
+        message = entry.get("message")
+        if not _is_record(message) or message.get("method") != method:
+            continue
+        params = message.get("params")
+        matches.append(params if _is_record(params) else {})
+    return matches
+
+
 async def _read_first_stdout_line(process: asyncio.subprocess.Process) -> dict[str, Any]:
     assert process.stdout is not None
     raw = await asyncio.wait_for(process.stdout.readline(), timeout=20)
@@ -124,22 +161,34 @@ async def run_smoke(out_path: Path, raw_summary_path: Path) -> dict[str, Any]:
 
         session = await client.create_session(
             model="gpt-5.4",
+            reasoning_effort="high",
             working_directory=str(Path.cwd().parent),
             on_permission_request=PermissionHandler.approve_all,
         )
         session_id = session.session_id
+        current_before = await session.rpc.model.get_current()
         assistant = await session.send_and_wait(
-            "Reply with PYTHON_ADAPTER_SMOKE_OK and nothing else.",
+            "Reply with PYTHON_ADAPTER_TURN1_OK and nothing else.",
+            timeout=60,
+        )
+        # This is the critical live-switch contract: update only the running
+        # session's model settings, keep the same session/thread, and let the
+        # next turn carry the new reasoning effort into `turn/start`.
+        await session.set_model("gpt-5.4", reasoning_effort="none")
+        current_after = await session.rpc.model.get_current()
+        assistant_after_switch = await session.send_and_wait(
+            "Reply with PYTHON_ADAPTER_TURN2_OK and nothing else.",
             timeout=60,
         )
         messages = await session.get_messages()
-        await session.disconnect()
 
         resumed = await client.resume_session(
             session_id,
             model="gpt-5.4",
             on_permission_request=PermissionHandler.approve_all,
         )
+        resumed_session_id = resumed.session_id
+        await resumed.disconnect()
         await client.delete_session(resumed.session_id)
 
         result["probe"] = {
@@ -162,8 +211,17 @@ async def run_smoke(out_path: Path, raw_summary_path: Path) -> dict[str, Any]:
                 "firstModelId": models[0].id if models else None,
             },
             "assistantMessage": assistant.data.content if assistant else None,
+            "assistantMessageAfterSwitch": (
+                assistant_after_switch.data.content
+                if assistant_after_switch
+                else None
+            ),
             "eventTypes": sorted(event.type.value for event in messages),
             "sessionIdPresent": session_id is not None,
+            "sessionId": session_id,
+            "resumedSessionId": resumed_session_id,
+            "rpcCurrentModelBeforeSwitch": current_before.model_id,
+            "rpcCurrentModelAfterSwitch": current_after.model_id,
             "deletedSessionId": resumed.session_id,
         }
         result["status"] = "pass"
@@ -183,6 +241,16 @@ async def run_smoke(out_path: Path, raw_summary_path: Path) -> dict[str, Any]:
     raw_summary = json.loads(raw_summary_path.read_text()) if raw_summary_path.exists() else {}
     raw_summary_text = json.dumps(raw_summary, separators=(",", ":"))
     codex_methods = _extract_codex_methods(raw_summary)
+    session_create_requests = _find_adapter_request(raw_summary, "session.create")
+    session_switch_requests = _find_adapter_request(
+        raw_summary, "session.model.switchTo"
+    )
+    thread_start_requests = _find_codex_request(raw_summary, "thread/start")
+    turn_start_requests = _find_codex_request(raw_summary, "turn/start")
+    first_turn_start = turn_start_requests[0] if turn_start_requests else {}
+    second_turn_start = turn_start_requests[1] if len(turn_start_requests) > 1 else {}
+    first_thread_id = first_turn_start.get("threadId")
+    second_thread_id = second_turn_start.get("threadId")
     result["adapterSummary"] = {
         "sha256": _sha256_text(raw_summary_text) if raw_summary else None,
         "codexHomePresent": bool(
@@ -203,6 +271,53 @@ async def run_smoke(out_path: Path, raw_summary_path: Path) -> dict[str, Any]:
                 "thread/resume",
                 "thread/archive",
             ]
+        },
+        "sessionCreate": {
+            "count": len(session_create_requests),
+            "reasoningEffort": session_create_requests[0].get("reasoningEffort")
+            if session_create_requests
+            else None,
+        },
+        "modelSwitch": {
+            "count": len(session_switch_requests),
+            "sessionId": session_switch_requests[0].get("sessionId")
+            if session_switch_requests
+            else None,
+            "modelId": session_switch_requests[0].get("modelId")
+            if session_switch_requests
+            else None,
+            "reasoningEffort": session_switch_requests[0].get("reasoningEffort")
+            if session_switch_requests
+            else None,
+        },
+        "threadStart": {
+            "count": len(thread_start_requests),
+            "model": thread_start_requests[0].get("model")
+            if thread_start_requests
+            else None,
+            "reasoningEffort": thread_start_requests[0].get("reasoningEffort")
+            if thread_start_requests
+            else None,
+        },
+        "turnStartProof": {
+            "count": len(turn_start_requests),
+            "first": {
+                "threadId": first_thread_id,
+                "model": first_turn_start.get("model"),
+                "reasoningEffort": first_turn_start.get("reasoningEffort"),
+            },
+            "second": {
+                "threadId": second_thread_id,
+                "model": second_turn_start.get("model"),
+                "reasoningEffort": second_turn_start.get("reasoningEffort"),
+            },
+            "sameThreadAcrossTurns": bool(
+                first_thread_id and first_thread_id == second_thread_id
+            ),
+            "reasoningSwitchedHighToNone": (
+                first_turn_start.get("reasoningEffort") == "high"
+                and second_turn_start.get("reasoningEffort") == "none"
+            ),
         },
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)

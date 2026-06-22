@@ -139,6 +139,7 @@ class SessionState:
     created_at: str
     cwd: str
     model: str | None
+    reasoning_effort: str | None
     tools: list[ToolDescriptor]
     last_event_id: str | None = None
     events: list[dict[str, Any]] = field(default_factory=list)
@@ -650,6 +651,7 @@ class CodexCopilotAdapterServer:
                     "threadId": session.thread_id,
                     "cwd": session.cwd,
                     "model": session.model,
+                    "reasoningEffort": session.reasoning_effort,
                     "eventCount": len(session.events),
                     "attachedConnectionCount": len(session.attached_connection_ids),
                 }
@@ -690,6 +692,8 @@ class CodexCopilotAdapterServer:
             "models.list": self._handle_models_list,
             "session.create": self._handle_session_create,
             "session.resume": self._handle_session_resume,
+            "session.model.getCurrent": self._handle_session_model_get_current,
+            "session.model.switchTo": self._handle_session_model_switch_to,
             "session.getMessages": self._handle_session_get_messages,
             "session.send": self._handle_session_send,
             "session.abort": self._handle_session_abort,
@@ -764,6 +768,11 @@ class CodexCopilotAdapterServer:
         workspace.mkdir(parents=True, exist_ok=False)
         return str(workspace)
 
+    @staticmethod
+    def _reasoning_effort_from_params(params: dict[str, Any]) -> str | None:
+        value = params.get("reasoningEffort")
+        return value if isinstance(value, str) else None
+
     def _record_concurrent_workspace_threads(
         self, session: SessionState, operation: Literal["create", "resume"]
     ) -> None:
@@ -802,6 +811,7 @@ class CodexCopilotAdapterServer:
         cwd = self._session_create_cwd(params)
         created_at = _now_iso()
         model = params.get("model") if isinstance(params.get("model"), str) else self.options.model
+        reasoning_effort = self._reasoning_effort_from_params(params)
         tools = tool_descriptors_from_session_create_params(params)
         dynamic_tools = dynamic_tools_from_descriptors(tools)
         thread_params: dict[str, Any] = {
@@ -814,6 +824,8 @@ class CodexCopilotAdapterServer:
             "experimentalRawEvents": self.options.experimental_raw_events,
             "persistExtendedHistory": False,
         }
+        if reasoning_effort is not None:
+            thread_params["reasoningEffort"] = reasoning_effort
         base_instructions = self._extract_base_instructions(params)
         if base_instructions:
             thread_params["baseInstructions"] = base_instructions
@@ -836,6 +848,7 @@ class CodexCopilotAdapterServer:
             created_at=created_at,
             cwd=cwd,
             model=model,
+            reasoning_effort=reasoning_effort,
             tools=tools,
             attached_connection_ids={connection_id},
         )
@@ -848,7 +861,12 @@ class CodexCopilotAdapterServer:
             "created",
             session_id=session_id,
             thread_id=thread_id,
-            data={"cwd": cwd, "model": model, "toolCount": len(tools)},
+            data={
+                "cwd": cwd,
+                "model": model,
+                "reasoningEffort": reasoning_effort,
+                "toolCount": len(tools),
+            },
         )
         await self._emit_lifecycle(
             "session.created", session_id, {"startTime": created_at, "modifiedTime": created_at}
@@ -865,9 +883,7 @@ class CodexCopilotAdapterServer:
                     "producer": "codex-copilot-adapter",
                     "copilotVersion": "codex-copilot-adapter",
                     "selectedModel": model,
-                    "reasoningEffort": params.get("reasoningEffort")
-                    if isinstance(params.get("reasoningEffort"), str)
-                    else None,
+                    "reasoningEffort": session.reasoning_effort,
                     "context": {"cwd": cwd},
                 },
             ),
@@ -880,6 +896,7 @@ class CodexCopilotAdapterServer:
         session_id = params.get("sessionId") if isinstance(params.get("sessionId"), str) else None
         if not session_id:
             raise RuntimeError("session.resume requires sessionId")
+        reasoning_effort = self._reasoning_effort_from_params(params)
         resume_has_tools = isinstance(params.get("tools"), list)
         resume_tools = (
             tool_descriptors_from_session_create_params(params) if resume_has_tools else None
@@ -922,6 +939,8 @@ class CodexCopilotAdapterServer:
         session.model = (
             params.get("model") if isinstance(params.get("model"), str) else session.model
         )
+        if "reasoningEffort" in params:
+            session.reasoning_effort = reasoning_effort
         session.resume_count += 1
         self.thread_to_session[session.thread_id] = session.session_id
         response = await self.codex.request(
@@ -948,6 +967,7 @@ class CodexCopilotAdapterServer:
             data={
                 "cwd": session.cwd,
                 "model": session.model or self.options.model,
+                "reasoningEffort": session.reasoning_effort,
                 "eventCount": event_count,
                 "alreadyInUse": already_in_use,
                 "toolCount": len(session.tools),
@@ -968,15 +988,92 @@ class CodexCopilotAdapterServer:
                         "resumeTime": resume_time,
                         "eventCount": event_count,
                         "selectedModel": session.model or self.options.model,
-                        "reasoningEffort": params.get("reasoningEffort")
-                        if isinstance(params.get("reasoningEffort"), str)
-                        else None,
+                        "reasoningEffort": session.reasoning_effort,
                         "alreadyInUse": already_in_use,
                         "context": {"cwd": session.cwd},
                     },
                 ),
             )
         return {"sessionId": session.session_id, "capabilities": {"ui": {"elicitation": False}}}
+
+    def _handle_session_model_get_current(
+        self,
+        params: Any,
+        connection_id: str,
+    ) -> dict[str, Any]:
+        session_id = (
+            params.get("sessionId")
+            if _is_record(params) and isinstance(params.get("sessionId"), str)
+            else None
+        )
+        if not session_id:
+            raise RuntimeError("session.model.getCurrent requires sessionId")
+        session = self.sessions.get(session_id)
+        if not session or connection_id not in session.attached_connection_ids:
+            raise RuntimeError(f"Session not found: {session_id}")
+        return {
+            "modelId": session.model or self.options.model,
+            "reasoningEffort": session.reasoning_effort,
+        }
+
+    async def _handle_session_model_switch_to(
+        self,
+        params: Any,
+        connection_id: str,
+    ) -> dict[str, Any]:
+        if not _is_record(params):
+            raise RuntimeError("session.model.switchTo params missing")
+        session_id = (
+            params.get("sessionId")
+            if isinstance(params.get("sessionId"), str)
+            else None
+        )
+        if not session_id:
+            raise RuntimeError("session.model.switchTo requires sessionId")
+        session = self.sessions.get(session_id)
+        if not session or connection_id not in session.attached_connection_ids:
+            raise RuntimeError(f"Session not found: {session_id}")
+        new_model = (
+            params.get("modelId")
+            if isinstance(params.get("modelId"), str)
+            else session.model
+            or self.options.model
+        )
+        previous_model = session.model or self.options.model
+        previous_reasoning_effort = session.reasoning_effort
+        session.model = new_model
+        if "reasoningEffort" in params:
+            session.reasoning_effort = self._reasoning_effort_from_params(params)
+        self.session_store.upsert(self._session_record_from_session(session, _now_iso()))
+        self._record_semantic(
+            "session.model",
+            "switched",
+            session_id=session.session_id,
+            thread_id=session.thread_id,
+            data={
+                "previousModel": previous_model,
+                "selectedModel": session.model,
+                "previousReasoningEffort": previous_reasoning_effort,
+                "reasoningEffort": session.reasoning_effort,
+            },
+        )
+        await self._emit_session_event(
+            session.session_id,
+            self._create_session_event(
+                session,
+                "session.model_change",
+                {
+                    "newModel": session.model,
+                    "previousModel": previous_model,
+                    "previousReasoningEffort": previous_reasoning_effort,
+                    "reasoningEffort": session.reasoning_effort,
+                },
+            ),
+        )
+        return {
+            "modelId": session.model,
+            "reasoningEffort": session.reasoning_effort,
+        }
 
     def _handle_session_get_messages(self, params: Any, connection_id: str) -> dict[str, Any]:
         session_id = (
@@ -1025,23 +1122,24 @@ class CodexCopilotAdapterServer:
                 "messageId": user_message_id,
                 "promptChars": len(prompt),
                 "model": session.model or self.options.model,
+                "reasoningEffort": session.reasoning_effort,
                 "attachmentCount": len(attachments) if isinstance(attachments, list) else 0,
                 "inputCount": len(turn_input),
             },
         )
-        response = await self.codex.request(
-            "turn/start",
-            {
-                "threadId": session.thread_id,
-                "input": turn_input,
-                "model": session.model or self.options.model,
-                "approvalPolicy": self.options.approval_policy,
-                "approvalsReviewer": self.options.approvals_reviewer,
-                "sandboxPolicy": codex_sandbox_policy(
-                    self.options.sandbox_mode, self.options.network_access
-                ),
-            },
-        )
+        turn_params = {
+            "threadId": session.thread_id,
+            "input": turn_input,
+            "model": session.model or self.options.model,
+            "approvalPolicy": self.options.approval_policy,
+            "approvalsReviewer": self.options.approvals_reviewer,
+            "sandboxPolicy": codex_sandbox_policy(
+                self.options.sandbox_mode, self.options.network_access
+            ),
+        }
+        if session.reasoning_effort is not None:
+            turn_params["reasoningEffort"] = session.reasoning_effort
+        response = await self.codex.request("turn/start", turn_params)
         if response.get("error"):
             raise RuntimeError(response["error"].get("message", "turn/start failed"))
         return {"messageId": user_message_id}
@@ -1129,6 +1227,7 @@ class CodexCopilotAdapterServer:
             codexThreadId=session.thread_id,
             cwd=session.cwd,
             model=session.model,
+            reasoningEffort=session.reasoning_effort,
             toolFingerprint=tool_fingerprint_from_descriptors(session.tools),
             codexHomeIdentity=self.options.codex_home,
             createdAt=session.created_at,
@@ -1146,6 +1245,11 @@ class CodexCopilotAdapterServer:
             if isinstance(params.get("workingDirectory"), str)
             else record.cwd,
             model=params.get("model") if isinstance(params.get("model"), str) else record.model,
+            reasoning_effort=(
+                self._reasoning_effort_from_params(params)
+                if "reasoningEffort" in params
+                else record.reasoningEffort
+            ),
             tools=tools,
         )
 

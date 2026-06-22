@@ -14,6 +14,7 @@ from copilot.codex_adapter.gateway import (
     CodexAppServerGatewayReaderError,
 )
 from copilot.codex_adapter.server import CodexAdapterOptions, CodexCopilotAdapterServer
+from copilot.generated.rpc import ModelSwitchToRequest
 from copilot.session import PermissionRequestResult
 from copilot.tools import ToolResult
 
@@ -186,6 +187,66 @@ async def test_python_sdk_can_ping_status_auth_models_and_send(adapter):
         assert ("turn.lifecycle", "started") in semantic_events
         assert ("assistant.message", "completed") in semantic_events
         assert ("turn.lifecycle", "completed") in semantic_events
+    finally:
+        await client.force_stop()
+
+
+@pytest.mark.asyncio
+async def test_model_switch_keeps_session_and_updates_turn_start_reasoning(adapter):
+    server, fake = adapter
+    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    await client.start()
+    try:
+        session = await client.create_session(
+            model="gpt-5.4",
+            reasoning_effort="high",
+            on_permission_request=PermissionHandler.approve_all,
+        )
+        thread_id = server.summary()["sessions"][0]["threadId"]
+
+        current = await session.rpc.model.get_current()
+        assert current.model_id == "gpt-5.4"
+
+        await session.send_and_wait("first turn", timeout=2)
+        first_turn_start = next(
+            params for method, params in fake.requests if method == "turn/start"
+        )
+        assert first_turn_start["threadId"] == thread_id
+        assert first_turn_start["model"] == "gpt-5.4"
+        assert first_turn_start["reasoningEffort"] == "high"
+
+        await session.rpc.model.switch_to(
+            ModelSwitchToRequest(
+                model_id="gpt-4.1",
+                reasoning_effort="none",
+            )
+        )
+        current = await session.rpc.model.get_current()
+        assert current.model_id == "gpt-4.1"
+
+        messages = await session.get_messages()
+        model_change = [
+            event
+            for event in messages
+            if event.type.value == "session.model_change"
+        ]
+        assert model_change
+        assert model_change[-1].data.new_model == "gpt-4.1"
+        assert model_change[-1].data.previous_model == "gpt-5.4"
+        assert model_change[-1].data.previous_reasoning_effort == "high"
+        assert model_change[-1].data.reasoning_effort == "none"
+
+        await session.send_and_wait("second turn", timeout=2)
+        turn_starts = [params for method, params in fake.requests if method == "turn/start"]
+        assert turn_starts[-1]["threadId"] == thread_id
+        assert turn_starts[-1]["model"] == "gpt-4.1"
+        assert turn_starts[-1]["reasoningEffort"] == "none"
+        assert server.summary()["sessions"][0]["threadId"] == thread_id
+        assert server.summary()["sessions"][0]["reasoningEffort"] == "none"
+        semantic_events = {
+            (entry["category"], entry["event"]) for entry in server.summary()["semanticLog"]
+        }
+        assert ("session.model", "switched") in semantic_events
     finally:
         await client.force_stop()
 
@@ -1193,6 +1254,7 @@ async def test_resume_after_restart_uses_persisted_runtime_mapping(tmp_path):
 
     session = await first_client.create_session(
         model="gpt-test",
+        reasoning_effort="high",
         on_permission_request=PermissionHandler.approve_all,
     )
     session_id = session.session_id
@@ -1220,6 +1282,11 @@ async def test_resume_after_restart_uses_persisted_runtime_mapping(tmp_path):
         assistant = await resumed.send_and_wait("Continue after adapter restart.", timeout=2)
         assert assistant is not None
         assert assistant.data.content == "adapter characterization reply"
+        turn_start = next(
+            params for method, params in second_gateway.requests if method == "turn/start"
+        )
+        assert turn_start["reasoningEffort"] == "high"
+        assert second_server.summary()["sessions"][0]["reasoningEffort"] == "high"
     finally:
         await second_client.force_stop()
         await second_server.stop()

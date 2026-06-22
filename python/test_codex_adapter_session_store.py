@@ -19,6 +19,7 @@ def make_record(session_id: str, *, tool_fingerprint: str = "fp-1") -> CodexRunt
         createdAt="2026-06-12T00:00:00Z",
         updatedAt="2026-06-12T00:00:00Z",
         model="gpt-5.4",
+        reasoningEffort="high",
         codexHomeIdentity="isolated-home",
     )
 
@@ -59,6 +60,7 @@ def test_session_store_upsert_flushes_sorted_payload(tmp_path):
     ]
     assert payload["records"][0]["toolFingerprint"] == "fp-a"
     assert payload["records"][1]["toolFingerprint"] == "fp-b"
+    assert payload["records"][0]["reasoningEffort"] == "high"
 
 
 def test_session_store_delete_removes_record_and_flushes(tmp_path):

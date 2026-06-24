@@ -617,6 +617,7 @@ class AssistantUsageData:
     quota_snapshots: dict[str, AssistantUsageQuotaSnapshot] | None = None
     reasoning_effort: str | None = None
     reasoning_tokens: float | None = None
+    turn_id: str | None = None
     ttft_ms: float | None = None
 
     @staticmethod
@@ -638,6 +639,7 @@ class AssistantUsageData:
         quota_snapshots = from_union([from_none, lambda x: from_dict(AssistantUsageQuotaSnapshot.from_dict, x)], obj.get("quotaSnapshots"))
         reasoning_effort = from_union([from_none, from_str], obj.get("reasoningEffort"))
         reasoning_tokens = from_union([from_none, from_float], obj.get("reasoningTokens"))
+        turn_id = from_union([from_none, from_str], obj.get("turnId"))
         ttft_ms = from_union([from_none, from_float], obj.get("ttftMs"))
         return AssistantUsageData(
             model=model,
@@ -656,6 +658,7 @@ class AssistantUsageData:
             quota_snapshots=quota_snapshots,
             reasoning_effort=reasoning_effort,
             reasoning_tokens=reasoning_tokens,
+            turn_id=turn_id,
             ttft_ms=ttft_ms,
         )
 
@@ -692,6 +695,8 @@ class AssistantUsageData:
             result["reasoningEffort"] = from_union([from_none, from_str], self.reasoning_effort)
         if self.reasoning_tokens is not None:
             result["reasoningTokens"] = from_union([from_none, to_float], self.reasoning_tokens)
+        if self.turn_id is not None:
+            result["turnId"] = from_union([from_none, from_str], self.turn_id)
         if self.ttft_ms is not None:
             result["ttftMs"] = from_union([from_none, to_float], self.ttft_ms)
         return result

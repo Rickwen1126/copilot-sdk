@@ -794,6 +794,7 @@ async def test_codex_native_events_are_forwarded_as_sdk_session_events(adapter):
         assert by_type["assistant.message_delta"].data.delta_content == "我先確認工具和資料。"
         assert by_type["assistant.usage"].data.input_tokens == 12
         assert by_type["assistant.usage"].data.output_tokens == 7
+        assert by_type["assistant.usage"].data.turn_id == "turn-1"
         assert by_type["tool.execution_start"].data.tool_name == "lookup"
         assert by_type["tool.execution_start"].data.tool_call_id == "call-1"
 
@@ -828,6 +829,71 @@ async def test_codex_native_events_are_forwarded_as_sdk_session_events(adapter):
         assert ("tool.execution", "codex_started") in semantic_events
         assert ("tool.execution", "codex_completed") in semantic_events
         assert ("codex.raw", "item.completed") in semantic_events
+    finally:
+        await client.force_stop()
+
+
+@pytest.mark.asyncio
+async def test_unmapped_raw_response_items_are_forwarded_as_codex_raw(adapter):
+    server, fake = adapter
+    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    await client.start()
+    try:
+        captured = []
+        session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
+        session.on(captured.append)
+
+        fake.notification_handler(
+            {
+                "method": "rawResponseItem/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "item": {
+                        "type": "message",
+                        "id": "msg-raw-1",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "done"}],
+                    },
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "rawResponseItem/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "item": {
+                        "type": "reasoning",
+                        "id": "reasoning-raw-1",
+                        "summary": [],
+                        "content": [],
+                    },
+                },
+            }
+        )
+
+        await _wait_for_event_types(captured, {"codex.raw"})
+        raw_events = [event for event in captured if _event_type(event) == "codex.raw"]
+        assert [event.data.raw["itemType"] for event in raw_events] == ["message", "reasoning"]
+        assert raw_events[0].data.raw["turnId"] == "turn-1"
+        assert raw_events[0].data.raw["itemId"] == "msg-raw-1"
+        assert raw_events[0].data.raw["reason"] == "raw_response_item_message_provenance"
+        assert raw_events[1].data.raw["itemId"] == "reasoning-raw-1"
+        assert raw_events[1].data.raw["reason"] == "raw_response_item_reasoning_provenance"
+
+        semantic = server.summary()["semanticLog"]
+        raw_semantic = [
+            entry
+            for entry in semantic
+            if entry["category"] == "codex.raw"
+            and entry["event"] == "rawResponseItem.completed"
+        ]
+        assert [entry["data"]["itemType"] for entry in raw_semantic] == [
+            "message",
+            "reasoning",
+        ]
     finally:
         await client.force_stop()
 

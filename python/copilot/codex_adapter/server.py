@@ -1325,11 +1325,38 @@ class CodexCopilotAdapterServer:
         and log correlation while keeping the normal session event stream small
         and safe.
         """
+        turn = params.get("turn") if _is_record(params.get("turn")) else {}
+        item = params.get("item") if _is_record(params.get("item")) else {}
+        turn_id = (
+            params.get("turnId")
+            if isinstance(params.get("turnId"), str)
+            else turn.get("id")
+            if isinstance(turn.get("id"), str)
+            else None
+        )
+        item_id = (
+            params.get("itemId")
+            if isinstance(params.get("itemId"), str)
+            else item.get("id")
+            if isinstance(item.get("id"), str)
+            else None
+        )
+        tool_call_id = (
+            item.get("call_id")
+            if isinstance(item.get("call_id"), str)
+            else item_id
+            if isinstance(item_id, str)
+            else None
+        )
         payload = {
             "source": "codex.app_server",
             "method": method,
             "reason": reason,
             "threadId": session.thread_id,
+            "turnId": turn_id,
+            "itemType": item.get("type") if isinstance(item.get("type"), str) else None,
+            "itemId": item_id,
+            "toolCallId": tool_call_id,
             **_preview_fields("params", params),
         }
         self._record_semantic(
@@ -1337,7 +1364,14 @@ class CodexCopilotAdapterServer:
             method.replace("/", "."),
             session_id=session.session_id,
             thread_id=session.thread_id,
-            data={"reason": reason, **_preview_fields("params", params)},
+            data={
+                "reason": reason,
+                "turnId": turn_id,
+                "itemType": item.get("type") if isinstance(item.get("type"), str) else None,
+                "itemId": item_id,
+                "toolCallId": tool_call_id,
+                **_preview_fields("params", params),
+            },
         )
         self._emit_codex_session_event(session, "codex.raw", payload, ephemeral=True)
 
@@ -1539,6 +1573,13 @@ class CodexCopilotAdapterServer:
                     params=params,
                     reason="raw_tool_search_provenance",
                 )
+            else:
+                self._emit_codex_raw_event(
+                    session,
+                    method=method,
+                    params=params,
+                    reason=f"raw_response_item_{item_type or 'unknown'}_provenance",
+                )
         elif method == "turn/started":
             turn = params.get("turn") if _is_record(params.get("turn")) else {}
             turn_id = turn.get("id") if isinstance(turn.get("id"), str) else None
@@ -1606,6 +1647,7 @@ class CodexCopilotAdapterServer:
                 {
                     "model": session.model or self.options.model,
                     "providerCallId": turn_id,
+                    "turnId": turn_id,
                     "inputTokens": last.get("inputTokens"),
                     "outputTokens": last.get("outputTokens"),
                     "cacheReadTokens": last.get("cachedInputTokens"),
@@ -2053,6 +2095,13 @@ class CodexCopilotAdapterServer:
                         ),
                     )
                 )
+            else:
+                self._emit_codex_raw_event(
+                    session,
+                    method=method,
+                    params=params,
+                    reason="unmapped_item_completed",
+                )
         elif method == "turn/completed":
             turn = params.get("turn") if _is_record(params.get("turn")) else {}
             status = turn.get("status") if isinstance(turn.get("status"), str) else "completed"
@@ -2083,6 +2132,13 @@ class CodexCopilotAdapterServer:
                 )
             )
             asyncio.create_task(self._emit_session_event(session_id, event))
+        else:
+            self._emit_codex_raw_event(
+                session,
+                method=method or "unknown",
+                params=params,
+                reason="unmapped_codex_notification",
+            )
 
     async def _handle_codex_request(self, request: dict[str, Any]) -> None:
         if request.get("method") not in {

@@ -118,6 +118,13 @@ type PendingDynamicToolCall = {
     timeout: ReturnType<typeof setTimeout>;
 };
 
+type UnmappedCodexEventRecord = {
+    count: number;
+    firstSeenAt: string;
+    /** Top-level payload keys captured on first sighting only (no full payload dumps). */
+    paramsKeys: string[];
+};
+
 type PendingPermissionRequest = {
     codexRequestId: JsonRpcId;
     sessionId: string;
@@ -269,6 +276,13 @@ export class CodexCopilotAdapterServer {
     private fileChangeSnapshots = new Map<string, unknown[]>();
     private pendingDynamicToolCalls = new Map<string, PendingDynamicToolCall>();
     private pendingPermissionRequests = new Map<string, PendingPermissionRequest>();
+    /**
+     * Coverage meter: every codex notification/request the adapter drops without
+     * mapping to an SDK event is counted here, keyed `method:itemType` (or just
+     * `method` when no item type applies). This is the denominator source for
+     * the event-coverage measurements; mapping expansion consumes this list.
+     */
+    private unmappedEvents = new Map<string, UnmappedCodexEventRecord>();
     private port = 0;
     private transcript: CodexAdapterTranscriptEntry[] = [];
     private codexUnsubscribe: (() => void) | null = null;
@@ -437,6 +451,10 @@ export class CodexCopilotAdapterServer {
         registerHandler("status.get", () => ({
             version: "codex-copilot-adapter",
             protocolVersion: this.options.protocolVersion,
+            // Additive coverage-meter field. Safe: the v1.0.7 client returns the
+            // status.get result via a plain `as GetStatusResponse` cast with no
+            // schema validation, so unknown fields pass through untouched.
+            unmappedEvents: this.unmappedEventsSummary(),
         }));
         registerHandler("auth.getStatus", () => this.handleAuthStatus());
         registerHandler("models.list", () => this.handleModelsList());
@@ -941,6 +959,7 @@ export class CodexCopilotAdapterServer {
                     this.threadToSession.delete(session.threadId);
                 }
             }
+            this.recordUnmappedSummaryTranscript("session.destroy", sessionId);
         }
         return { success: true };
     }
@@ -1071,11 +1090,78 @@ export class CodexCopilotAdapterServer {
         return { success: true };
     }
 
+    private recordUnmappedCodexEvent(input: {
+        kind: "notification" | "request";
+        method: string;
+        itemType?: string;
+        threadId?: string;
+        reason: string;
+        params: unknown;
+    }) {
+        const key = input.itemType ? `${input.method}:${input.itemType}` : input.method;
+        const existing = this.unmappedEvents.get(key);
+        const firstSeen = !existing;
+        const paramsKeys = isRecord(input.params) ? Object.keys(input.params) : [];
+        if (existing) {
+            existing.count += 1;
+        } else {
+            this.unmappedEvents.set(key, {
+                count: 1,
+                firstSeenAt: nowIso(),
+                paramsKeys,
+            });
+        }
+        this.recordTranscript({
+            at: nowIso(),
+            direction: "adapter.unmapped",
+            message: {
+                kind: input.kind,
+                method: input.method,
+                itemType: input.itemType,
+                threadId: input.threadId,
+                reason: input.reason,
+                ...(firstSeen ? { paramsKeys } : {}),
+            },
+        });
+    }
+
+    /** Snapshot of unmapped-event counts, keyed `method:itemType`. */
+    unmappedEventsSummary(): Record<string, UnmappedCodexEventRecord> {
+        const summary: Record<string, UnmappedCodexEventRecord> = {};
+        for (const key of [...this.unmappedEvents.keys()].sort()) {
+            const record = this.unmappedEvents.get(key)!;
+            summary[key] = { ...record, paramsKeys: [...record.paramsKeys] };
+        }
+        return summary;
+    }
+
+    private recordUnmappedSummaryTranscript(scope: string, sessionId?: string) {
+        this.recordTranscript({
+            at: nowIso(),
+            direction: "adapter.unmapped.summary",
+            message: {
+                scope,
+                sessionId,
+                unmappedEvents: this.unmappedEventsSummary(),
+            },
+        });
+    }
+
     private handleCodexNotification(notification: JsonRpcNotification) {
         const params = notification.params;
         if (!isRecord(params)) {
+            this.recordUnmappedCodexEvent({
+                kind: "notification",
+                method: notification.method,
+                reason: "malformed-params",
+                params,
+            });
             return;
         }
+        const notificationItemType =
+            isRecord(params.item) && typeof params.item.type === "string"
+                ? params.item.type
+                : undefined;
         const fileChangeItemId =
             typeof params.itemId === "string"
                 ? params.itemId
@@ -1094,16 +1180,39 @@ export class CodexCopilotAdapterServer {
                   ? params.thread.id
                   : undefined;
         if (!threadId) {
+            this.recordUnmappedCodexEvent({
+                kind: "notification",
+                method: notification.method,
+                itemType: notificationItemType,
+                reason: "missing-thread-id",
+                params,
+            });
             return;
         }
 
         const sessionId = this.threadToSession.get(threadId);
         if (!sessionId) {
+            this.recordUnmappedCodexEvent({
+                kind: "notification",
+                method: notification.method,
+                itemType: notificationItemType,
+                threadId,
+                reason: "unknown-thread",
+                params,
+            });
             return;
         }
 
         const session = this.sessions.get(sessionId);
         if (!session) {
+            this.recordUnmappedCodexEvent({
+                kind: "notification",
+                method: notification.method,
+                itemType: notificationItemType,
+                threadId,
+                reason: "stale-session",
+                params,
+            });
             return;
         }
 
@@ -1119,6 +1228,15 @@ export class CodexCopilotAdapterServer {
                         phase: typeof item.phase === "string" ? item.phase : undefined,
                     })
                 );
+            } else {
+                this.recordUnmappedCodexEvent({
+                    kind: "notification",
+                    method: notification.method,
+                    itemType: notificationItemType ?? "-",
+                    threadId,
+                    reason: "unmapped-item-type",
+                    params,
+                });
             }
         } else if (notification.method === "turn/completed") {
             const turn = isRecord(params.turn) ? params.turn : null;
@@ -1134,6 +1252,15 @@ export class CodexCopilotAdapterServer {
                     })
                 );
             }
+        } else {
+            this.recordUnmappedCodexEvent({
+                kind: "notification",
+                method: notification.method,
+                itemType: notificationItemType,
+                threadId,
+                reason: "unmapped-method",
+                params,
+            });
         }
     }
 
@@ -1143,6 +1270,23 @@ export class CodexCopilotAdapterServer {
             request.method !== "item/fileChange/requestApproval" &&
             request.method !== "item/tool/call"
         ) {
+            const requestParams = isRecord(request.params) ? request.params : undefined;
+            this.recordUnmappedCodexEvent({
+                kind: "request",
+                method: request.method,
+                itemType:
+                    requestParams &&
+                    isRecord(requestParams.item) &&
+                    typeof requestParams.item.type === "string"
+                        ? requestParams.item.type
+                        : undefined,
+                threadId:
+                    requestParams && typeof requestParams.threadId === "string"
+                        ? requestParams.threadId
+                        : undefined,
+                reason: "unmapped-request-method",
+                params: request.params,
+            });
             return;
         }
 
@@ -1443,6 +1587,7 @@ export class CodexCopilotAdapterServer {
     }
 
     async stop(): Promise<void> {
+        this.recordUnmappedSummaryTranscript("adapter.stop");
         this.codexUnsubscribe?.();
         this.codexUnsubscribe = null;
         this.codexRequestUnsubscribe?.();
@@ -1457,6 +1602,7 @@ export class CodexCopilotAdapterServer {
             transcripts: this.transcript,
             codex: this.codex.summary(),
             capabilities: CODEX_ADAPTER_CAPABILITIES,
+            unmappedEvents: this.unmappedEventsSummary(),
         };
     }
 }

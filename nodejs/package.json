@@ -8,6 +8,9 @@
     "description": "TypeScript SDK for programmatic control of GitHub Copilot CLI via JSON-RPC",
     "main": "./dist/cjs/index.js",
     "types": "./dist/index.d.ts",
+    "bin": {
+        "copilot-codex-adapter": "./dist/experimental/codexAdapterServer.js"
+    },
     "exports": {
         ".": {
             "import": {
@@ -27,6 +30,16 @@
             "require": {
                 "types": "./dist/extension.d.ts",
                 "default": "./dist/cjs/extension.js"
+            }
+        },
+        "./experimental/codex-adapter": {
+            "import": {
+                "types": "./dist/experimental/codexAdapter.d.ts",
+                "default": "./dist/experimental/codexAdapter.js"
+            },
+            "require": {
+                "types": "./dist/experimental/codexAdapter.d.ts",
+                "default": "./dist/cjs/experimental/codexAdapter.js"
             }
         }
     },

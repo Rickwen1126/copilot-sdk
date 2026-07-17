@@ -361,6 +361,10 @@ export function mapCodexFileChangeApprovalToPermissionRequest(
 ): Record<string, unknown> {
     const payload = isRecord(params) ? params : {};
     const paths = fileChangePaths(changes);
+    const diffs = changes
+        .filter(isRecord)
+        .map((change) => (typeof change.diff === "string" ? change.diff : undefined))
+        .filter((diff): diff is string => !!diff);
     return {
         kind: "write",
         toolCallId: typeof payload.itemId === "string" ? payload.itemId : undefined,
@@ -368,6 +372,11 @@ export function mapCodexFileChangeApprovalToPermissionRequest(
             typeof payload.reason === "string" && payload.reason.length > 0
                 ? payload.reason
                 : "Apply file changes outside the current approval boundary.",
+        // Required by the v1.0.7 PermissionRequestWrite schema (the python
+        // client's typed parser asserts on these; keep both sides identical).
+        canOfferSessionApproval: false,
+        diff: diffs.join("\n"),
+        fileName: paths[0] ?? "",
         grantRoot: typeof payload.grantRoot === "string" ? payload.grantRoot : undefined,
         paths,
         possiblePaths: paths,

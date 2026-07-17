@@ -21,6 +21,9 @@ class CodexRuntimeSessionRecord:
     model: str | None = None
     reasoningEffort: str | None = None
     codexHomeIdentity: str | None = None
+    # Opaque per-tool metadata bags (v1.0.7 Tool.metadata), keyed by tool
+    # name. Additive optional field: records written without it still parse.
+    toolMetadata: dict[str, dict] | None = None
 
 
 def _parse_record(value: object) -> CodexRuntimeSessionRecord | None:
@@ -55,6 +58,9 @@ def _parse_record(value: object) -> CodexRuntimeSessionRecord | None:
         toolFingerprint=value["toolFingerprint"],
         codexHomeIdentity=value.get("codexHomeIdentity")
         if isinstance(value.get("codexHomeIdentity"), str)
+        else None,
+        toolMetadata=value.get("toolMetadata")
+        if isinstance(value.get("toolMetadata"), dict)
         else None,
         createdAt=value["createdAt"],
         updatedAt=value["updatedAt"],

@@ -184,6 +184,14 @@ export const CODEX_ADAPTER_CAPABILITIES = {
         { id: "session.resume", status: "supported" },
         { id: "session.getMessages", status: "supported" },
         { id: "session.send", status: "supported" },
+        {
+            id: "session.abort",
+            status: "supported",
+            reason:
+                "Codex app-server has no single-turn cancel RPC; the adapter aborts by " +
+                "invalidating the SDK session and restarting the app-server to release " +
+                "the pending turn/start request.",
+        },
         { id: "session.destroy", status: "supported" },
         { id: "session.delete", status: "supported" },
         { id: "command approval", status: "supported" },
@@ -519,6 +527,7 @@ export class CodexCopilotAdapterServer {
             this.handleSessionGetMessages(params, id)
         );
         registerHandler("session.send", (params, id) => this.handleSessionSend(params, id));
+        registerHandler("session.abort", (params) => this.handleSessionAbort(params));
         registerHandler("session.destroy", (params, id) => this.handleSessionDestroy(params, id));
         registerHandler("session.delete", (params) => this.handleSessionDelete(params));
         registerHandler("session.tools.handlePendingToolCall", (params) =>
@@ -984,6 +993,51 @@ export class CodexCopilotAdapterServer {
         return {
             messageId: userMessageId,
         };
+    }
+
+    /**
+     * Ported from the python adapter: Codex app-server has no single-turn
+     * cancel RPC, so abort invalidates the SDK session and restarts the
+     * app-server to release the pending turn/start request.
+     */
+    private async handleSessionAbort(params: unknown) {
+        const sessionId =
+            isRecord(params) && typeof params.sessionId === "string" ? params.sessionId : undefined;
+        if (!sessionId) {
+            return { success: false, error: "session.abort requires sessionId" };
+        }
+        const session = this.sessions.get(sessionId);
+        if (!session) {
+            return { success: false, error: `Unknown session: ${sessionId}` };
+        }
+        this.emitLifecycle("session.aborted", sessionId, { abortTime: nowIso() });
+        this.sessions.delete(sessionId);
+        this.threadToSession.delete(session.threadId);
+        this.sessionStore.delete(sessionId);
+        this.clearPendingForSession(sessionId);
+        this.recordTranscript({
+            at: nowIso(),
+            direction: "adapter.session.abort.gateway_restart",
+            message: { sessionId, threadId: session.threadId },
+        });
+        await this.codex.stop();
+        await this.codex.start();
+        return { success: true, gatewayRestarted: true };
+    }
+
+    private clearPendingForSession(sessionId: string) {
+        for (const [requestId, pending] of [...this.pendingDynamicToolCalls]) {
+            if (pending.sessionId === sessionId) {
+                clearTimeout(pending.timeout);
+                this.pendingDynamicToolCalls.delete(requestId);
+            }
+        }
+        for (const [requestId, pending] of [...this.pendingPermissionRequests]) {
+            if (pending.sessionId === sessionId) {
+                clearTimeout(pending.timeout);
+                this.pendingPermissionRequests.delete(requestId);
+            }
+        }
     }
 
     private async handleSessionDestroy(params: unknown, connectionId: string) {

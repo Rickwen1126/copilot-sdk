@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -1751,5 +1752,231 @@ async def test_dynamic_tool_request_errors_are_explicit(adapter):
             no_connection["result"]["contentItems"][0]["text"]
             == "dynamic tool request has no SDK connection"
         )
+    finally:
+        await client.force_stop()
+
+
+@pytest.mark.asyncio
+async def test_tool_metadata_round_trips_through_store_and_restart(tmp_path):
+    store_path = str(tmp_path / "sessions.json")
+    metadata_bag = {"tekric:topic": "codex-adapter-v107", "tekric:window": "w1"}
+
+    def make_tools():
+        @define_tool(description="Lookup source data", metadata=metadata_bag)
+        def lookup(args):
+            return f"lookup:{args['query']}"
+
+        return [lookup]
+
+    first_server = CodexCopilotAdapterServer(
+        CodexAdapterOptions(runtime_session_store_path=store_path),
+        gateway=FakeCodexGateway(),
+    )
+    await first_server.start()
+    first_client = CopilotClient(connection=RuntimeConnection.for_uri(first_server.cli_url()))
+    await first_client.start()
+
+    session = await first_client.create_session(
+        model="gpt-test",
+        on_permission_request=PermissionHandler.approve_all,
+        tools=make_tools(),
+    )
+    session_id = session.session_id
+
+    # Live outlet: summary() exposes the bag untouched.
+    live = first_server.summary()["sessions"][0]["tools"]
+    assert live == [{"name": "lookup", "metadata": metadata_bag}]
+
+    await session.disconnect()
+    await first_client.force_stop()
+    await first_server.stop()
+
+    # Persistence: the store file carries toolMetadata keyed by tool name.
+    stored = json.loads(Path(store_path).read_text())
+    record = next(r for r in stored["records"] if r["sdkSessionId"] == session_id)
+    assert record["toolMetadata"] == {"lookup": metadata_bag}
+
+    # Restart-resume: metadata still present (and excluded from the tool
+    # fingerprint, so the resume is accepted).
+    second_server = CodexCopilotAdapterServer(
+        CodexAdapterOptions(runtime_session_store_path=store_path),
+        gateway=FakeCodexGateway(),
+    )
+    await second_server.start()
+    second_client = CopilotClient(connection=RuntimeConnection.for_uri(second_server.cli_url()))
+    await second_client.start()
+    try:
+        await second_client.resume_session(
+            session_id,
+            model="gpt-test",
+            on_permission_request=PermissionHandler.approve_all,
+            tools=make_tools(),
+        )
+        resumed = second_server.summary()["sessions"][0]["tools"]
+        assert resumed == [{"name": "lookup", "metadata": metadata_bag}]
+    finally:
+        await second_client.force_stop()
+        await second_server.stop()
+
+
+@pytest.mark.asyncio
+async def test_unmapped_codex_notifications_are_counted_and_queryable(adapter):
+    server, fake = adapter
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
+    await client.start()
+    try:
+        session = await client.create_session(
+            model="gpt-test", on_permission_request=PermissionHandler.approve_all
+        )
+        captured = []
+        session.on(lambda event: captured.append(event))
+
+        for _ in range(2):
+            fake.notification_handler(
+                {
+                    "method": "thread/compact/started",
+                    "params": {"threadId": "thread-1", "phase": "warmup"},
+                }
+            )
+        fake.notification_handler(
+            {
+                "method": "item/started",
+                "params": {
+                    "threadId": "thread-1",
+                    "item": {"type": "todoList", "id": "todo-1"},
+                },
+            }
+        )
+
+        await _wait_for_event_types(captured, {"codex.raw"})
+
+        summary = server.unmapped_events_summary()
+        assert summary["thread/compact/started"]["count"] == 2
+        assert summary["thread/compact/started"]["paramsKeys"] == ["phase", "threadId"]
+        assert summary["thread/compact/started"]["firstReason"] == "unmapped_codex_notification"
+        assert summary["item/started:todoList"]["count"] == 1
+        # Aggregate meter coexists with the per-event codex.raw channel.
+        raw_events = [event for event in captured if _event_type(event) == "codex.raw"]
+        assert len(raw_events) >= 1
+        # Wire outlet on status.get (the typed GetStatusResponse drops unknown
+        # fields, so assert at the served-handler level).
+        status_payload = server._handle_status_get({}, "test")
+        assert status_payload["unmappedEvents"]["thread/compact/started"]["count"] == 2
+        assert server.summary()["unmappedEvents"]["item/started:todoList"]["count"] == 1
+    finally:
+        await client.force_stop()
+
+
+@pytest.mark.asyncio
+async def test_reasoning_record_entries_are_extracted(adapter):
+    server, fake = adapter
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
+    await client.start()
+    try:
+        session = await client.create_session(
+            model="gpt-test", on_permission_request=PermissionHandler.approve_all
+        )
+        captured = []
+        session.on(lambda event: captured.append(event))
+
+        fake.notification_handler(
+            {
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "item": {
+                        "type": "reasoning",
+                        "id": "rs-record",
+                        "summary": [{"type": "summary_text", "text": "planning the fix"}],
+                        "content": [],
+                    },
+                },
+            }
+        )
+
+        await _wait_for_event_types(captured, {"assistant.reasoning"})
+        reasoning = next(
+            event for event in captured if _event_type(event) == "assistant.reasoning"
+        )
+        assert reasoning.data.content == "planning the fix"
+        assert reasoning.data.reasoning_id == "rs-record"
+    finally:
+        await client.force_stop()
+
+
+@pytest.mark.asyncio
+async def test_file_change_items_map_to_tool_and_workspace_events(adapter):
+    server, fake = adapter
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
+    await client.start()
+    try:
+        session = await client.create_session(
+            model="gpt-test", on_permission_request=PermissionHandler.approve_all
+        )
+        captured = []
+        session.on(lambda event: captured.append(event))
+
+        changes = [
+            {"path": "/tmp/ws/new.txt", "kind": {"type": "add"}, "diff": "new content\n"},
+            {
+                "path": "/tmp/ws/old.txt",
+                "kind": {"type": "update", "move_path": None},
+                "diff": "@@ -1 +1 @@\n-a\n+b\n",
+            },
+        ]
+        fake.notification_handler(
+            {
+                "method": "item/started",
+                "params": {
+                    "threadId": "thread-1",
+                    "item": {"type": "fileChange", "id": "fc-1", "changes": changes},
+                },
+            }
+        )
+        fake.notification_handler(
+            {
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "item": {
+                        "type": "fileChange",
+                        "id": "fc-1",
+                        "changes": changes,
+                        "status": "completed",
+                    },
+                },
+            }
+        )
+
+        await _wait_for_event_types(
+            captured,
+            {"tool.execution_start", "tool.execution_complete", "session.workspace_file_changed"},
+        )
+
+        start = next(event for event in captured if _event_type(event) == "tool.execution_start")
+        assert start.data.tool_name == "apply_patch"
+        assert start.data.tool_call_id == "fc-1"
+
+        complete = next(
+            event for event in captured if _event_type(event) == "tool.execution_complete"
+        )
+        assert complete.data.tool_call_id == "fc-1"
+        assert complete.data.success is True
+        assert complete.data.result.content == "add /tmp/ws/new.txt\nupdate /tmp/ws/old.txt"
+        assert complete.data.result.detailed_content == "new content\n\n@@ -1 +1 @@\n-a\n+b\n"
+
+        workspace = [
+            event
+            for event in captured
+            if _event_type(event) == "session.workspace_file_changed"
+        ]
+        assert [(event.data.operation.value, event.data.path) for event in workspace] == [
+            ("create", "/tmp/ws/new.txt"),
+            ("update", "/tmp/ws/old.txt"),
+        ]
+
+        # Nothing from this flow leaked into the unmapped meter.
+        assert "item/started:fileChange" not in server.unmapped_events_summary()
+        assert "item/completed:fileChange" not in server.unmapped_events_summary()
     finally:
         await client.force_stop()

@@ -162,6 +162,28 @@ class FakeCodexGateway {
     }
 }
 
+
+function projectWritePermissionRequest(request: unknown): Record<string, unknown> {
+    if (typeof request !== "object" || request === null) {
+        return {};
+    }
+    const record = request as Record<string, unknown>;
+    const projected: Record<string, unknown> = {};
+    for (const key of [
+        "kind",
+        "canOfferSessionApproval",
+        "diff",
+        "fileName",
+        "intention",
+        "toolCallId",
+    ]) {
+        if (record[key] !== undefined) {
+            projected[key] = record[key];
+        }
+    }
+    return projected;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === "object";
 }
@@ -574,7 +596,11 @@ async function buildSnapshot() {
 
             snapshot.fileApproval = {
                 approvedDecision: approved.result,
-                request: seenRequests[0],
+                // Parity surface = the v1.0.7 write-kind schema keys. The
+                // python client's typed parser drops the adapter's extra keys
+                // (changes/paths/possiblePaths/grantRoot), so the cross-side
+                // comparison projects onto the schema-defined fields.
+                request: projectWritePermissionRequest(seenRequests[0]),
             };
         } finally {
             await client.forceStop();

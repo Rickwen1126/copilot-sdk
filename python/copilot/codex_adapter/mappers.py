@@ -12,6 +12,7 @@ class ToolDescriptor(TypedDict, total=False):
     description: str
     parameters: dict[str, Any]
     skipPermission: bool
+    metadata: dict[str, Any]
 
 
 SandboxMode = Literal[
@@ -58,8 +59,28 @@ def tool_descriptors_from_session_create_params(params: Any) -> list[ToolDescrip
             descriptor["description"] = tool["description"]
         if _is_record(tool.get("parameters")):
             descriptor["parameters"] = tool["parameters"]
+        if _is_record(tool.get("metadata")):
+            # Opaque host-defined bag (v1.0.7 Tool.metadata): preserved and
+            # round-tripped untouched; excluded from the tool fingerprint.
+            descriptor["metadata"] = tool["metadata"]
         descriptors.append(descriptor)
     return descriptors
+
+
+def tool_metadata_from_descriptors(
+    tools: list[ToolDescriptor],
+) -> dict[str, dict[str, Any]] | None:
+    """Collect the opaque per-tool metadata bags keyed by tool name.
+
+    Returns None when no tool carries one so existing store records stay
+    byte-identical.
+    """
+    entries = {
+        tool["name"]: tool["metadata"]
+        for tool in tools
+        if isinstance(tool.get("name"), str) and _is_record(tool.get("metadata"))
+    }
+    return entries or None
 
 
 def dynamic_tools_from_descriptors(tools: list[ToolDescriptor]) -> list[dict[str, Any]]:

@@ -219,6 +219,7 @@ describe("Codex adapter experimental boundary", () => {
                 "session.resume",
                 "session.getMessages",
                 "session.send",
+                "session.abort",
                 "session.destroy",
                 "session.delete",
                 "command approval",
@@ -1670,5 +1671,62 @@ describe("Codex adapter v1.0.7 new carriers", () => {
                 tools: [{ name: "lookup", metadata: metadataBag }],
             })
         );
+    });
+});
+
+describe("Codex adapter session.abort", () => {
+    it("invalidates the session, restarts the gateway, and emits session.aborted", async () => {
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        const lifecycleTypes: string[] = [];
+        client.onLifecycle((event) => {
+            lifecycleTypes.push(event.type);
+        });
+
+        const session = await client.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+        });
+        const sessionId = session.sessionId;
+        await session.abort();
+
+        const deadline = Date.now() + 2_000;
+        while (Date.now() < deadline && !lifecycleTypes.includes("session.aborted")) {
+            await delay(10);
+        }
+        expect(lifecycleTypes).toContain("session.aborted");
+
+        const restartMarkers = (
+            adapter.summary() as {
+                transcripts: Array<{ direction: string; message: unknown }>;
+            }
+        ).transcripts.filter(
+            (entry) => entry.direction === "adapter.session.abort.gateway_restart"
+        );
+        expect(restartMarkers).toHaveLength(1);
+        expect(restartMarkers[0].message).toEqual(
+            expect.objectContaining({ sessionId, threadId: "fake-thread-1" })
+        );
+
+        // The session is gone: a follow-up abort reports the unknown session.
+        const secondAbort = (await (
+            adapter as unknown as {
+                handleSessionAbort: (params: unknown) => Promise<Record<string, unknown>>;
+            }
+        ).handleSessionAbort({ sessionId })) as { success: boolean; error?: string };
+        expect(secondAbort.success).toBe(false);
+        expect(secondAbort.error).toContain("Unknown session");
     });
 });

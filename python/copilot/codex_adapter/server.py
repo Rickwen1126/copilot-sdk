@@ -33,6 +33,7 @@ from .mappers import (
     map_permission_result_to_codex_file_change_decision,
     map_sdk_tool_result_to_codex_dynamic_tool_response,
     tool_descriptors_from_session_create_params,
+    tool_metadata_from_descriptors,
 )
 from .session_store import CodexAdapterSessionStore, CodexRuntimeSessionRecord
 from .tool_policy import plan_dynamic_tool_call_routing
@@ -419,7 +420,18 @@ def _reasoning_content(item: dict[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             return value
         if isinstance(value, list):
-            parts = [part for part in value if isinstance(part, str) and part.strip()]
+            parts = []
+            for part in value:
+                if isinstance(part, str) and part.strip():
+                    parts.append(part)
+                elif (
+                    isinstance(part, dict)
+                    and isinstance(part.get("text"), str)
+                    and part["text"].strip()
+                ):
+                    # Codex record entries ({type, text, ...}), the shape it
+                    # uses for userMessage content; tolerate it here too.
+                    parts.append(part["text"])
             if parts:
                 return "\n".join(parts)
     return ""
@@ -578,6 +590,11 @@ class CodexCopilotAdapterServer:
         self.file_change_snapshots: dict[str, list[Any]] = {}
         self.pending_dynamic_tool_calls: dict[str, PendingDynamicToolCall] = {}
         self.pending_permission_requests: dict[str, PendingPermissionRequest] = {}
+        # Aggregated coverage meter over codex.raw forwards, keyed
+        # `method:itemType` (mirrors the nodejs unmapped counter). codex.raw
+        # events stay the per-event observability channel; this is the
+        # aggregate measurement outlet.
+        self.unmapped_events: dict[str, dict[str, Any]] = {}
         self.command_output_chars: dict[str, int] = {}
         self.command_output_warning_emitted: set[str] = set()
         self.transcript: list[dict[str, Any]] = []
@@ -684,11 +701,23 @@ class CodexCopilotAdapterServer:
                     "reasoningEffort": session.reasoning_effort,
                     "eventCount": len(session.events),
                     "attachedConnectionCount": len(session.attached_connection_ids),
+                    "tools": [
+                        {
+                            "name": tool.get("name"),
+                            **(
+                                {"metadata": tool["metadata"]}
+                                if isinstance(tool.get("metadata"), dict)
+                                else {}
+                            ),
+                        }
+                        for tool in session.tools
+                    ],
                 }
                 for session in self.sessions.values()
             ],
             "adapterTranscript": self.transcript,
             "semanticLog": self.semantic_log,
+            "unmappedEvents": self.unmapped_events_summary(),
             "codex": self.codex.summary(),
         }
 
@@ -759,6 +788,9 @@ class CodexCopilotAdapterServer:
         return {
             "version": "codex-copilot-adapter",
             "protocolVersion": self.options.protocol_version,
+            # Additive coverage-meter field (mirrors the nodejs adapter): the
+            # v1.0.7 client keeps unknown status.get fields accessible.
+            "unmappedEvents": self.unmapped_events_summary(),
         }
 
     async def _handle_auth_status(self, _params: Any, _connection_id: str) -> dict[str, Any]:
@@ -1262,6 +1294,7 @@ class CodexCopilotAdapterServer:
             model=session.model,
             reasoningEffort=session.reasoning_effort,
             toolFingerprint=tool_fingerprint_from_descriptors(session.tools),
+            toolMetadata=tool_metadata_from_descriptors(session.tools),
             codexHomeIdentity=self.options.codex_home,
             createdAt=session.created_at,
             updatedAt=updated_at,
@@ -1343,6 +1376,27 @@ class CodexCopilotAdapterServer:
             )
         )
 
+    def unmapped_events_summary(self) -> dict[str, dict[str, Any]]:
+        """Snapshot of unmapped-event counts, keyed `method:itemType`."""
+        return {key: dict(value) for key, value in sorted(self.unmapped_events.items())}
+
+    def _count_unmapped_codex_event(
+        self, method: str, params: dict[str, Any], reason: str
+    ) -> None:
+        item = params.get("item") if _is_record(params.get("item")) else {}
+        item_type = item.get("type") if isinstance(item.get("type"), str) else None
+        key = f"{method}:{item_type}" if item_type else method
+        existing = self.unmapped_events.get(key)
+        if existing:
+            existing["count"] += 1
+        else:
+            self.unmapped_events[key] = {
+                "count": 1,
+                "firstSeenAt": _now_iso(),
+                "paramsKeys": sorted(params.keys()),
+                "firstReason": reason,
+            }
+
     def _emit_codex_raw_event(
         self,
         session: SessionState,
@@ -1358,6 +1412,7 @@ class CodexCopilotAdapterServer:
         and log correlation while keeping the normal session event stream small
         and safe.
         """
+        self._count_unmapped_codex_event(method, params, reason)
         turn = params.get("turn") if _is_record(params.get("turn")) else {}
         item = params.get("item") if _is_record(params.get("item")) else {}
         turn_id = (
@@ -1810,6 +1865,31 @@ class CodexCopilotAdapterServer:
                     params=params,
                     reason="reasoning_started_without_readable_content",
                 )
+            elif item.get("type") == "fileChange":
+                item_id = item.get("id") if isinstance(item.get("id"), str) else None
+                changes = item.get("changes") if isinstance(item.get("changes"), list) else []
+                paths = [
+                    change["path"]
+                    for change in changes
+                    if _is_record(change) and isinstance(change.get("path"), str)
+                ]
+                self._record_semantic(
+                    "file.change",
+                    "started",
+                    session_id=session_id,
+                    thread_id=thread_id,
+                    data={"itemId": item_id, "pathCount": len(paths)},
+                )
+                self._emit_codex_session_event(
+                    session,
+                    "tool.execution_start",
+                    {
+                        "toolName": "apply_patch",
+                        "toolCallId": item_id,
+                        "arguments": {"paths": paths},
+                    },
+                    ephemeral=True,
+                )
             else:
                 self._emit_codex_raw_event(
                     session,
@@ -2128,6 +2208,71 @@ class CodexCopilotAdapterServer:
                         ),
                     )
                 )
+            elif item.get("type") == "fileChange":
+                item_id = item.get("id") if isinstance(item.get("id"), str) else None
+                changes = item.get("changes") if isinstance(item.get("changes"), list) else []
+                parsed = [
+                    {
+                        "path": change["path"],
+                        "kindType": change.get("kind", {}).get("type")
+                        if _is_record(change.get("kind"))
+                        else None,
+                        "diff": change.get("diff")
+                        if isinstance(change.get("diff"), str)
+                        else None,
+                    }
+                    for change in changes
+                    if _is_record(change) and isinstance(change.get("path"), str)
+                ]
+                status = item.get("status") if isinstance(item.get("status"), str) else "completed"
+                success = status == "completed"
+                diff_text = "\n".join(
+                    change["diff"] for change in parsed if change["diff"]
+                )
+                change_summary = "\n".join(
+                    f"{change['kindType'] or 'update'} {change['path']}" for change in parsed
+                )
+                self._record_semantic(
+                    "file.change",
+                    "completed",
+                    session_id=session_id,
+                    thread_id=thread_id,
+                    data={"itemId": item_id, "status": status, "pathCount": len(parsed)},
+                )
+                self._emit_codex_session_event(
+                    session,
+                    "tool.execution_complete",
+                    {
+                        "toolCallId": item_id,
+                        "success": success,
+                        **(
+                            {
+                                "result": {
+                                    "content": change_summary,
+                                    **(
+                                        {"detailedContent": diff_text} if diff_text else {}
+                                    ),
+                                }
+                            }
+                            if success
+                            else {"error": {"message": f"file change {status}"}}
+                        ),
+                    },
+                    ephemeral=True,
+                )
+                if success:
+                    for change in parsed:
+                        if change["kindType"] in ("add", "update"):
+                            self._emit_codex_session_event(
+                                session,
+                                "session.workspace_file_changed",
+                                {
+                                    "operation": "create"
+                                    if change["kindType"] == "add"
+                                    else "update",
+                                    "path": change["path"],
+                                },
+                            )
             else:
                 self._emit_codex_raw_event(
                     session,

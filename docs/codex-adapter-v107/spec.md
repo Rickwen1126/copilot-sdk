@@ -29,6 +29,12 @@ Todo: `docs/todo.json#codex-adapter-v107`
 - 不動 upstream `docs/` 官方內容
 - tmux-adapter 正式接入不在本 topic（本 topic 只交付可複用的 server/gateway 模板拆分；spike 見 plan §6）
 
+## 4.5 Streaming delta 的消費端脈絡（2026-07-17 Rick 補充，Phase 3 相關）
+
+- 歷史事故：shinyipilot chat UI 曾接 copilot sdk streaming 出問題——「自言自語」（reasoning）與 streaming 混淆＋大量 delta 未按 item 聚合，UI 炸成散亂訊息 → 當時**刻意不接串流**，此為現行白名單窄的部分原因
+- 本案立場：**producer 完整、consumer 選擇性**。adapter 照 Phase 3 忠實映射 delta（typed、帶 itemId），不因歷史消費端缺陷而餓死管線；不需要串流的 consumer 直接不訂閱該 event type 即可（Rick 確認此方向）
+- 消費端修復形狀（留給 chat-ui 側 ticket，非本案 scope）：reduce-by-itemId（delta 按 itemId 折疊進同一氣泡、completed 事件封頂）＋ reasoning 與 assistant message 依 event type 分流渲染——v1.0.7 typed 事件結構性解掉當年的混淆
+
 ## 5. 風險登記
 
 - adapter 對 codex 側的假設：`experimentalApi: true`、protocol literal `2|3`（default 3）、`codex app-server` 啟動方式、CodexHome 檔案佈局、default model `"gpt-5.4"`——codex CLI 升版時任何一項變動都要 **fail loud**，不得靜默

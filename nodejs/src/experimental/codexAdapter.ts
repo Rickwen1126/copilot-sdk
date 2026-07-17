@@ -15,9 +15,17 @@ import {
     codexThreadSandboxMode,
     dynamicToolsFromDescriptors,
     extractFileChangesFromParams,
+    mapCodexAgentMessageDelta,
+    mapCodexAgentMessageStart,
     mapCodexCommandApprovalToPermissionRequest,
+    mapCodexCommandExecutionComplete,
+    mapCodexCommandExecutionStart,
     mapCodexFileChangeApprovalToPermissionRequest,
+    mapCodexFileChangeComplete,
+    mapCodexFileChangeStart,
     mapCodexModels,
+    mapCodexReasoningItem,
+    mapCodexTokenUsage,
     mapPermissionResultToCodexCommandDecision,
     mapPermissionResultToCodexFileChangeDecision,
     mapSdkToolResultToCodexDynamicToolResponse,
@@ -123,6 +131,30 @@ type UnmappedCodexEventRecord = {
     firstSeenAt: string;
     /** Top-level payload keys captured on first sighting only (no full payload dumps). */
     paramsKeys: string[];
+};
+
+/**
+ * Codex notifications the adapter consciously does not map to SDK events.
+ * They are still counted (separately from the "not yet seen" unmapped set)
+ * so coverage measurements can exclude them with an explicit reason.
+ */
+const DELIBERATELY_UNMAPPED_CODEX_EVENTS: Record<string, string> = {
+    "thread/started":
+        "mapped-ack: duplicate of the adapter-emitted session.start lifecycle event",
+    "thread/status/changed":
+        "redundant with assistant.turn_start / session.idle / session.error signals",
+    "item/started:userMessage":
+        "mapped-ack: echo of the prompt; the adapter already emits user.message on session.send",
+    "item/completed:userMessage":
+        "mapped-ack: echo of the prompt; the adapter already emits user.message on session.send",
+    "item/started:reasoning":
+        "mapped-ack: no reasoning-start event exists in the SDK family; assistant.reasoning is emitted on completion",
+    "turn/diff/updated":
+        "redundant: cumulative turn diff duplicates the per-change diffs delivered via tool.execution_complete/detailedContent (observed to fire only alongside fileChange items)",
+    "mcpServer/startupStatus/updated":
+        "codex-side MCP servers are configured by codex CLI, not by SDK consumers",
+    "account/rateLimits/updated": "account-scoped, no session context to attach to",
+    "remoteControl/status/changed": "codex-internal remote-control channel status",
 };
 
 type PendingPermissionRequest = {
@@ -283,6 +315,14 @@ export class CodexCopilotAdapterServer {
      * the event-coverage measurements; mapping expansion consumes this list.
      */
     private unmappedEvents = new Map<string, UnmappedCodexEventRecord>();
+    /**
+     * Consciously-not-mapped codex events (see DELIBERATELY_UNMAPPED_CODEX_EVENTS):
+     * counted so coverage math can exclude them explicitly, never silently.
+     */
+    private deliberatelyUnmappedEvents = new Map<
+        string,
+        { count: number; firstSeenAt: string; reason: string }
+    >();
     private port = 0;
     private transcript: CodexAdapterTranscriptEntry[] = [];
     private codexUnsubscribe: (() => void) | null = null;
@@ -451,10 +491,11 @@ export class CodexCopilotAdapterServer {
         registerHandler("status.get", () => ({
             version: "codex-copilot-adapter",
             protocolVersion: this.options.protocolVersion,
-            // Additive coverage-meter field. Safe: the v1.0.7 client returns the
-            // status.get result via a plain `as GetStatusResponse` cast with no
-            // schema validation, so unknown fields pass through untouched.
+            // Additive coverage-meter fields. Safe: the v1.0.7 client returns
+            // the status.get result via a plain `as GetStatusResponse` cast with
+            // no schema validation, so unknown fields pass through untouched.
             unmappedEvents: this.unmappedEventsSummary(),
+            deliberatelyUnmapped: this.deliberatelyUnmappedSummary(),
         }));
         registerHandler("auth.getStatus", () => this.handleAuthStatus());
         registerHandler("models.list", () => this.handleModelsList());
@@ -1135,6 +1176,63 @@ export class CodexCopilotAdapterServer {
         return summary;
     }
 
+    /**
+     * Returns the reason when this codex event is consciously not mapped;
+     * checks the `method:itemType` key first, then the method-level key.
+     */
+    private deliberatelyUnmappedReason(method: string, itemType?: string): string | undefined {
+        if (itemType) {
+            const scoped = DELIBERATELY_UNMAPPED_CODEX_EVENTS[`${method}:${itemType}`];
+            if (scoped) {
+                return scoped;
+            }
+        }
+        return DELIBERATELY_UNMAPPED_CODEX_EVENTS[method];
+    }
+
+    private recordDeliberatelyUnmappedCodexEvent(
+        method: string,
+        itemType: string | undefined,
+        threadId: string | undefined,
+        reason: string
+    ) {
+        const key = itemType ? `${method}:${itemType}` : method;
+        const existing = this.deliberatelyUnmappedEvents.get(key);
+        if (existing) {
+            existing.count += 1;
+        } else {
+            this.deliberatelyUnmappedEvents.set(key, {
+                count: 1,
+                firstSeenAt: nowIso(),
+                reason,
+            });
+        }
+        this.recordTranscript({
+            at: nowIso(),
+            direction: "adapter.unmapped",
+            message: {
+                kind: "notification",
+                method,
+                itemType,
+                threadId,
+                deliberate: true,
+                reason,
+            },
+        });
+    }
+
+    /** Snapshot of consciously-not-mapped event counts with their reasons. */
+    deliberatelyUnmappedSummary(): Record<
+        string,
+        { count: number; firstSeenAt: string; reason: string }
+    > {
+        const summary: Record<string, { count: number; firstSeenAt: string; reason: string }> = {};
+        for (const key of [...this.deliberatelyUnmappedEvents.keys()].sort()) {
+            summary[key] = { ...this.deliberatelyUnmappedEvents.get(key)! };
+        }
+        return summary;
+    }
+
     private recordUnmappedSummaryTranscript(scope: string, sessionId?: string) {
         this.recordTranscript({
             at: nowIso(),
@@ -1143,6 +1241,7 @@ export class CodexCopilotAdapterServer {
                 scope,
                 sessionId,
                 unmappedEvents: this.unmappedEventsSummary(),
+                deliberatelyUnmapped: this.deliberatelyUnmappedSummary(),
             },
         });
     }
@@ -1179,6 +1278,24 @@ export class CodexCopilotAdapterServer {
                 : isRecord(params.thread) && typeof params.thread.id === "string"
                   ? params.thread.id
                   : undefined;
+
+        // Consciously-not-mapped events are classified before the thread/session
+        // guards: several of them (e.g. account/rateLimits/updated) legitimately
+        // carry no thread context and must not be misfiled as "missing-thread-id".
+        const deliberateReason = this.deliberatelyUnmappedReason(
+            notification.method,
+            notificationItemType
+        );
+        if (deliberateReason) {
+            this.recordDeliberatelyUnmappedCodexEvent(
+                notification.method,
+                notificationItemType,
+                threadId,
+                deliberateReason
+            );
+            return;
+        }
+
         if (!threadId) {
             this.recordUnmappedCodexEvent({
                 kind: "notification",
@@ -1216,17 +1333,56 @@ export class CodexCopilotAdapterServer {
             return;
         }
 
-        if (notification.method === "item/completed") {
-            const item = isRecord(params.item) ? params.item : null;
-            if (item?.type === "agentMessage") {
+        const turnId = typeof params.turnId === "string" ? params.turnId : undefined;
+        const sessionModel = session.model ?? this.options.model;
+
+        if (notification.method === "item/agentMessage/delta") {
+            const delta = mapCodexAgentMessageDelta(params);
+            if (delta) {
+                // assistant.message_delta is `ephemeral: true` by schema.
                 this.emitSessionEvent(
                     sessionId,
-                    createSessionEvent(session, "assistant.message", {
-                        content: typeof item.text === "string" ? item.text : "",
-                        messageId:
-                            typeof item.id === "string" ? item.id : `assistant-${randomUUID()}`,
-                        phase: typeof item.phase === "string" ? item.phase : undefined,
-                    })
+                    createSessionEvent(session, "assistant.message_delta", delta, true)
+                );
+            } else {
+                this.recordUnmappedCodexEvent({
+                    kind: "notification",
+                    method: notification.method,
+                    threadId,
+                    reason: "malformed-params",
+                    params,
+                });
+            }
+        } else if (notification.method === "item/started") {
+            const item = isRecord(params.item) ? params.item : null;
+            if (item?.type === "agentMessage") {
+                // assistant.message_start is `ephemeral: true` by schema.
+                this.emitSessionEvent(
+                    sessionId,
+                    createSessionEvent(
+                        session,
+                        "assistant.message_start",
+                        mapCodexAgentMessageStart(item),
+                        true
+                    )
+                );
+            } else if (item?.type === "commandExecution") {
+                this.emitSessionEvent(
+                    sessionId,
+                    createSessionEvent(
+                        session,
+                        "tool.execution_start",
+                        mapCodexCommandExecutionStart(item, turnId)
+                    )
+                );
+            } else if (item?.type === "fileChange") {
+                this.emitSessionEvent(
+                    sessionId,
+                    createSessionEvent(
+                        session,
+                        "tool.execution_start",
+                        mapCodexFileChangeStart(item, turnId)
+                    )
                 );
             } else {
                 this.recordUnmappedCodexEvent({
@@ -1238,6 +1394,63 @@ export class CodexCopilotAdapterServer {
                     params,
                 });
             }
+        } else if (notification.method === "item/completed") {
+            const item = isRecord(params.item) ? params.item : null;
+            if (item?.type === "agentMessage") {
+                this.emitSessionEvent(
+                    sessionId,
+                    createSessionEvent(session, "assistant.message", {
+                        content: typeof item.text === "string" ? item.text : "",
+                        messageId:
+                            typeof item.id === "string" ? item.id : `assistant-${randomUUID()}`,
+                        phase: typeof item.phase === "string" ? item.phase : undefined,
+                    })
+                );
+            } else if (item?.type === "reasoning") {
+                this.emitSessionEvent(
+                    sessionId,
+                    createSessionEvent(session, "assistant.reasoning", mapCodexReasoningItem(item))
+                );
+            } else if (item?.type === "commandExecution") {
+                this.emitSessionEvent(
+                    sessionId,
+                    createSessionEvent(
+                        session,
+                        "tool.execution_complete",
+                        mapCodexCommandExecutionComplete(item)
+                    )
+                );
+            } else if (item?.type === "fileChange") {
+                const mapped = mapCodexFileChangeComplete(item);
+                this.emitSessionEvent(
+                    sessionId,
+                    createSessionEvent(session, "tool.execution_complete", mapped.toolExecution)
+                );
+                for (const change of mapped.workspaceChanges) {
+                    this.emitSessionEvent(
+                        sessionId,
+                        createSessionEvent(session, "session.workspace_file_changed", change)
+                    );
+                }
+            } else {
+                this.recordUnmappedCodexEvent({
+                    kind: "notification",
+                    method: notification.method,
+                    itemType: notificationItemType ?? "-",
+                    threadId,
+                    reason: "unmapped-item-type",
+                    params,
+                });
+            }
+        } else if (notification.method === "turn/started") {
+            const turn = isRecord(params.turn) ? params.turn : null;
+            this.emitSessionEvent(
+                sessionId,
+                createSessionEvent(session, "assistant.turn_start", {
+                    turnId: typeof turn?.id === "string" ? turn.id : (turnId ?? "turn-unknown"),
+                    model: sessionModel,
+                })
+            );
         } else if (notification.method === "turn/completed") {
             const turn = isRecord(params.turn) ? params.turn : null;
             const status = typeof turn?.status === "string" ? turn.status : "completed";
@@ -1251,6 +1464,23 @@ export class CodexCopilotAdapterServer {
                         message: `Codex turn completed with status=${status}`,
                     })
                 );
+            }
+        } else if (notification.method === "thread/tokenUsage/updated") {
+            const usage = mapCodexTokenUsage(params, sessionModel);
+            if (usage) {
+                // assistant.usage is `ephemeral: true` by schema.
+                this.emitSessionEvent(
+                    sessionId,
+                    createSessionEvent(session, "assistant.usage", usage, true)
+                );
+            } else {
+                this.recordUnmappedCodexEvent({
+                    kind: "notification",
+                    method: notification.method,
+                    threadId,
+                    reason: "malformed-params",
+                    params,
+                });
             }
         } else {
             this.recordUnmappedCodexEvent({
@@ -1286,6 +1516,11 @@ export class CodexCopilotAdapterServer {
                         : undefined,
                 reason: "unmapped-request-method",
                 params: request.params,
+            });
+            // Fail loud instead of letting codex hang until its own timeout.
+            this.codex.respond(request.id, undefined, {
+                code: -32601,
+                message: `Method not found: ${request.method} is not served by the codex copilot adapter`,
             });
             return;
         }
@@ -1603,6 +1838,7 @@ export class CodexCopilotAdapterServer {
             codex: this.codex.summary(),
             capabilities: CODEX_ADAPTER_CAPABILITIES,
             unmappedEvents: this.unmappedEventsSummary(),
+            deliberatelyUnmapped: this.deliberatelyUnmappedSummary(),
         };
     }
 }

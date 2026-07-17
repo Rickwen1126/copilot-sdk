@@ -373,3 +373,234 @@ export function mapPermissionResultToCodexFileChangeDecision(permissionResult: u
     }
     return "accept";
 }
+
+// ---------------------------------------------------------------------------
+// Codex notification -> SDK session-event mappers (v1.0.7 coverage expansion).
+// Field mappings are anchored to captured codex app-server payloads
+// (codex-cli 0.144.5) on one side and nodejs/src/generated/session-events.ts
+// on the other; see the per-mapper notes.
+// ---------------------------------------------------------------------------
+
+/**
+ * `item/agentMessage/delta` {threadId, turnId, itemId, delta} ->
+ * `assistant.message_delta` data. Captured deltas carry the same `itemId` as
+ * the eventual `item/completed` agentMessage `item.id`, so `messageId`
+ * correlates with the adapter's assistant.message event.
+ */
+export function mapCodexAgentMessageDelta(
+    params: Record<string, unknown>
+): { deltaContent: string; messageId: string } | null {
+    if (typeof params.itemId !== "string" || typeof params.delta !== "string") {
+        return null;
+    }
+    return { deltaContent: params.delta, messageId: params.itemId };
+}
+
+/** `item/started` agentMessage item -> `assistant.message_start` data. */
+export function mapCodexAgentMessageStart(
+    item: Record<string, unknown>
+): { messageId: string; phase?: string } {
+    return {
+        messageId: typeof item.id === "string" ? item.id : `assistant-${item.id ?? "unknown"}`,
+        phase: typeof item.phase === "string" ? item.phase : undefined,
+    };
+}
+
+function collectTextEntries(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const texts: string[] = [];
+    for (const entry of value) {
+        if (typeof entry === "string") {
+            if (entry.length > 0) {
+                texts.push(entry);
+            }
+        } else if (isRecord(entry) && typeof entry.text === "string" && entry.text.length > 0) {
+            texts.push(entry.text);
+        }
+    }
+    return texts;
+}
+
+/**
+ * `item/completed` reasoning item {id, summary: [], content: []} ->
+ * `assistant.reasoning` data {content, reasoningId}. Captured reasoning items
+ * had empty summary/content arrays; entry extraction tolerates both raw
+ * strings and `{text}` records (the shape codex uses for userMessage content).
+ */
+export function mapCodexReasoningItem(
+    item: Record<string, unknown>
+): { content: string; reasoningId: string } {
+    const texts = [...collectTextEntries(item.summary), ...collectTextEntries(item.content)];
+    return {
+        content: texts.join("\n\n"),
+        reasoningId: typeof item.id === "string" ? item.id : "reasoning-unknown",
+    };
+}
+
+/**
+ * `item/started` commandExecution item -> `tool.execution_start` data.
+ * Captured item shape: {type, id, command, cwd, processId, source, status,
+ * commandActions, aggregatedOutput, exitCode, durationMs}. `toolName` is an
+ * adapter-chosen label ("shell"): codex does not carry an SDK tool name.
+ */
+export function mapCodexCommandExecutionStart(
+    item: Record<string, unknown>,
+    turnId: string | undefined
+): Record<string, unknown> {
+    const command = typeof item.command === "string" ? item.command : "";
+    return {
+        toolCallId: typeof item.id === "string" ? item.id : "command-unknown",
+        toolName: "shell",
+        arguments: {
+            command,
+            cwd: typeof item.cwd === "string" ? item.cwd : undefined,
+        },
+        shellToolInfo: {
+            hasWriteFileRedirection: />{1,2}/.test(command),
+            possiblePaths: [],
+        },
+        turnId,
+    };
+}
+
+/** `item/completed` commandExecution item -> `tool.execution_complete` data. */
+export function mapCodexCommandExecutionComplete(
+    item: Record<string, unknown>
+): Record<string, unknown> {
+    const exitCode = typeof item.exitCode === "number" ? item.exitCode : null;
+    const status = typeof item.status === "string" ? item.status : "completed";
+    const success = status === "completed" && (exitCode === null || exitCode === 0);
+    const output = typeof item.aggregatedOutput === "string" ? item.aggregatedOutput : "";
+    return {
+        toolCallId: typeof item.id === "string" ? item.id : "command-unknown",
+        success,
+        ...(success
+            ? { result: { content: output } }
+            : {
+                  error: {
+                      message:
+                          output.length > 0
+                              ? output
+                              : `command ${status}${exitCode !== null ? ` (exit ${exitCode})` : ""}`,
+                  },
+              }),
+    };
+}
+
+type CodexFileChange = {
+    path: string;
+    kindType: string | undefined;
+    diff: string | undefined;
+};
+
+function parseCodexFileChanges(item: Record<string, unknown>): CodexFileChange[] {
+    if (!Array.isArray(item.changes)) {
+        return [];
+    }
+    return item.changes.filter(isRecord).flatMap((change) => {
+        if (typeof change.path !== "string") {
+            return [];
+        }
+        return [
+            {
+                path: change.path,
+                kindType:
+                    isRecord(change.kind) && typeof change.kind.type === "string"
+                        ? change.kind.type
+                        : undefined,
+                diff: typeof change.diff === "string" ? change.diff : undefined,
+            },
+        ];
+    });
+}
+
+/**
+ * `item/started` fileChange item -> `tool.execution_start` data.
+ * Captured change shape: {path, kind: {type: "add"|"update", move_path?}, diff}.
+ */
+export function mapCodexFileChangeStart(
+    item: Record<string, unknown>,
+    turnId: string | undefined
+): Record<string, unknown> {
+    const changes = parseCodexFileChanges(item);
+    return {
+        toolCallId: typeof item.id === "string" ? item.id : "filechange-unknown",
+        toolName: "apply_patch",
+        arguments: {
+            paths: changes.map((change) => change.path),
+        },
+        turnId,
+    };
+}
+
+/**
+ * `item/completed` fileChange item -> `tool.execution_complete` data plus one
+ * `session.workspace_file_changed` payload per add/update change (the
+ * generated WorkspaceFileChangedOperation enum only has create|update; other
+ * kinds are reported through the tool result only).
+ */
+export function mapCodexFileChangeComplete(item: Record<string, unknown>): {
+    toolExecution: Record<string, unknown>;
+    workspaceChanges: Array<{ operation: "create" | "update"; path: string }>;
+} {
+    const changes = parseCodexFileChanges(item);
+    const status = typeof item.status === "string" ? item.status : "completed";
+    const success = status === "completed";
+    const diffText = changes
+        .map((change) => change.diff)
+        .filter((diff): diff is string => !!diff)
+        .join("\n");
+    const summary = changes
+        .map((change) => `${change.kindType ?? "update"} ${change.path}`)
+        .join("\n");
+    return {
+        toolExecution: {
+            toolCallId: typeof item.id === "string" ? item.id : "filechange-unknown",
+            success,
+            ...(success
+                ? {
+                      result: {
+                          content: summary,
+                          ...(diffText.length > 0 ? { detailedContent: diffText } : {}),
+                      },
+                  }
+                : { error: { message: `file change ${status}` } }),
+        },
+        workspaceChanges: success
+            ? changes
+                  .filter((change) => change.kindType === "add" || change.kindType === "update")
+                  .map((change) => ({
+                      operation: change.kindType === "add" ? ("create" as const) : ("update" as const),
+                      path: change.path,
+                  }))
+            : [],
+    };
+}
+
+/**
+ * `thread/tokenUsage/updated` {tokenUsage: {last: {...}}} -> `assistant.usage`
+ * data. Uses the `last` bucket (per-API-call semantics, matching
+ * assistant.usage) and maps cachedInputTokens -> cacheReadTokens,
+ * reasoningOutputTokens -> reasoningTokens. `model` is required by
+ * AssistantUsageData and must be supplied by the adapter session.
+ */
+export function mapCodexTokenUsage(
+    params: Record<string, unknown>,
+    model: string
+): Record<string, unknown> | null {
+    const tokenUsage = isRecord(params.tokenUsage) ? params.tokenUsage : undefined;
+    const last = tokenUsage && isRecord(tokenUsage.last) ? tokenUsage.last : undefined;
+    if (!last) {
+        return null;
+    }
+    const num = (value: unknown) => (typeof value === "number" ? value : undefined);
+    return {
+        model,
+        inputTokens: num(last.inputTokens),
+        outputTokens: num(last.outputTokens),
+        cacheReadTokens: num(last.cachedInputTokens),
+        reasoningTokens: num(last.reasoningOutputTokens),
+    };
+}

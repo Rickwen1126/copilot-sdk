@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import process from "node:process";
-import { CopilotClient, approveAll } from "../dist/index.js";
+import { CopilotClient, RuntimeConnection, approveAll } from "../dist/index.js";
 import {
     approvalProbePathForBackend,
     approvalProbePrompt,
@@ -1632,8 +1632,7 @@ async function runToolFailureProbeWithClient(
 
 async function recordRealCopilotProtocol() {
     const client1 = new CopilotClient({
-        autoStart: false,
-        useStdio: false,
+        connection: RuntimeConnection.forTcp(),
         logLevel: "info",
     });
     let client2: CopilotClient | undefined;
@@ -1676,8 +1675,7 @@ async function recordRealCopilotProtocol() {
         stepTrace.push("client1.stopped");
 
         client2 = new CopilotClient({
-            autoStart: false,
-            useStdio: false,
+            connection: RuntimeConnection.forTcp(),
             logLevel: "info",
         });
         stepTrace.push("client2.start");
@@ -1967,8 +1965,7 @@ async function runAdapterValidation() {
     });
     const { port } = await adapter.start();
     const client1 = new CopilotClient({
-        autoStart: false,
-        cliUrl: `127.0.0.1:${port}`,
+        connection: RuntimeConnection.forUri(`127.0.0.1:${port}`),
         logLevel: "info",
     });
     const observedEvents = createScenarioEventBuckets();
@@ -2010,8 +2007,7 @@ async function runAdapterValidation() {
         stepTrace.push("client1.stopped");
 
         client2 = new CopilotClient({
-            autoStart: false,
-            cliUrl: `127.0.0.1:${port}`,
+            connection: RuntimeConnection.forUri(`127.0.0.1:${port}`),
             logLevel: "info",
         });
         stepTrace.push("client2.start");

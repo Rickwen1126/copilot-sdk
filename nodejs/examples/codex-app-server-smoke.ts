@@ -5,7 +5,7 @@ import { join } from "node:path";
 import process from "node:process";
 import readline from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
-import { CopilotClient } from "../dist/index.js";
+import { CopilotClient, RuntimeConnection } from "../dist/index.js";
 
 type JsonRpcId = number | string;
 
@@ -259,12 +259,9 @@ function buildCommandApprovalResponse(params: unknown): Record<string, unknown> 
 
 async function probeCopilotClientCompatibility() {
     const client = new CopilotClient({
-        autoStart: false,
-        cliPath: CODEX_BIN,
-        cliArgs: CODEX_ARGS,
+        connection: RuntimeConnection.forStdio({ path: CODEX_BIN, args: CODEX_ARGS }),
         env: createProbeEnv(),
         logLevel: "info",
-        useStdio: true,
     });
 
     try {

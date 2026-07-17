@@ -9,7 +9,7 @@ import {
     StreamMessageWriter,
     type MessageConnection,
 } from "vscode-jsonrpc/node.js";
-import type { CopilotClientOptions } from "../types.js";
+import { RuntimeConnection, type CopilotClientOptions } from "../types.js";
 import {
     codexSandboxPolicy,
     codexThreadSandboxMode,
@@ -357,9 +357,11 @@ export class CodexCopilotAdapterServer {
     }
 
     clientOptions(): CopilotClientOptions {
+        // v1.0.7 replaced `{ cliUrl, autoStart: false }` with the connection
+        // field. `RuntimeConnection.forUri` is the connect-to-existing-server
+        // transport (no process spawn), matching the old semantics exactly.
         return {
-            autoStart: false,
-            cliUrl: this.cliUrl(),
+            connection: RuntimeConnection.forUri(this.cliUrl()),
         };
     }
 

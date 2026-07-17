@@ -159,7 +159,7 @@ class FakeCodexGateway {
         };
     }
 
-    private emitNotification(method: string, params?: unknown): void {
+    emitNotification(method: string, params?: unknown): void {
         const notification = { method, params };
         for (const handler of this.notificationHandlers) {
             handler(notification);
@@ -1028,5 +1028,152 @@ describe("Codex adapter v1.0.7 permission flow", () => {
                     protocolVersion: 2,
                 })
         ).toThrow(/protocolVersion 2 is not supported on SDK v1\.0\.7/);
+    });
+});
+
+describe("Codex adapter unmapped-event observability", () => {
+    type UnmappedSummary = Record<
+        string,
+        { count: number; firstSeenAt: string; paramsKeys: string[] }
+    >;
+
+    async function startObservedAdapter() {
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        const session = await client.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+        });
+        return { fakeCodex, adapter, client, session };
+    }
+
+    function transcripts(adapter: CodexCopilotAdapterServer) {
+        return (
+            adapter.summary() as {
+                transcripts: Array<{ direction: string; message: unknown }>;
+            }
+        ).transcripts;
+    }
+
+    it("counts and logs dropped notifications per method and item type", async () => {
+        const { fakeCodex, adapter, client } = await startObservedAdapter();
+
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            item: { type: "reasoning", id: "reasoning-1", text: "thinking..." },
+        });
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            item: { type: "reasoning", id: "reasoning-2", text: "still thinking..." },
+        });
+        fakeCodex.emitNotification("item/started", {
+            threadId: "fake-thread-1",
+            item: { type: "commandExecution", id: "cmd-1", command: "ls" },
+        });
+
+        const summary = adapter.unmappedEventsSummary();
+        expect(summary["item/completed:reasoning"]).toEqual(
+            expect.objectContaining({
+                count: 2,
+                paramsKeys: ["threadId", "item"],
+            })
+        );
+        expect(summary["item/started:commandExecution"]).toEqual(
+            expect.objectContaining({ count: 1 })
+        );
+
+        const unmappedLogs = transcripts(adapter).filter(
+            (entry) => entry.direction === "adapter.unmapped"
+        );
+        const reasoningLogs = unmappedLogs.filter(
+            (entry) =>
+                isRecord(entry.message) && entry.message.itemType === "reasoning"
+        );
+        expect(reasoningLogs).toHaveLength(2);
+        // First sighting carries payload top-level keys; repeats stay terse.
+        expect(reasoningLogs[0].message).toEqual(
+            expect.objectContaining({
+                kind: "notification",
+                method: "item/completed",
+                itemType: "reasoning",
+                threadId: "fake-thread-1",
+                reason: "unmapped-item-type",
+                paramsKeys: ["threadId", "item"],
+            })
+        );
+        expect(reasoningLogs[1].message).not.toHaveProperty("paramsKeys");
+
+        // Mapped paths stay unaffected: agentMessage still emits and is not counted.
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            item: { type: "agentMessage", id: "assistant-1", text: "hello" },
+        });
+        expect(adapter.unmappedEventsSummary()["item/completed:agentMessage"]).toBeUndefined();
+
+        // Queryable through the real v1.0.7 client: additive status.get field.
+        const status = (await client.getStatus()) as unknown as {
+            unmappedEvents: UnmappedSummary;
+        };
+        expect(status.unmappedEvents["item/completed:reasoning"].count).toBe(2);
+    });
+
+    it("emits an unmapped summary on session destroy and counts unserved codex requests", async () => {
+        const { fakeCodex, adapter, session } = await startObservedAdapter();
+
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            item: { type: "todoList", id: "todo-1" },
+        });
+        fakeCodex.emitRequest({
+            id: "unknown-req-1",
+            method: "thread/compact/confirm",
+            params: { threadId: "fake-thread-1" },
+        });
+
+        await session.disconnect();
+
+        const summaries = transcripts(adapter).filter(
+            (entry) => entry.direction === "adapter.unmapped.summary"
+        );
+        expect(summaries).toHaveLength(1);
+        expect(summaries[0].message).toEqual(
+            expect.objectContaining({
+                scope: "session.destroy",
+                sessionId: session.sessionId,
+            })
+        );
+        const summaryCounts = (
+            summaries[0].message as { unmappedEvents: UnmappedSummary }
+        ).unmappedEvents;
+        expect(summaryCounts["item/completed:todoList"].count).toBe(1);
+        expect(summaryCounts["thread/compact/confirm"]).toEqual(
+            expect.objectContaining({ count: 1 })
+        );
+
+        const requestLog = transcripts(adapter).find(
+            (entry) =>
+                isRecord(entry.message) &&
+                entry.message.reason === "unmapped-request-method"
+        );
+        expect(requestLog?.message).toEqual(
+            expect.objectContaining({
+                kind: "request",
+                method: "thread/compact/confirm",
+                threadId: "fake-thread-1",
+            })
+        );
     });
 });

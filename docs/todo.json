@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-17 09:30",
+  "updated_at": "2026-07-17 22:40",
   "items": [
     {
       "key": "codex-adapter-v107",
@@ -10,8 +10,8 @@
       "axis": "tech-monetize",
       "pack": null,
       "summary": "fork（merge-base 2026-04-21）升到官方 v1.0.7。嫁接面已實測：adapter=假扮 copilot CLI 的 standalone JSON-RPC server，對 SDK 僅 1 type import；唯一編譯斷點=options 換形 RuntimeConnection.forTcp。最大紅利=現行事件映射白名單極窄（codex reasoning/commandExecution/fileChange/todo/webSearch 全被 implicit-else 靜默吞），升級首刀=unmapped counter 顯式化（即覆蓋成數量測器）再逐類擴映射至 v1.0.7 擴充後 session-events。同時交付 tmux-adapter spike 模板（server 骨架抽共用、gateway 介面化）。",
-      "current_state": "Phase 0-1 完成並經統籌抽查初驗（2026-07-17 晚，head 132d8e8b）：import 32 檔（experimental+conformance+tests+examples，皆 codex 領土）、編譯修 forUri（發包單 forTcp 為誤，v1.0.7 forTcp=spawn 語意，agent 有據糾正）＋getMessages→getEvents 改名、build/typecheck 綠、codex tests 81/81 綠、真 codex smoke 連通（isolated CodexHome）。Wire 檢查表發現 blocking gap：v1.0.7 移除 client onRequest(permission.request)，現況所有 approval 靜默變 decline。全套 67 檔 upstream 測試失敗經歸因實驗證明為基線環境現象。",
-      "next_action": "Phase 1.5 完成並初驗通過（head ad3087e1：permission.requested 新機制＋v2 fail loud＋84/84 綠，envelope 逐欄位對拍全 source 確立）。Phase 2 已發包（unmapped counter 可觀測化）。Rick 驗收站：shinyipilot 實連 approval 全流程（Rick 在場）→ merge 扳機（H 級）。",
+      "current_state": "Phase 2 完成並初驗（head 3ce15c71）：unmapped counter＋結構化 log＋destroy/stop summary＋status.get additive 欄位（寬容性 source 確認），86/86 綠。基線量測撈到關鍵情報：item/agentMessage/delta（streaming，UI 最大宗）不在原 plan §4 優先序內，另有 reasoning/turn/thread 生命週期/tokenUsage 等 12 類 unmapped。",
+      "next_action": "Phase 3 已發包（映射擴充，delta 第一優先＋工具族重量測＋method-not-found fail loud＋「有意識不映射」清單制）。回報後統籌初驗 → Rick 驗收站：shinyipilot 實連 → merge 扳機。",
       "refs": {
         "global_spec": null,
         "topic_spec": "docs/codex-adapter-v107/spec.md",
@@ -30,7 +30,7 @@
       },
       "depends_on": [],
       "created_at": "2026-07-17 09:30",
-      "updated_at": "2026-07-17 09:30",
+      "updated_at": "2026-07-17 22:40",
       "branch": {
         "name": "codex-adapter-v107",
         "worktree_path": "/Users/rickwen/code/copilot-sdk-v107",

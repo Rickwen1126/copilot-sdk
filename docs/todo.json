@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-18 00:45",
+  "updated_at": "2026-07-18 01:05",
   "items": [
     {
       "key": "codex-adapter-v107",
@@ -11,7 +11,7 @@
       "pack": null,
       "summary": "fork（merge-base 2026-04-21）升到官方 v1.0.7。嫁接面已實測：adapter=假扮 copilot CLI 的 standalone JSON-RPC server，對 SDK 僅 1 type import；唯一編譯斷點=options 換形 RuntimeConnection.forTcp。最大紅利=現行事件映射白名單極窄（codex reasoning/commandExecution/fileChange/todo/webSearch 全被 implicit-else 靜默吞），升級首刀=unmapped counter 顯式化（即覆蓋成數量測器）再逐類擴映射至 v1.0.7 擴充後 session-events。同時交付 tmux-adapter spike 模板（server 骨架抽共用、gateway 介面化）。",
       "current_state": "Phase 0-4 全部完成並經統籌逐包初驗（final head d4829b8c，12 commits，96/96 綠）。四條驗收：A1 相容（wire 全表+permission 新機制+forUri）✓機器面；A2 靜默歸零（unmapped+deliberate+extraction-miss 三層防護）✓；A3 覆蓋 100%（已觀測類，兩種真 turn 實測）✓；A4 metadata bag 往返✓、agentId 結論=無接觸點不實作（file:line 依據）、forInProcess 評估=不做（adapter 直接 new 即嵌入，FFI #1934 env 洩漏對常駐 hub 否決性）。7 項 shinyipilot 實連驗收清單已備（見 agent Phase 4 回報）。",
-      "next_action": "【Rick 驗收站】shinyipilot 實連走 7 項場景清單 → 全過後 merge 扳機（H 級，Rick 扣）：worktree branch → 定版 branch 的整合方式屆時裁決（merge 或另立 v107 線）。tmux spike（plan §6）為下一 topic。",
+      "next_action": "branch codex-adapter-v107 已 push 至 fork（d4829b8c，獨立 ref、定版線零觸碰）。shinyipilot 部署改 pull 此 branch。剩：7 項實連驗收（shinyipilot 場景 1-5 必須、6-7 可機驗）→ 全過後裁決是否讓 codex-adapter-v107 成為新 production line。tmux spike（plan §6）為下一 topic。",
       "refs": {
         "global_spec": null,
         "topic_spec": "docs/codex-adapter-v107/spec.md",
@@ -30,7 +30,7 @@
       },
       "depends_on": [],
       "created_at": "2026-07-17 09:30",
-      "updated_at": "2026-07-18 00:45",
+      "updated_at": "2026-07-18 01:05",
       "branch": {
         "name": "codex-adapter-v107",
         "worktree_path": "/Users/rickwen/code/copilot-sdk-v107",
@@ -38,7 +38,7 @@
         "source_worktree_path": "/Users/rickwen/code/copilot-sdk",
         "source_committed_head": "3058231",
         "last_synced_source_head": "3058231",
-        "final_head": null
+        "final_head": "d4829b8c"
       }
     }
   ]

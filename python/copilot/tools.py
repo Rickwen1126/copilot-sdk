@@ -31,7 +31,7 @@ class ToolBinaryResult:
     description: str = ""
 
 
-@dataclass
+@dataclass(init=False)
 class ToolResult:
     """Result of a tool invocation."""
 
@@ -43,6 +43,48 @@ class ToolResult:
     tool_telemetry: dict[str, Any] | None = None
     tool_references: list[str] | None = None
     _from_exception: bool = field(default=False, repr=False)
+
+    def __init__(
+        self,
+        text_result_for_llm: str = "",
+        result_type: ToolResultType = "success",
+        error: str | None = None,
+        binary_results_for_llm: list[ToolBinaryResult] | None = None,
+        session_log: str | None = None,
+        tool_telemetry: dict[str, Any] | None = None,
+        tool_references: list[str] | None = None,
+        _from_exception: bool = False,
+        **legacy_kwargs: Any,
+    ) -> None:
+        # Backward-compat: downstream apps built against the fork constructed
+        # ToolResult with camelCase keyword arguments (JSON wire names).
+        if "textResultForLlm" in legacy_kwargs:
+            text_result_for_llm = legacy_kwargs.pop("textResultForLlm")
+        if "resultType" in legacy_kwargs:
+            result_type = legacy_kwargs.pop("resultType")
+        if "binaryResultsForLlm" in legacy_kwargs:
+            binary_results_for_llm = legacy_kwargs.pop("binaryResultsForLlm")
+        if "sessionLog" in legacy_kwargs:
+            session_log = legacy_kwargs.pop("sessionLog")
+        if "toolTelemetry" in legacy_kwargs:
+            tool_telemetry = legacy_kwargs.pop("toolTelemetry")
+        if "toolReferences" in legacy_kwargs:
+            tool_references = legacy_kwargs.pop("toolReferences")
+        if legacy_kwargs:
+            unexpected = next(iter(legacy_kwargs))
+            raise TypeError(
+                "ToolResult.__init__() got an unexpected keyword "
+                f"argument '{unexpected}'"
+            )
+
+        self.text_result_for_llm = text_result_for_llm
+        self.result_type = result_type
+        self.error = error
+        self.binary_results_for_llm = binary_results_for_llm
+        self.session_log = session_log
+        self.tool_telemetry = tool_telemetry
+        self.tool_references = tool_references
+        self._from_exception = _from_exception
 
 
 @dataclass

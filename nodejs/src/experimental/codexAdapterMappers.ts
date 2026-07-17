@@ -264,15 +264,35 @@ export function mapCodexCommandApprovalToPermissionRequest(
     };
 }
 
+/**
+ * Approve-family `PermissionDecision.kind` literals from the v1.0.7 generated
+ * RPC schema (`PermissionDecisionApprove*` / legacy `PermissionDecisionApproved*`).
+ * Every other kind (reject / cancelled / user-not-available / denied-*) maps
+ * to a Codex decline.
+ */
+const APPROVED_PERMISSION_KINDS = new Set([
+    "approve-once",
+    "approve-for-session",
+    "approve-for-location",
+    "approve-permanently",
+    "approved",
+    "approved-for-session",
+    "approved-for-location",
+]);
+
+function isApprovedPermissionKind(permissionResult: unknown): boolean {
+    return (
+        isRecord(permissionResult) &&
+        typeof permissionResult.kind === "string" &&
+        APPROVED_PERMISSION_KINDS.has(permissionResult.kind)
+    );
+}
+
 export function mapPermissionResultToCodexCommandDecision(
     permissionResult: unknown,
     requestParams: unknown
 ): unknown {
-    const kind =
-        isRecord(permissionResult) && typeof permissionResult.kind === "string"
-            ? permissionResult.kind
-            : null;
-    if (kind !== "approved") {
+    if (!isApprovedPermissionKind(permissionResult)) {
         return "decline";
     }
 
@@ -348,11 +368,7 @@ export function mapCodexFileChangeApprovalToPermissionRequest(
 }
 
 export function mapPermissionResultToCodexFileChangeDecision(permissionResult: unknown): unknown {
-    const kind =
-        isRecord(permissionResult) && typeof permissionResult.kind === "string"
-            ? permissionResult.kind
-            : null;
-    if (kind !== "approved") {
+    if (!isApprovedPermissionKind(permissionResult)) {
         return "decline";
     }
     return "accept";

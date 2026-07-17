@@ -620,44 +620,22 @@ async function buildSnapshot() {
     }
 
     {
-        const fake = new FakeCodexGateway();
-        const adapter = new CodexCopilotAdapterServer({
-            model: "gpt-test",
-            protocolVersion: 2,
-        });
-        (adapter as unknown as { codex: FakeCodexGateway }).codex = fake;
-        await adapter.start();
-        const client = new CopilotClient(adapter.clientOptions());
-        await client.start();
+        // protocolVersion 2 is refused loudly on SDK v1.0.7 (legacy direct
+        // tool.call flow was removed from the SDK client). Record the refusal
+        // instead of exercising the removed path.
+        let refusal: string | undefined;
         try {
-            await client.createSession({
+            new CodexCopilotAdapterServer({
                 model: "gpt-test",
-                onPermissionRequest: approveAll,
-                tools: [
-                    defineTool("lookup", {
-                        description: "Lookup source data",
-                        handler: ({ query }: { query: string }) => `lookup:${query}`,
-                    }),
-                ],
+                protocolVersion: 2,
             });
-            const result = await fake.emitRequest("item/tool/call", {
-                threadId: THREAD_ID,
-                tool: "lookup",
-                callId: "call-v2",
-                arguments: { query: "v2" },
-            });
-
-            snapshot.toolV2 = {
-                result: result.result,
-                transcriptMethods: {
-                    request: transcriptMethods(adapter.summary().transcripts, "adapter->sdk.request", "tool.call"),
-                    response: transcriptMethods(adapter.summary().transcripts, "sdk->adapter.response", "tool.call"),
-                },
-            };
-        } finally {
-            await client.forceStop();
-            await adapter.stop();
+        } catch (error) {
+            refusal = error instanceof Error ? error.message : String(error);
         }
+        snapshot.toolV2 = {
+            refused: refusal !== undefined,
+            refusal,
+        };
     }
 
     {

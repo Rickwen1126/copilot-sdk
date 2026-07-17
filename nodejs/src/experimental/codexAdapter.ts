@@ -118,6 +118,16 @@ type PendingDynamicToolCall = {
     timeout: ReturnType<typeof setTimeout>;
 };
 
+type PendingPermissionRequest = {
+    codexRequestId: JsonRpcId;
+    sessionId: string;
+    /** Codex approval method that triggered this request. */
+    codexMethod: string;
+    /** Raw codex request params, needed by the command decision mapper. */
+    codexParams: Record<string, unknown>;
+    timeout: ReturnType<typeof setTimeout>;
+};
+
 const DEFAULT_MODEL = "gpt-5.4";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
@@ -258,6 +268,7 @@ export class CodexCopilotAdapterServer {
     private connections = new Map<string, MessageConnection>();
     private fileChangeSnapshots = new Map<string, unknown[]>();
     private pendingDynamicToolCalls = new Map<string, PendingDynamicToolCall>();
+    private pendingPermissionRequests = new Map<string, PendingPermissionRequest>();
     private port = 0;
     private transcript: CodexAdapterTranscriptEntry[] = [];
     private codexUnsubscribe: (() => void) | null = null;
@@ -284,6 +295,13 @@ export class CodexCopilotAdapterServer {
         Pick<CodexAdapterOptions, "port">;
 
     constructor(options: CodexAdapterOptions = {}) {
+        if (options.protocolVersion === 2) {
+            throw new Error(
+                "codex adapter protocolVersion 2 is not supported on SDK v1.0.7: " +
+                    "the legacy direct tool.call request flow was removed from the SDK client " +
+                    "(requests would fail with MethodNotFound). Use protocolVersion 3 (the default)."
+            );
+        }
         this.options = {
             host: options.host ?? DEFAULT_HOST,
             port: options.port,
@@ -432,6 +450,9 @@ export class CodexCopilotAdapterServer {
         registerHandler("session.delete", (params) => this.handleSessionDelete(params));
         registerHandler("session.tools.handlePendingToolCall", (params) =>
             this.handlePendingToolCall(params)
+        );
+        registerHandler("session.permissions.handlePendingPermissionRequest", (params) =>
+            this.handlePendingPermissionRequest(params)
         );
 
         socket.on("close", () => {
@@ -1186,49 +1207,97 @@ export class CodexCopilotAdapterServer {
             request.method === "item/fileChange/requestApproval"
                 ? mapCodexFileChangeApprovalToPermissionRequest(params, changes)
                 : mapCodexCommandApprovalToPermissionRequest(params);
+
+        // v1.0.7 removed the client-side handler for direct `permission.request`
+        // requests. Delivery now mirrors the runtime: broadcast an ephemeral
+        // `permission.requested` session event and wait for the client to answer
+        // via the served `session.permissions.handlePendingPermissionRequest` RPC.
+        const requestId = randomUUID();
+        const timeout = setTimeout(() => {
+            const pending = this.pendingPermissionRequests.get(requestId);
+            if (!pending) {
+                return;
+            }
+            this.pendingPermissionRequests.delete(requestId);
+            this.codex.respond(pending.codexRequestId, { decision: "decline" });
+            this.recordTranscript({
+                at: nowIso(),
+                direction: "adapter.permission.timeout",
+                message: {
+                    requestId,
+                    sessionId: pending.sessionId,
+                    codexMethod: pending.codexMethod,
+                },
+            });
+        }, this.options.requestTimeoutMs);
+        this.pendingPermissionRequests.set(requestId, {
+            codexRequestId: request.id,
+            sessionId: session.sessionId,
+            codexMethod: request.method,
+            codexParams: params,
+            timeout,
+        });
+
         this.recordTranscript({
             at: nowIso(),
-            direction: "adapter->sdk.request",
+            direction: "adapter->sdk.event",
             message: {
-                method: "permission.request",
+                method: "permission.requested",
                 params: {
                     sessionId: session.sessionId,
+                    requestId,
                     permissionRequest,
                 },
             },
         });
-
-        try {
-            const response = await primaryConnection.connection.sendRequest("permission.request", {
-                sessionId: session.sessionId,
-                permissionRequest,
-            });
-            this.recordTranscript({
-                at: nowIso(),
-                direction: "sdk->adapter.response",
-                message: {
-                    method: "permission.request",
-                    response,
+        this.emitSessionEvent(
+            session.sessionId,
+            createSessionEvent(
+                session,
+                "permission.requested",
+                {
+                    requestId,
+                    permissionRequest,
                 },
-            });
+                true
+            )
+        );
+    }
 
-            const result = isRecord(response) && "result" in response ? response.result : response;
-            const decision =
-                request.method === "item/fileChange/requestApproval"
-                    ? mapPermissionResultToCodexFileChangeDecision(result)
-                    : mapPermissionResultToCodexCommandDecision(result, params);
-            this.codex.respond(request.id, { decision });
-        } catch (error) {
-            this.recordTranscript({
-                at: nowIso(),
-                direction: "sdk->adapter.response",
-                message: {
-                    method: "permission.request",
-                    error: summarizeUnknownError(error),
-                },
-            });
-            this.codex.respond(request.id, { decision: "decline" });
+    private handlePendingPermissionRequest(params: unknown) {
+        if (!isRecord(params)) {
+            throw new Error("session.permissions.handlePendingPermissionRequest params missing");
         }
+
+        const requestId = typeof params.requestId === "string" ? params.requestId : undefined;
+        if (!requestId) {
+            throw new Error("session.permissions.handlePendingPermissionRequest requires requestId");
+        }
+
+        const pending = this.pendingPermissionRequests.get(requestId);
+        if (!pending) {
+            return { success: false };
+        }
+        clearTimeout(pending.timeout);
+        this.pendingPermissionRequests.delete(requestId);
+
+        const decision =
+            pending.codexMethod === "item/fileChange/requestApproval"
+                ? mapPermissionResultToCodexFileChangeDecision(params.result)
+                : mapPermissionResultToCodexCommandDecision(params.result, pending.codexParams);
+        this.codex.respond(pending.codexRequestId, { decision });
+
+        this.recordTranscript({
+            at: nowIso(),
+            direction: "adapter.permission.completed",
+            message: {
+                requestId,
+                sessionId: pending.sessionId,
+                codexMethod: pending.codexMethod,
+                decision,
+            },
+        });
+        return { success: true };
     }
 
     private handleCodexDynamicToolCall(

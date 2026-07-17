@@ -277,6 +277,20 @@ function toolFingerprintFromDescriptors(tools: ToolDescriptor[]): string {
 
 const EMPTY_TOOL_FINGERPRINT = toolFingerprintFromDescriptors([]);
 
+/**
+ * Collects the opaque per-tool metadata bags (v1.0.7 `Tool.metadata`) for
+ * persistence, keyed by tool name. Returns undefined when no tool carries one
+ * so existing store records stay byte-identical.
+ */
+function toolMetadataFromDescriptors(
+    tools: ToolDescriptor[]
+): Record<string, Record<string, unknown>> | undefined {
+    const entries = tools
+        .filter((tool) => tool.metadata !== undefined)
+        .map((tool) => [tool.name, tool.metadata!] as const);
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 function hasResumeToolDescriptors(params: Record<string, unknown>): boolean {
     return Array.isArray(params.tools);
 }
@@ -1056,6 +1070,7 @@ export class CodexCopilotAdapterServer {
             cwd: session.cwd,
             model: session.model,
             toolFingerprint: toolFingerprintFromDescriptors(session.tools),
+            toolMetadata: toolMetadataFromDescriptors(session.tools),
             codexHomeIdentity: this.codexHomeIdentity,
             createdAt: session.createdAt,
             updatedAt,
@@ -1407,9 +1422,25 @@ export class CodexCopilotAdapterServer {
                     })
                 );
             } else if (item?.type === "reasoning") {
+                const reasoning = mapCodexReasoningItem(item);
+                if (reasoning.extractionMiss) {
+                    // Non-empty summary/content in a shape the extractor does
+                    // not understand: never ship a silently empty string.
+                    this.recordUnmappedCodexEvent({
+                        kind: "notification",
+                        method: notification.method,
+                        itemType: "reasoning",
+                        threadId,
+                        reason: "extraction-miss",
+                        params: item,
+                    });
+                }
                 this.emitSessionEvent(
                     sessionId,
-                    createSessionEvent(session, "assistant.reasoning", mapCodexReasoningItem(item))
+                    createSessionEvent(session, "assistant.reasoning", {
+                        content: reasoning.content,
+                        reasoningId: reasoning.reasoningId,
+                    })
                 );
             } else if (item?.type === "commandExecution") {
                 this.emitSessionEvent(
@@ -1839,6 +1870,15 @@ export class CodexCopilotAdapterServer {
             capabilities: CODEX_ADAPTER_CAPABILITIES,
             unmappedEvents: this.unmappedEventsSummary(),
             deliberatelyUnmapped: this.deliberatelyUnmappedSummary(),
+            // Natural outlet for the round-tripped tool metadata bags.
+            sessions: [...this.sessions.values()].map((session) => ({
+                sessionId: session.sessionId,
+                threadId: session.threadId,
+                tools: session.tools.map((tool) => ({
+                    name: tool.name,
+                    ...(tool.metadata !== undefined ? { metadata: tool.metadata } : {}),
+                })),
+            })),
         };
     }
 }

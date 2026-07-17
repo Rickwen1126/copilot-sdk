@@ -9,6 +9,12 @@ export type CodexRuntimeSessionRecord = {
     cwd: string;
     model?: string;
     toolFingerprint: string;
+    /**
+     * Opaque per-tool metadata bags (v1.0.7 `Tool.metadata`), keyed by tool
+     * name. Additive optional field on the version-1 payload: records written
+     * without it still parse, and it round-trips untouched.
+     */
+    toolMetadata?: Record<string, Record<string, unknown>>;
     codexHomeIdentity?: string;
     createdAt: string;
     updatedAt: string;
@@ -21,6 +27,18 @@ type StorePayload = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === "object";
+}
+
+function parseToolMetadata(
+    value: unknown
+): Record<string, Record<string, unknown>> | undefined {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const entries = Object.entries(value).filter(
+        (entry): entry is [string, Record<string, unknown>] => isRecord(entry[1])
+    );
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function parseRecord(value: unknown): CodexRuntimeSessionRecord | null {
@@ -48,6 +66,7 @@ function parseRecord(value: unknown): CodexRuntimeSessionRecord | null {
         cwd: value.cwd,
         model: typeof value.model === "string" ? value.model : undefined,
         toolFingerprint: value.toolFingerprint,
+        toolMetadata: parseToolMetadata(value.toolMetadata),
         codexHomeIdentity:
             typeof value.codexHomeIdentity === "string" ? value.codexHomeIdentity : undefined,
         createdAt: value.createdAt,

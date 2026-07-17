@@ -7,6 +7,13 @@ export type ToolDescriptor = {
     description?: string;
     parameters?: Record<string, unknown>;
     skipPermission?: boolean;
+    /**
+     * Opaque host-defined metadata bag from the v1.0.7 tool definition
+     * (`Tool.metadata`, sent on session.create/resume). Preserved and
+     * round-tripped untouched; deliberately excluded from the tool
+     * fingerprint so metadata-only changes do not reject a resume.
+     */
+    metadata?: Record<string, unknown>;
 };
 
 export type CodexAdapterSandboxMode =
@@ -27,6 +34,7 @@ export function toolDescriptorsFromSessionCreateParams(params: unknown): ToolDes
         description: typeof tool.description === "string" ? tool.description : undefined,
         parameters: isRecord(tool.parameters) ? tool.parameters : undefined,
         skipPermission: tool.skipPermission === true,
+        metadata: isRecord(tool.metadata) ? tool.metadata : undefined,
     }));
 }
 
@@ -428,14 +436,25 @@ function collectTextEntries(value: unknown): string[] {
  * `assistant.reasoning` data {content, reasoningId}. Captured reasoning items
  * had empty summary/content arrays; entry extraction tolerates both raw
  * strings and `{text}` records (the shape codex uses for userMessage content).
+ *
+ * `extractionMiss` is true when the source arrays are non-empty but no text
+ * could be extracted — the payload uses a shape this extractor does not
+ * understand. Callers must surface that loudly instead of shipping a silently
+ * empty reasoning event.
  */
-export function mapCodexReasoningItem(
-    item: Record<string, unknown>
-): { content: string; reasoningId: string } {
+export function mapCodexReasoningItem(item: Record<string, unknown>): {
+    content: string;
+    reasoningId: string;
+    extractionMiss: boolean;
+} {
     const texts = [...collectTextEntries(item.summary), ...collectTextEntries(item.content)];
+    const sourceEntryCount =
+        (Array.isArray(item.summary) ? item.summary.length : 0) +
+        (Array.isArray(item.content) ? item.content.length : 0);
     return {
         content: texts.join("\n\n"),
         reasoningId: typeof item.id === "string" ? item.id : "reasoning-unknown",
+        extractionMiss: sourceEntryCount > 0 && texts.length === 0,
     };
 }
 

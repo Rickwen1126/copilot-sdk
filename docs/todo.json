@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-18 01:50",
+  "updated_at": "2026-07-18 02:30",
   "items": [
     {
       "key": "codex-adapter-v107",
@@ -10,7 +10,7 @@
       "axis": "tech-monetize",
       "pack": null,
       "summary": "fork（merge-base 2026-04-21）升到官方 v1.0.7。嫁接面已實測：adapter=假扮 copilot CLI 的 standalone JSON-RPC server，對 SDK 僅 1 type import；唯一編譯斷點=options 換形 RuntimeConnection.forTcp。最大紅利=現行事件映射白名單極窄（codex reasoning/commandExecution/fileChange/todo/webSearch 全被 implicit-else 靜默吞），升級首刀=unmapped counter 顯式化（即覆蓋成數量測器）再逐類擴映射至 v1.0.7 擴充後 session-events。同時交付 tmux-adapter spike 模板（server 骨架抽共用、gateway 介面化）。",
-      "current_state": "Phase 0-4 全部完成並經統籌逐包初驗（final head d4829b8c，12 commits，96/96 綠）。四條驗收：A1 相容（wire 全表+permission 新機制+forUri）✓機器面；A2 靜默歸零（unmapped+deliberate+extraction-miss 三層防護）✓；A3 覆蓋 100%（已觀測類，兩種真 turn 實測）✓；A4 metadata bag 往返✓、agentId 結論=無接觸點不實作（file:line 依據）、forInProcess 評估=不做（adapter 直接 new 即嵌入，FFI #1934 env 洩漏對常駐 hub 否決性）。7 項 shinyipilot 實連驗收清單已備（見 agent Phase 4 回報）。",
+      "current_state": "python 側 P0/P1 完成（head de4b0dc1，41/41 綠，permission 流已移植，required_paths 齊）。P2 checkpoint 觸發：parity 缺口 7 項雙向（python 側原本就比 nodejs 先進：delta/usage/semantic log/raw 轉發）。統籌已裁決：#2 usage.turn_id 解除（實查 shinyipilot 只 log 不讀）、#7 nodejs 反向補課 defer 下一 topic、餘照序執行中。",
       "next_action": "python 側升級包已發（P0 footprint 測繪→匯入→編譯綠；P1 wire/permission 斷裂面；P2 parity 缺口 checkpoint 制，>5 項停下等統籌排序）。完成後 v107 branch 具備 pin 資格 → Rick 驗收站（7 場景）→ 改 pin 切部署。Rick 冷讀 docs/spec-adapter.md 中。",
       "refs": {
         "global_spec": null,
@@ -31,7 +31,7 @@
       },
       "depends_on": [],
       "created_at": "2026-07-17 09:30",
-      "updated_at": "2026-07-18 01:50",
+      "updated_at": "2026-07-18 02:30",
       "branch": {
         "name": "codex-adapter-v107",
         "worktree_path": "/Users/rickwen/code/copilot-sdk-v107",

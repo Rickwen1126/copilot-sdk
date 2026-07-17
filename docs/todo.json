@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-18 02:30",
+  "updated_at": "2026-07-18 03:15",
   "items": [
     {
       "key": "codex-adapter-v107",
@@ -10,8 +10,8 @@
       "axis": "tech-monetize",
       "pack": null,
       "summary": "fork（merge-base 2026-04-21）升到官方 v1.0.7。嫁接面已實測：adapter=假扮 copilot CLI 的 standalone JSON-RPC server，對 SDK 僅 1 type import；唯一編譯斷點=options 換形 RuntimeConnection.forTcp。最大紅利=現行事件映射白名單極窄（codex reasoning/commandExecution/fileChange/todo/webSearch 全被 implicit-else 靜默吞），升級首刀=unmapped counter 顯式化（即覆蓋成數量測器）再逐類擴映射至 v1.0.7 擴充後 session-events。同時交付 tmux-adapter spike 模板（server 骨架抽共用、gateway 介面化）。",
-      "current_state": "python 側 P0/P1 完成（head de4b0dc1，41/41 綠，permission 流已移植，required_paths 齊）。P2 checkpoint 觸發：parity 缺口 7 項雙向（python 側原本就比 nodejs 先進：delta/usage/semantic log/raw 轉發）。統籌已裁決：#2 usage.turn_id 解除（實查 shinyipilot 只 log 不讀）、#7 nodejs 反向補課 defer 下一 topic、餘照序執行中。",
-      "next_action": "python 側升級包已發（P0 footprint 測繪→匯入→編譯綠；P1 wire/permission 斷裂面；P2 parity 缺口 checkpoint 制，>5 項停下等統籌排序）。完成後 v107 branch 具備 pin 資格 → Rick 驗收站（7 場景）→ 改 pin 切部署。Rick 冷讀 docs/spec-adapter.md 中。",
+      "current_state": "雙側 v1.0.7 升級完成並全數初驗（fork branch codex-adapter-v107 @ cdb92e11，17 commits）。nodejs 97/97＋python 46/46＋parity gate 綠＋typecheck 綠。python required_paths 齊、editable install 過——branch 具備 pin 資格。七項 parity 缺口：#2 解除、#7 defer 下一 topic、#1/#3/#4/#5/#6 全收斂（session.abort 雙側、write schema 欄位、metadata 往返、unmapped counter、fileChange typed、extraction-miss）。",
+      "next_action": "【Rick 驗收站】① shinyipilot 改 pin rev→cdb92e11 前跑 checklist（硬斷點：session.py:1054 ExternalServerConfig→for_uri）② 7 場景實連（Rick 在場）→ 全過後裁決是否升格定版線。tmux-adapter spike（plan §6）＋nodejs 反向補課＝下一 topic。",
       "refs": {
         "global_spec": null,
         "topic_spec": "docs/codex-adapter-v107/spec.md",
@@ -31,7 +31,7 @@
       },
       "depends_on": [],
       "created_at": "2026-07-17 09:30",
-      "updated_at": "2026-07-18 02:30",
+      "updated_at": "2026-07-18 03:15",
       "branch": {
         "name": "codex-adapter-v107",
         "worktree_path": "/Users/rickwen/code/copilot-sdk-v107",
@@ -39,7 +39,7 @@
         "source_worktree_path": "/Users/rickwen/code/copilot-sdk",
         "source_committed_head": "3058231",
         "last_synced_source_head": "3058231",
-        "final_head": "d4829b8c"
+        "final_head": "cdb92e11"
       }
     }
   ]

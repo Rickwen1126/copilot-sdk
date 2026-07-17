@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-17 23:55",
+  "updated_at": "2026-07-18 00:45",
   "items": [
     {
       "key": "codex-adapter-v107",
@@ -10,8 +10,8 @@
       "axis": "tech-monetize",
       "pack": null,
       "summary": "fork（merge-base 2026-04-21）升到官方 v1.0.7。嫁接面已實測：adapter=假扮 copilot CLI 的 standalone JSON-RPC server，對 SDK 僅 1 type import；唯一編譯斷點=options 換形 RuntimeConnection.forTcp。最大紅利=現行事件映射白名單極窄（codex reasoning/commandExecution/fileChange/todo/webSearch 全被 implicit-else 靜默吞），升級首刀=unmapped counter 顯式化（即覆蓋成數量測器）再逐類擴映射至 v1.0.7 擴充後 session-events。同時交付 tmux-adapter spike 模板（server 骨架抽共用、gateway 介面化）。",
-      "current_state": "Phase 3 完成並初驗（head 669f8eaa）：9 個新 mapper（delta/reasoning/commandExecution/fileChange/turn/usage）、deliberate-unmapped 清單制（8 類帶理由可查詢）、未知 request 改 -32601、94/94 綠。覆蓋重量測（shell turn 30 notifications＋apply_patch turn 57）：unmapped 0、覆蓋成數 100%（已觀測事件類）。一個不確定點收案中：reasoning 非空內文形狀未實測。",
-      "next_action": "Phase 4 終包已發包（reasoning extraction-miss 防護、metadata bag 往返、agentId 調查、forInProcess 評估報告、plan 勾稽＋Rick 驗收站清單）。回報後 → Rick 驗收站：shinyipilot 實連 → merge 扳機。",
+      "current_state": "Phase 0-4 全部完成並經統籌逐包初驗（final head d4829b8c，12 commits，96/96 綠）。四條驗收：A1 相容（wire 全表+permission 新機制+forUri）✓機器面；A2 靜默歸零（unmapped+deliberate+extraction-miss 三層防護）✓；A3 覆蓋 100%（已觀測類，兩種真 turn 實測）✓；A4 metadata bag 往返✓、agentId 結論=無接觸點不實作（file:line 依據）、forInProcess 評估=不做（adapter 直接 new 即嵌入，FFI #1934 env 洩漏對常駐 hub 否決性）。7 項 shinyipilot 實連驗收清單已備（見 agent Phase 4 回報）。",
+      "next_action": "【Rick 驗收站】shinyipilot 實連走 7 項場景清單 → 全過後 merge 扳機（H 級，Rick 扣）：worktree branch → 定版 branch 的整合方式屆時裁決（merge 或另立 v107 線）。tmux spike（plan §6）為下一 topic。",
       "refs": {
         "global_spec": null,
         "topic_spec": "docs/codex-adapter-v107/spec.md",
@@ -30,7 +30,7 @@
       },
       "depends_on": [],
       "created_at": "2026-07-17 09:30",
-      "updated_at": "2026-07-17 23:55",
+      "updated_at": "2026-07-18 00:45",
       "branch": {
         "name": "codex-adapter-v107",
         "worktree_path": "/Users/rickwen/code/copilot-sdk-v107",

@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from copilot import CopilotClient, ExternalServerConfig, PermissionHandler, define_tool
+from copilot import CopilotClient, PermissionHandler, RuntimeConnection, define_tool
 from copilot.codex_adapter.gateway import (
     CodexAppServerGateway,
     CodexAppServerGatewayOptions,
@@ -15,7 +15,11 @@ from copilot.codex_adapter.gateway import (
 )
 from copilot.codex_adapter.server import CodexAdapterOptions, CodexCopilotAdapterServer
 from copilot.generated.rpc import ModelSwitchToRequest
-from copilot.session import PermissionRequestResult
+from copilot.generated.rpc import (
+    PermissionDecisionApproveOnce,
+    PermissionDecisionDeniedByRules,
+    PermissionDecisionDeniedInteractivelyByUser,
+)
 from copilot.tools import ToolResult
 
 
@@ -149,7 +153,7 @@ async def adapter(tmp_path):
 @pytest.mark.asyncio
 async def test_python_sdk_can_ping_status_auth_models_and_send(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         ping = await client.ping("python")
@@ -158,10 +162,10 @@ async def test_python_sdk_can_ping_status_auth_models_and_send(adapter):
         models = await client.list_models()
         session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
         response = await session.send_and_wait("hello", timeout=2)
-        messages = await session.get_messages()
+        messages = await session.get_events()
 
         assert ping.message == "pong: python"
-        assert status.protocolVersion == 3
+        assert status.protocol_version == 3
         assert auth.isAuthenticated is True
         assert models[0].id == "gpt-5.4"
         assert response is not None
@@ -194,7 +198,7 @@ async def test_python_sdk_can_ping_status_auth_models_and_send(adapter):
 @pytest.mark.asyncio
 async def test_model_switch_keeps_session_and_updates_turn_start_reasoning(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         session = await client.create_session(
@@ -224,7 +228,7 @@ async def test_model_switch_keeps_session_and_updates_turn_start_reasoning(adapt
         current = await session.rpc.model.get_current()
         assert current.model_id == "gpt-4.1"
 
-        messages = await session.get_messages()
+        messages = await session.get_events()
         model_change = [
             event
             for event in messages
@@ -254,7 +258,7 @@ async def test_model_switch_keeps_session_and_updates_turn_start_reasoning(adapt
 @pytest.mark.asyncio
 async def test_gateway_reader_failure_emits_session_error(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
@@ -267,7 +271,7 @@ async def test_gateway_reader_failure_emits_session_error(adapter):
                 "streamLimitBytes": 1024,
             },
         )
-        messages = await session.get_messages()
+        messages = await session.get_events()
         error_events = [event for event in messages if event.type.value == "session.error"]
 
         assert error_events
@@ -381,7 +385,7 @@ async def test_session_create_without_working_directory_uses_isolated_fallback_w
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         first = await client.create_session(on_permission_request=PermissionHandler.approve_all)
@@ -417,7 +421,7 @@ async def test_session_create_preserves_explicit_working_directory(tmp_path):
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         await client.create_session(
@@ -445,7 +449,7 @@ async def test_network_access_can_be_enabled_for_workspace_sandbox(tmp_path):
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
@@ -479,7 +483,7 @@ async def test_image_attachments_are_mapped_to_codex_turn_input(tmp_path):
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
@@ -528,7 +532,7 @@ async def test_logs_but_allows_concurrent_threads_in_same_explicit_workspace(tmp
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         first = await client.create_session(
@@ -568,70 +572,22 @@ async def test_logs_but_allows_concurrent_threads_in_same_explicit_workspace(tmp
 
 @pytest.mark.asyncio
 async def test_protocol_v2_dynamic_tool_call_round_trips_through_tool_call(tmp_path):
-    fake = FakeCodexGateway()
-    server = CodexCopilotAdapterServer(
-        CodexAdapterOptions(
-            protocol_version=2, runtime_session_store_path=str(tmp_path / "sessions.json")
-        ),
-        gateway=fake,
-    )
-    await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
-    await client.start()
-    try:
-        result_text = "lookup:v2 " + ("result-preview-" * 30)
-
-        @define_tool(description="Lookup source data")
-        def lookup(args):
-            assert args["api_token"] == "sk-" + ("secret" * 8)
-            return ToolResult(text_result_for_llm=result_text, result_type="success")
-
-        await client.create_session(
-            on_permission_request=PermissionHandler.approve_all, tools=[lookup]
+    # SDK v1.0.7 removed the legacy direct tool.call client handler and its
+    # client refuses protocol-2 servers at handshake, so the adapter now
+    # refuses protocol_version=2 loudly at construction.
+    with pytest.raises(RuntimeError, match="protocol_version 2 is not supported on SDK v1.0.7"):
+        CodexCopilotAdapterServer(
+            CodexAdapterOptions(
+                protocol_version=2,
+                runtime_session_store_path=str(tmp_path / "sessions.json"),
+            ),
+            gateway=FakeCodexGateway(),
         )
-        result = await fake.emit_request(
-            "item/tool/call",
-            {
-                "threadId": "thread-1",
-                "tool": "lookup",
-                "callId": "call-1",
-                "arguments": {
-                    "query": "v2",
-                    "api_token": "sk-" + ("secret" * 8),
-                    "long_note": "argument preview " * 30,
-                },
-            },
-        )
-        assert result["result"] == {
-            "contentItems": [{"type": "inputText", "text": result_text}],
-            "success": True,
-        }
-        semantic_log = server.summary()["semanticLog"]
-        semantic_events = {(entry["category"], entry["event"]) for entry in semantic_log}
-        assert ("tool.routing", "requested") in semantic_events
-        assert ("tool.sdk_call", "dispatched") in semantic_events
-        assert ("tool.sdk_result", "received") in semantic_events
-        routing_entry = next(entry for entry in semantic_log if entry["category"] == "tool.routing")
-        assert routing_entry["data"]["argumentsPreview"]["query"] == "v2"
-        assert routing_entry["data"]["argumentsPreview"]["api_token"] == "[redacted]"
-        assert routing_entry["data"]["argumentsPreview"]["long_note"].endswith("...")
-        assert routing_entry["data"]["argumentsPreviewRedacted"] is True
-        assert routing_entry["data"]["argumentsPreviewTruncated"] is True
-        result_entry = next(
-            entry for entry in semantic_log if entry["category"] == "tool.sdk_result"
-        )
-        assert result_entry["data"]["resultPreview"]["textResultForLlm"].startswith("lookup:v2")
-        assert result_entry["data"]["resultPreview"]["textResultForLlm"].endswith("...")
-        assert result_entry["data"]["resultPreviewTruncated"] is True
-    finally:
-        await client.force_stop()
-        await server.stop()
-
 
 @pytest.mark.asyncio
 async def test_protocol_v3_dynamic_tool_call_round_trips_through_pending_tool_call(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
 
@@ -662,7 +618,7 @@ async def test_protocol_v3_dynamic_tool_call_round_trips_through_pending_tool_ca
 @pytest.mark.asyncio
 async def test_codex_native_events_are_forwarded_as_sdk_session_events(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         captured = []
@@ -794,7 +750,13 @@ async def test_codex_native_events_are_forwarded_as_sdk_session_events(adapter):
         assert by_type["assistant.message_delta"].data.delta_content == "我先確認工具和資料。"
         assert by_type["assistant.usage"].data.input_tokens == 12
         assert by_type["assistant.usage"].data.output_tokens == 7
-        assert by_type["assistant.usage"].data.turn_id == "turn-1"
+        # v1.0.7 schema note: AssistantUsageData has no turnId field (the fork
+        # hand-patched it in). The adapter still emits turnId on the wire, but
+        # the typed python parser drops it; turn correlation for typed
+        # consumers relies on assistant.turn_start/turn_end instead.
+        assert not hasattr(by_type["assistant.usage"].data, "turn_id") or (
+            by_type["assistant.usage"].data.turn_id is None
+        )
         assert by_type["tool.execution_start"].data.tool_name == "lookup"
         assert by_type["tool.execution_start"].data.tool_call_id == "call-1"
 
@@ -836,7 +798,7 @@ async def test_codex_native_events_are_forwarded_as_sdk_session_events(adapter):
 @pytest.mark.asyncio
 async def test_unmapped_raw_response_items_are_forwarded_as_codex_raw(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         captured = []
@@ -901,7 +863,7 @@ async def test_unmapped_raw_response_items_are_forwarded_as_codex_raw(adapter):
 @pytest.mark.asyncio
 async def test_codex_raw_function_call_events_are_forwarded_as_typed_tool_events(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         captured = []
@@ -1014,7 +976,7 @@ async def test_codex_raw_function_call_events_are_forwarded_as_typed_tool_events
 @pytest.mark.asyncio
 async def test_codex_mcp_tool_call_events_are_forwarded_as_typed_tool_events(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         captured = []
@@ -1096,7 +1058,7 @@ async def test_experimental_raw_events_option_is_sent_to_codex_thread_only(tmp_p
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         session = await client.create_session(on_permission_request=PermissionHandler.approve_all)
@@ -1116,7 +1078,7 @@ async def test_experimental_raw_events_option_is_sent_to_codex_thread_only(tmp_p
 async def test_protocol_v3_oversized_dynamic_tool_result_fails_fast(adapter, monkeypatch):
     monkeypatch.setenv("CODEX_ADAPTER_DYNAMIC_TOOL_TEXT_CHAR_LIMIT", "1000")
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         result_text = "x" * 1200
@@ -1171,7 +1133,7 @@ async def test_resume_after_restart_rejects_missing_tool_fingerprint_before_thre
         CodexAdapterOptions(runtime_session_store_path=store_path), gateway=fake_one
     )
     await first.start()
-    client_one = CopilotClient(ExternalServerConfig(url=first.cli_url()))
+    client_one = CopilotClient(connection=RuntimeConnection.for_uri(first.cli_url()))
     await client_one.start()
 
     @define_tool(description="Lookup source data")
@@ -1189,7 +1151,7 @@ async def test_resume_after_restart_rejects_missing_tool_fingerprint_before_thre
         CodexAdapterOptions(runtime_session_store_path=store_path), gateway=fake_two
     )
     await second.start()
-    client_two = CopilotClient(ExternalServerConfig(url=second.cli_url()))
+    client_two = CopilotClient(connection=RuntimeConnection.for_uri(second.cli_url()))
     await client_two.start()
     try:
         with pytest.raises(Exception, match="matching tools are required"):
@@ -1210,7 +1172,7 @@ async def test_characterizes_create_send_destroy_resume_and_delete_lifecycle(tmp
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         session = await client.create_session(
@@ -1230,7 +1192,7 @@ async def test_characterizes_create_send_destroy_resume_and_delete_lifecycle(tmp
         assert thread_start["ephemeral"] is False
 
         assistant = await session.send_and_wait("Reply through the fake Codex gateway.", timeout=2)
-        events = await session.get_messages()
+        events = await session.get_events()
         event_types = {event.type.value for event in events}
         turn_start = next(params for method, params in fake.requests if method == "turn/start")
 
@@ -1279,7 +1241,7 @@ async def test_session_abort_invalidates_session_and_restarts_gateway(tmp_path):
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         session = await client.create_session(
@@ -1315,7 +1277,7 @@ async def test_resume_after_restart_uses_persisted_runtime_mapping(tmp_path):
         gateway=first_gateway,
     )
     await first_server.start()
-    first_client = CopilotClient(ExternalServerConfig(url=first_server.cli_url()))
+    first_client = CopilotClient(connection=RuntimeConnection.for_uri(first_server.cli_url()))
     await first_client.start()
 
     session = await first_client.create_session(
@@ -1334,7 +1296,7 @@ async def test_resume_after_restart_uses_persisted_runtime_mapping(tmp_path):
         gateway=second_gateway,
     )
     await second_server.start()
-    second_client = CopilotClient(ExternalServerConfig(url=second_server.cli_url()))
+    second_client = CopilotClient(connection=RuntimeConnection.for_uri(second_server.cli_url()))
     await second_client.start()
     try:
         resumed = await second_client.resume_session(
@@ -1361,7 +1323,7 @@ async def test_resume_after_restart_uses_persisted_runtime_mapping(tmp_path):
 @pytest.mark.asyncio
 async def test_rejects_in_memory_resume_when_tool_set_changes(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
 
@@ -1402,7 +1364,7 @@ async def test_resume_after_restart_rejects_incompatible_tool_fingerprint(tmp_pa
         gateway=first_gateway,
     )
     await first_server.start()
-    first_client = CopilotClient(ExternalServerConfig(url=first_server.cli_url()))
+    first_client = CopilotClient(connection=RuntimeConnection.for_uri(first_server.cli_url()))
     await first_client.start()
 
     @define_tool(description="Original persisted tool")
@@ -1424,7 +1386,7 @@ async def test_resume_after_restart_rejects_incompatible_tool_fingerprint(tmp_pa
         gateway=second_gateway,
     )
     await second_server.start()
-    second_client = CopilotClient(ExternalServerConfig(url=second_server.cli_url()))
+    second_client = CopilotClient(connection=RuntimeConnection.for_uri(second_server.cli_url()))
     await second_client.start()
     try:
 
@@ -1454,9 +1416,9 @@ async def test_command_approval_round_trips_through_permission_handler(adapter):
 
     def approve_shell(request, _invocation):
         seen_requests.append(request.to_dict())
-        return PermissionRequestResult(kind="approved")
+        return PermissionDecisionApproveOnce()
 
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         await client.create_session(model="gpt-test", on_permission_request=approve_shell)
@@ -1473,28 +1435,46 @@ async def test_command_approval_round_trips_through_permission_handler(adapter):
         )
 
         assert result["result"] == {"decision": "accept"}
+        # The handler receives the typed PermissionRequestShell; to_dict() is the
+        # v1.0.7 canonical serialization (key-sorted, kind included).
         assert seen_requests == [
             {
-                "kind": "shell",
-                "toolCallId": "command-1",
-                "intention": "Need to write the approval probe.",
                 "canOfferSessionApproval": True,
+                "commands": [{"identifier": "zsh", "readOnly": False}],
                 "fullCommandText": "zsh -lc 'echo hello > /tmp/probe'",
                 "hasWriteFileRedirection": True,
-                "commands": [{"identifier": "zsh", "readOnly": False}],
+                "intention": "Need to write the approval probe.",
+                "kind": "shell",
                 "possiblePaths": [],
                 "possibleUrls": [],
+                "toolCallId": "command-1",
             }
         ]
 
-        transcript_methods = [
-            entry["message"]["method"]
-            for entry in server.summary()["adapterTranscript"]
-            if entry["direction"] in {"adapter->sdk.request", "sdk->adapter.response"}
+        # v1.0.7 delivery: one permission.requested event out, one
+        # handlePendingPermissionRequest completion back — and no legacy
+        # direct permission.request requests at all.
+        transcript = server.summary()["adapterTranscript"]
+        event_deliveries = [
+            entry
+            for entry in transcript
+            if entry["direction"] == "adapter->sdk.event"
             and isinstance(entry["message"], dict)
+            and entry["message"].get("method") == "permission.requested"
+        ]
+        assert len(event_deliveries) == 1
+        completions = [
+            entry for entry in transcript if entry["direction"] == "adapter.permission.completed"
+        ]
+        assert len(completions) == 1
+        assert completions[0]["message"]["decision"] == "accept"
+        legacy_requests = [
+            entry
+            for entry in transcript
+            if isinstance(entry["message"], dict)
             and entry["message"].get("method") == "permission.request"
         ]
-        assert transcript_methods == ["permission.request", "permission.request"]
+        assert legacy_requests == []
     finally:
         await client.force_stop()
 
@@ -1504,9 +1484,9 @@ async def test_command_approval_denial_round_trips_to_decline(adapter):
     server, fake = adapter
 
     def deny_shell(_request, _invocation):
-        return PermissionRequestResult(kind="denied-by-rules")
+        return PermissionDecisionDeniedByRules(rules=[])
 
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         await client.create_session(model="gpt-test", on_permission_request=deny_shell)
@@ -1531,9 +1511,9 @@ async def test_file_approval_round_trips_through_permission_handler(adapter):
 
     def approve_write(request, _invocation):
         seen_requests.append(request.to_dict())
-        return PermissionRequestResult(kind="approved")
+        return PermissionDecisionApproveOnce()
 
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         await client.create_session(model="gpt-test", on_permission_request=approve_write)
@@ -1553,17 +1533,18 @@ async def test_file_approval_round_trips_through_permission_handler(adapter):
         )
 
         assert result["result"] == {"decision": "accept"}
+        # The handler receives the typed PermissionRequestWrite. The adapter's
+        # extra keys (paths/changes/grantRoot) are not part of the v1.0.7
+        # write-kind schema and are dropped by the typed parser; the required
+        # canOfferSessionApproval/diff/fileName fields are adapter-filled.
         assert seen_requests == [
-                {
-                    "kind": "write",
-                    "toolCallId": "file-1",
-                    "intention": "Apply file changes outside the current approval boundary.",
-                    "paths": ["/tmp/allowed.txt"],
-                    "possiblePaths": ["/tmp/allowed.txt"],
-                    "changes": [
-                        {"path": "/tmp/allowed.txt"},
-                        {"kind": "metadata-without-path"},
-                ],
+            {
+                "canOfferSessionApproval": False,
+                "diff": "",
+                "fileName": "/tmp/allowed.txt",
+                "intention": "Apply file changes outside the current approval boundary.",
+                "kind": "write",
+                "toolCallId": "file-1",
             }
         ]
     finally:
@@ -1575,9 +1556,9 @@ async def test_file_approval_denial_round_trips_to_decline(adapter):
     server, fake = adapter
 
     def deny_write(_request, _invocation):
-        return PermissionRequestResult(kind="denied-interactively-by-user")
+        return PermissionDecisionDeniedInteractivelyByUser()
 
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         await client.create_session(model="gpt-test", on_permission_request=deny_write)
@@ -1603,7 +1584,7 @@ async def test_file_approval_denial_round_trips_to_decline(adapter):
 @pytest.mark.asyncio
 async def test_protocol_v3_dynamic_tool_denial_and_failure_results_round_trip(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
 
@@ -1667,7 +1648,7 @@ async def test_protocol_v3_dynamic_tool_timeout_records_timeout_transcript(tmp_p
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
 
@@ -1712,7 +1693,7 @@ async def test_protocol_v3_dynamic_tool_timeout_records_timeout_transcript(tmp_p
 @pytest.mark.asyncio
 async def test_dynamic_tool_request_errors_are_explicit(adapter):
     server, fake = adapter
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
 

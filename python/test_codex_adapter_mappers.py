@@ -147,11 +147,16 @@ def test_permission_mappers_match_command_and_file_decisions():
         "kind": "write",
         "toolCallId": "file-1",
         "intention": "Apply file changes outside the current approval boundary.",
+        # Required by the v1.0.7 PermissionRequestWrite parser.
+        "canOfferSessionApproval": False,
+        "diff": "",
+        "fileName": "/tmp/allowed.txt",
         "grantRoot": None,
         "paths": ["/tmp/allowed.txt"],
         "possiblePaths": ["/tmp/allowed.txt"],
         "changes": changes,
     }
+    assert map_permission_result_to_codex_file_change_decision({"kind": "approve-once"}) == "accept"
     assert map_permission_result_to_codex_file_change_decision({"kind": "approved"}) == "accept"
     assert map_permission_result_to_codex_file_change_decision({"kind": "denied"}) == "decline"
 

@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from ..client import RuntimeConnection
 from .gateway import CodexAppServerGateway, CodexAppServerGatewayOptions
 from .mappers import (
     SandboxMode,
@@ -156,6 +157,15 @@ class PendingDynamicToolCall:
     session_id: str
     tool_call_id: str
     tool_name: str
+    timeout_task: asyncio.Task[None]
+
+
+@dataclass
+class PendingPermissionRequest:
+    codex_request_id: Any
+    session_id: str
+    codex_method: str
+    codex_params: dict[str, Any]
     timeout_task: asyncio.Task[None]
 
 
@@ -439,6 +449,14 @@ def tool_fingerprint_from_descriptors(tools: list[ToolDescriptor]) -> str:
 EMPTY_TOOL_FINGERPRINT = tool_fingerprint_from_descriptors([])
 
 
+class MethodNotFoundError(RuntimeError):
+    """Raised when the SDK client calls a method the adapter does not serve.
+
+    Mapped to JSON-RPC -32601 so the v1.0.7 client's legacy `connect` -> `ping`
+    handshake fallback triggers (it only falls back on -32601).
+    """
+
+
 class JsonRpcConnection:
     def __init__(
         self,
@@ -512,11 +530,12 @@ class JsonRpcConnection:
                 )
                 await self._send({"jsonrpc": "2.0", "id": message["id"], "result": result})
             except Exception as exc:
+                code = -32601 if isinstance(exc, MethodNotFoundError) else -32603
                 await self._send(
                     {
                         "jsonrpc": "2.0",
                         "id": message["id"],
-                        "error": {"code": -32603, "message": str(exc)},
+                        "error": {"code": code, "message": str(exc)},
                     }
                 )
 
@@ -535,6 +554,13 @@ class JsonRpcConnection:
 class CodexCopilotAdapterServer:
     def __init__(self, options: CodexAdapterOptions | None = None, gateway: Any | None = None):
         self.options = options or CodexAdapterOptions()
+        if self.options.protocol_version == 2:
+            raise RuntimeError(
+                "codex adapter protocol_version 2 is not supported on SDK v1.0.7: "
+                "the legacy direct tool.call request flow was removed from the SDK "
+                "client and the client refuses protocol-2 servers at handshake. "
+                "Use protocol_version 3 (the default)."
+            )
         self.codex = gateway or CodexAppServerGateway(
             CodexAppServerGatewayOptions(
                 codex_bin=self.options.codex_bin,
@@ -551,6 +577,7 @@ class CodexCopilotAdapterServer:
         self.connections: dict[str, JsonRpcConnection] = {}
         self.file_change_snapshots: dict[str, list[Any]] = {}
         self.pending_dynamic_tool_calls: dict[str, PendingDynamicToolCall] = {}
+        self.pending_permission_requests: dict[str, PendingPermissionRequest] = {}
         self.command_output_chars: dict[str, int] = {}
         self.command_output_warning_emitted: set[str] = set()
         self.transcript: list[dict[str, Any]] = []
@@ -629,7 +656,10 @@ class CodexCopilotAdapterServer:
         return f"{self.options.host}:{self.port}"
 
     def client_options(self) -> dict[str, Any]:
-        return {"autoStart": False, "cliUrl": self.cli_url()}
+        # v1.0.7 replaced `{cliUrl, autoStart: False}` with the connection
+        # kwarg; for_uri is the connect-to-existing transport (no spawn),
+        # matching the old cli_url semantics exactly.
+        return {"connection": RuntimeConnection.for_uri(self.cli_url())}
 
     def capabilities(self) -> dict[str, Any]:
         return CODEX_ADAPTER_CAPABILITIES
@@ -700,10 +730,13 @@ class CodexCopilotAdapterServer:
             "session.destroy": self._handle_session_destroy,
             "session.delete": self._handle_session_delete,
             "session.tools.handlePendingToolCall": self._handle_pending_tool_call,
+            "session.permissions.handlePendingPermissionRequest": (
+                self._handle_pending_permission_request
+            ),
         }
         handler = handlers.get(method)
         if not handler:
-            raise RuntimeError(f"Method not found: {method}")
+            raise MethodNotFoundError(f"Method not found: {method}")
         result = handler(params, connection_id)
         if asyncio.iscoroutine(result):
             result = await result
@@ -2224,55 +2257,105 @@ class CodexCopilotAdapterServer:
             thread_id=session.thread_id,
             data={"requestId": str(request_id), "itemId": params.get("itemId")},
         )
-        try:
-            callback_params = {
-                "sessionId": session.session_id,
-                "permissionRequest": permission_request,
-            }
-            self._record(
-                "adapter->sdk.request",
-                {"method": "permission.request", "params": callback_params},
+        # v1.0.7 removed the client-side handler for direct `permission.request`
+        # requests. Delivery now mirrors the runtime: broadcast an ephemeral
+        # `permission.requested` session event and wait for the client to answer
+        # via the served `session.permissions.handlePendingPermissionRequest` RPC.
+        sdk_request_id = str(uuid.uuid4())
+        timeout_task = asyncio.create_task(self._permission_timeout(sdk_request_id))
+        self.pending_permission_requests[sdk_request_id] = PendingPermissionRequest(
+            codex_request_id=request_id,
+            session_id=session.session_id,
+            codex_method=str(request.get("method")),
+            codex_params=params,
+            timeout_task=timeout_task,
+        )
+        event_params = {
+            "requestId": sdk_request_id,
+            "permissionRequest": permission_request,
+        }
+        self._record(
+            "adapter->sdk.event",
+            {
+                "method": "permission.requested",
+                "params": {"sessionId": session.session_id, **event_params},
+            },
+        )
+        await self._emit_session_event(
+            session.session_id,
+            self._create_session_event(session, "permission.requested", event_params, True),
+        )
+
+    async def _permission_timeout(self, sdk_request_id: str) -> None:
+        await asyncio.sleep(self.options.request_timeout_ms / 1000)
+        pending = self.pending_permission_requests.pop(sdk_request_id, None)
+        if not pending:
+            return
+        self.codex.respond(pending.codex_request_id, {"decision": "decline"})
+        self._record(
+            "adapter.permission.timeout",
+            {
+                "requestId": sdk_request_id,
+                "sessionId": pending.session_id,
+                "codexMethod": pending.codex_method,
+            },
+        )
+        session = self.sessions.get(pending.session_id)
+        self._record_semantic(
+            "runtime.error",
+            "approval.timeout",
+            session_id=pending.session_id,
+            thread_id=session.thread_id if session else None,
+            data={"requestId": sdk_request_id, "codexMethod": pending.codex_method},
+        )
+
+    def _handle_pending_permission_request(
+        self, params: Any, _connection_id: str
+    ) -> dict[str, Any]:
+        if not _is_record(params):
+            raise RuntimeError(
+                "session.permissions.handlePendingPermissionRequest params missing"
             )
-            response = await connection.request(
-                "permission.request",
-                callback_params,
-                self.options.request_timeout_ms / 1000,
+        request_id = params.get("requestId") if isinstance(params.get("requestId"), str) else None
+        if not request_id:
+            raise RuntimeError(
+                "session.permissions.handlePendingPermissionRequest requires requestId"
             )
-            self._record(
-                "sdk->adapter.response",
-                {"method": "permission.request", "response": response},
+        pending = self.pending_permission_requests.pop(request_id, None)
+        if not pending:
+            return {"success": False}
+        pending.timeout_task.cancel()
+        decision = (
+            map_permission_result_to_codex_file_change_decision(params.get("result"))
+            if pending.codex_method == "item/fileChange/requestApproval"
+            else map_permission_result_to_codex_command_decision(
+                params.get("result"), pending.codex_params
             )
-            result = (
-                response.get("result")
-                if _is_record(response) and "result" in response
-                else response
-            )
-            decision = (
-                map_permission_result_to_codex_file_change_decision(result)
-                if request.get("method") == "item/fileChange/requestApproval"
-                else map_permission_result_to_codex_command_decision(result, params)
-            )
-            self._record_semantic(
-                "approval.resolved",
-                approval_kind,
-                session_id=session.session_id,
-                thread_id=session.thread_id,
-                data={"requestId": str(request_id), "decision": decision},
-            )
-            self.codex.respond(request_id, {"decision": decision})
-        except Exception as exc:
-            self._record(
-                "sdk->adapter.response",
-                {"method": "permission.request", "error": _summarize_error(exc)},
-            )
-            self._record_semantic(
-                "runtime.error",
-                "approval.callback_failed",
-                session_id=session.session_id,
-                thread_id=session.thread_id,
-                data={"requestId": str(request_id), "error": str(exc)},
-            )
-            self.codex.respond(request_id, {"decision": "decline"})
+        )
+        approval_kind = (
+            "file_change"
+            if pending.codex_method == "item/fileChange/requestApproval"
+            else "command"
+        )
+        session = self.sessions.get(pending.session_id)
+        self._record_semantic(
+            "approval.resolved",
+            approval_kind,
+            session_id=pending.session_id,
+            thread_id=session.thread_id if session else None,
+            data={"requestId": request_id, "decision": decision},
+        )
+        self.codex.respond(pending.codex_request_id, {"decision": decision})
+        self._record(
+            "adapter.permission.completed",
+            {
+                "requestId": request_id,
+                "sessionId": pending.session_id,
+                "codexMethod": pending.codex_method,
+                "decision": decision,
+            },
+        )
+        return {"success": True}
 
     def _primary_connection(self, session: SessionState | None) -> JsonRpcConnection | None:
         if not session:

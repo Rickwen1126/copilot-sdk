@@ -8,10 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from copilot import CopilotClient, ExternalServerConfig, PermissionHandler, define_tool
+from copilot import CopilotClient, PermissionHandler, RuntimeConnection, define_tool
 from copilot.codex_adapter import CODEX_ADAPTER_CAPABILITIES
 from copilot.codex_adapter.server import CodexAdapterOptions, CodexCopilotAdapterServer
-from copilot.session import PermissionRequestResult
+from copilot.generated.rpc import (
+    PermissionDecisionApproveOnce,
+    PermissionDecisionDeniedByRules,
+    PermissionDecisionDeniedInteractivelyByUser,
+)
 from copilot.tools import ToolResult
 from test_codex_adapter_server import FakeCodexGateway
 
@@ -45,7 +49,7 @@ async def _scenario_create_send_lifecycle(store_path: Path) -> dict:
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         session = await client.create_session(
@@ -60,7 +64,7 @@ async def _scenario_create_send_lifecycle(store_path: Path) -> dict:
             "Reply through the fake Codex gateway.",
             timeout=2,
         )
-        events = await session.get_messages()
+        events = await session.get_events()
         thread_start = next(params for method, params in fake.requests if method == "thread/start")
         turn_start = next(params for method, params in fake.requests if method == "turn/start")
 
@@ -114,7 +118,7 @@ async def _scenario_restart_resume(store_path: Path) -> dict:
         gateway=first_fake,
     )
     await first_server.start()
-    first_client = CopilotClient(ExternalServerConfig(url=first_server.cli_url()))
+    first_client = CopilotClient(connection=RuntimeConnection.for_uri(first_server.cli_url()))
     await first_client.start()
     first_session = await first_client.create_session(
         model="gpt-test",
@@ -131,7 +135,7 @@ async def _scenario_restart_resume(store_path: Path) -> dict:
         gateway=second_fake,
     )
     await second_server.start()
-    second_client = CopilotClient(ExternalServerConfig(url=second_server.cli_url()))
+    second_client = CopilotClient(connection=RuntimeConnection.for_uri(second_server.cli_url()))
     await second_client.start()
     try:
         resumed = await second_client.resume_session(
@@ -161,7 +165,7 @@ async def _scenario_active_tool_mismatch(store_path: Path) -> dict:
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
 
@@ -206,7 +210,7 @@ async def _scenario_restart_tool_checks(store_path: Path) -> dict:
         gateway=first_fake,
     )
     await first_server.start()
-    first_client = CopilotClient(ExternalServerConfig(url=first_server.cli_url()))
+    first_client = CopilotClient(connection=RuntimeConnection.for_uri(first_server.cli_url()))
     await first_client.start()
 
     @define_tool(description="Tool that must be reattached after restart")
@@ -229,7 +233,7 @@ async def _scenario_restart_tool_checks(store_path: Path) -> dict:
         gateway=second_fake,
     )
     await second_server.start()
-    second_client = CopilotClient(ExternalServerConfig(url=second_server.cli_url()))
+    second_client = CopilotClient(connection=RuntimeConnection.for_uri(second_server.cli_url()))
     await second_client.start()
     try:
         missing_tools_error = ""
@@ -280,9 +284,9 @@ async def _scenario_command_approval(store_path: Path) -> dict:
 
     def approve_shell(request, _invocation):
         seen_requests.append(request.to_dict())
-        return PermissionRequestResult(kind="approved")
+        return PermissionDecisionApproveOnce()
 
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         await client.create_session(model="gpt-test", on_permission_request=approve_shell)
@@ -322,9 +326,9 @@ async def _scenario_command_approval(store_path: Path) -> dict:
     await server.start()
 
     def deny_shell(_request, _invocation):
-        return PermissionRequestResult(kind="denied-by-rules")
+        return PermissionDecisionDeniedByRules(rules=[])
 
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         await client.create_session(model="gpt-test", on_permission_request=deny_shell)
@@ -355,9 +359,9 @@ async def _scenario_file_approval(store_path: Path) -> dict:
 
     def approve_write(request, _invocation):
         seen_requests.append(request.to_dict())
-        return PermissionRequestResult(kind="approved")
+        return PermissionDecisionApproveOnce()
 
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         await client.create_session(model="gpt-test", on_permission_request=approve_write)
@@ -391,9 +395,9 @@ async def _scenario_file_approval(store_path: Path) -> dict:
     await server.start()
 
     def deny_write(_request, _invocation):
-        return PermissionRequestResult(kind="denied-interactively-by-user")
+        return PermissionDecisionDeniedInteractivelyByUser()
 
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
         await client.create_session(model="gpt-test", on_permission_request=deny_write)
@@ -419,45 +423,17 @@ async def _scenario_file_approval(store_path: Path) -> dict:
 
 
 async def _scenario_tool_v2(store_path: Path) -> dict:
-    fake = FakeCodexGateway()
-    server = CodexCopilotAdapterServer(
-        CodexAdapterOptions(protocol_version=2, runtime_session_store_path=str(store_path)),
-        gateway=fake,
-    )
-    await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
-    await client.start()
+    # protocol v2 is refused loudly on SDK v1.0.7 (mirrors the nodejs
+    # snapshot): record the refusal instead of exercising the removed path.
+    refusal = None
     try:
-
-        @define_tool(description="Lookup source data")
-        def lookup(args):
-            return f"lookup:{args['query']}"
-
-        await client.create_session(
-            model="gpt-test",
-            on_permission_request=PermissionHandler.approve_all,
-            tools=[lookup],
+        CodexCopilotAdapterServer(
+            CodexAdapterOptions(protocol_version=2, runtime_session_store_path=str(store_path)),
+            gateway=FakeCodexGateway(),
         )
-        result = await fake.emit_request(
-            "item/tool/call",
-            {
-                "threadId": "thread-1",
-                "tool": "lookup",
-                "callId": "call-v2",
-                "arguments": {"query": "v2"},
-            },
-        )
-        transcript = server.summary()["adapterTranscript"]
-        return {
-            "result": result["result"],
-            "transcriptMethods": {
-                "request": _transcript_methods(transcript, "adapter->sdk.request", "tool.call"),
-                "response": _transcript_methods(transcript, "sdk->adapter.response", "tool.call"),
-            },
-        }
-    finally:
-        await client.force_stop()
-        await server.stop()
+    except RuntimeError as exc:
+        refusal = str(exc)
+    return {"refused": refusal is not None, "refusal": refusal}
 
 
 async def _scenario_tool_v3(store_path: Path) -> dict:
@@ -467,7 +443,7 @@ async def _scenario_tool_v3(store_path: Path) -> dict:
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
 
@@ -532,7 +508,7 @@ async def _scenario_tool_timeout(store_path: Path) -> dict:
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
 
@@ -570,7 +546,7 @@ async def _scenario_dynamic_tool_errors(store_path: Path) -> dict:
         gateway=fake,
     )
     await server.start()
-    client = CopilotClient(ExternalServerConfig(url=server.cli_url()))
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
     await client.start()
     try:
 
@@ -678,6 +654,8 @@ def _normalize_snapshot(value):
         ):
             if normalized.startswith(prefix):
                 normalized = normalized[len(prefix) :]
+        if "2 is not supported on SDK v1.0.7" in normalized:
+            return "<protocol-2-refused>"
         return normalized
     return value
 

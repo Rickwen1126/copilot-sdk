@@ -290,11 +290,29 @@ def map_codex_command_approval_to_permission_request(params: Any) -> dict[str, A
     }
 
 
+# Approve-family PermissionDecision kind literals from the v1.0.7 generated
+# RPC schema (PermissionDecisionKind). Every other kind (reject / cancelled /
+# user-not-available / denied-*) maps to a Codex decline.
+_APPROVED_PERMISSION_KINDS = {
+    "approve-once",
+    "approve-for-session",
+    "approve-for-location",
+    "approve-permanently",
+    "approved",
+    "approved-for-session",
+    "approved-for-location",
+}
+
+
+def _is_approved_permission_kind(permission_result: Any) -> bool:
+    kind = permission_result.get("kind") if _is_record(permission_result) else None
+    return isinstance(kind, str) and kind in _APPROVED_PERMISSION_KINDS
+
+
 def map_permission_result_to_codex_command_decision(
     permission_result: Any, request_params: Any
 ) -> Any:
-    kind = permission_result.get("kind") if _is_record(permission_result) else None
-    if kind != "approved":
+    if not _is_approved_permission_kind(permission_result):
         return "decline"
 
     available = set(_list_available_decision_ids(request_params))
@@ -331,12 +349,22 @@ def map_codex_file_change_approval_to_permission_request(
         for change in changes
         if _is_record(change) and isinstance(change.get("path"), str)
     ]
+    diffs = [
+        change["diff"]
+        for change in changes
+        if _is_record(change) and isinstance(change.get("diff"), str) and change["diff"]
+    ]
     return {
         "kind": "write",
         "toolCallId": payload.get("itemId") if isinstance(payload.get("itemId"), str) else None,
         "intention": payload["reason"]
         if isinstance(payload.get("reason"), str) and payload["reason"]
         else "Apply file changes outside the current approval boundary.",
+        # Required by the v1.0.7 PermissionRequestWrite dataclass parser
+        # (from_dict asserts on canOfferSessionApproval/diff/fileName).
+        "canOfferSessionApproval": False,
+        "diff": "\n".join(diffs),
+        "fileName": paths[0] if paths else "",
         "grantRoot": payload.get("grantRoot")
         if isinstance(payload.get("grantRoot"), str)
         else None,
@@ -347,5 +375,4 @@ def map_codex_file_change_approval_to_permission_request(
 
 
 def map_permission_result_to_codex_file_change_decision(permission_result: Any) -> str:
-    kind = permission_result.get("kind") if _is_record(permission_result) else None
-    return "accept" if kind == "approved" else "decline"
+    return "accept" if _is_approved_permission_kind(permission_result) else "decline"

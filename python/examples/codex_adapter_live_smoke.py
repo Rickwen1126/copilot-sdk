@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from copilot import CopilotClient, ExternalServerConfig, PermissionHandler
+from copilot import CopilotClient, PermissionHandler, RuntimeConnection
 
 
 def _now_iso() -> str:
@@ -151,7 +151,7 @@ async def run_smoke(out_path: Path, raw_summary_path: Path) -> dict[str, Any]:
         cli_url = startup["cliUrl"]
         result["adapterListen"] = startup
 
-        client = CopilotClient(ExternalServerConfig(url=cli_url))
+        client = CopilotClient(connection=RuntimeConnection.for_uri(cli_url))
         await client.start()
 
         ping = await client.ping("python-live-smoke")
@@ -180,7 +180,7 @@ async def run_smoke(out_path: Path, raw_summary_path: Path) -> dict[str, Any]:
             "Reply with PYTHON_ADAPTER_TURN2_OK and nothing else.",
             timeout=60,
         )
-        messages = await session.get_messages()
+        messages = await session.get_events()
 
         resumed = await client.resume_session(
             session_id,

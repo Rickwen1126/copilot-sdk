@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { approveAll, CopilotClient, defineTool } from "../src/index.js";
+import { approveAll, CopilotClient, defineTool, type PermissionHandler } from "../src/index.js";
 import {
     CODEX_ADAPTER_CAPABILITIES,
     CodexCopilotAdapterServer,
@@ -926,5 +926,107 @@ describe("Codex app-server gateway internal boundary", () => {
             codexHome: "/tmp/copilot-sdk-missing-codex-home",
             transcripts: [],
         });
+    });
+});
+
+describe("Codex adapter v1.0.7 permission flow", () => {
+    async function startAdapterAndClient(onPermissionRequest: PermissionHandler) {
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        await client.createSession({
+            model: "gpt-test",
+            onPermissionRequest,
+        });
+        return { fakeCodex, adapter };
+    }
+
+    async function waitForCodexResponse(
+        fakeCodex: FakeCodexGateway,
+        id: number | string,
+        timeoutMs = 2_000
+    ) {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+            const response = fakeCodex.responses.find((entry) => entry.id === id);
+            if (response) {
+                return response;
+            }
+            await delay(10);
+        }
+        throw new Error(`Timed out waiting for codex response id=${String(id)}`);
+    }
+
+    it("delivers approvals via permission.requested events and maps approve-once to accept", async () => {
+        const { fakeCodex, adapter } = await startAdapterAndClient(approveAll);
+
+        fakeCodex.emitRequest({
+            id: "approval-accept-1",
+            method: "item/commandExecution/requestApproval",
+            params: {
+                threadId: "fake-thread-1",
+                itemId: "cmd-1",
+                command: "echo approved",
+            },
+        });
+
+        const response = await waitForCodexResponse(fakeCodex, "approval-accept-1");
+        expect(response.result).toEqual({ decision: "accept" });
+
+        const transcripts = (
+            adapter.summary() as { transcripts: Array<{ direction: string; message: unknown }> }
+        ).transcripts;
+        const eventDeliveries = transcripts.filter(
+            (entry) =>
+                entry.direction === "adapter->sdk.event" &&
+                isRecord(entry.message) &&
+                entry.message.method === "permission.requested"
+        );
+        expect(eventDeliveries).toHaveLength(1);
+        const legacyRequests = transcripts.filter(
+            (entry) =>
+                entry.direction === "adapter->sdk.request" &&
+                isRecord(entry.message) &&
+                entry.message.method === "permission.request"
+        );
+        expect(legacyRequests).toHaveLength(0);
+    });
+
+    it("maps a rejecting permission handler to a codex decline", async () => {
+        const { fakeCodex } = await startAdapterAndClient(() => ({ kind: "reject" as const }));
+
+        fakeCodex.emitRequest({
+            id: "approval-decline-1",
+            method: "item/commandExecution/requestApproval",
+            params: {
+                threadId: "fake-thread-1",
+                itemId: "cmd-2",
+                command: "rm -rf /forbidden",
+            },
+        });
+
+        const response = await waitForCodexResponse(fakeCodex, "approval-decline-1");
+        expect(response.result).toEqual({ decision: "decline" });
+    });
+
+    it("refuses protocolVersion 2 loudly at construction", () => {
+        expect(
+            () =>
+                new CodexCopilotAdapterServer({
+                    protocolVersion: 2,
+                })
+        ).toThrow(/protocolVersion 2 is not supported on SDK v1\.0\.7/);
     });
 });

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-17 22:40",
+  "updated_at": "2026-07-17 23:55",
   "items": [
     {
       "key": "codex-adapter-v107",
@@ -10,8 +10,8 @@
       "axis": "tech-monetize",
       "pack": null,
       "summary": "fork（merge-base 2026-04-21）升到官方 v1.0.7。嫁接面已實測：adapter=假扮 copilot CLI 的 standalone JSON-RPC server，對 SDK 僅 1 type import；唯一編譯斷點=options 換形 RuntimeConnection.forTcp。最大紅利=現行事件映射白名單極窄（codex reasoning/commandExecution/fileChange/todo/webSearch 全被 implicit-else 靜默吞），升級首刀=unmapped counter 顯式化（即覆蓋成數量測器）再逐類擴映射至 v1.0.7 擴充後 session-events。同時交付 tmux-adapter spike 模板（server 骨架抽共用、gateway 介面化）。",
-      "current_state": "Phase 2 完成並初驗（head 3ce15c71）：unmapped counter＋結構化 log＋destroy/stop summary＋status.get additive 欄位（寬容性 source 確認），86/86 綠。基線量測撈到關鍵情報：item/agentMessage/delta（streaming，UI 最大宗）不在原 plan §4 優先序內，另有 reasoning/turn/thread 生命週期/tokenUsage 等 12 類 unmapped。",
-      "next_action": "Phase 3 已發包（映射擴充，delta 第一優先＋工具族重量測＋method-not-found fail loud＋「有意識不映射」清單制）。回報後統籌初驗 → Rick 驗收站：shinyipilot 實連 → merge 扳機。",
+      "current_state": "Phase 3 完成並初驗（head 669f8eaa）：9 個新 mapper（delta/reasoning/commandExecution/fileChange/turn/usage）、deliberate-unmapped 清單制（8 類帶理由可查詢）、未知 request 改 -32601、94/94 綠。覆蓋重量測（shell turn 30 notifications＋apply_patch turn 57）：unmapped 0、覆蓋成數 100%（已觀測事件類）。一個不確定點收案中：reasoning 非空內文形狀未實測。",
+      "next_action": "Phase 4 終包已發包（reasoning extraction-miss 防護、metadata bag 往返、agentId 調查、forInProcess 評估報告、plan 勾稽＋Rick 驗收站清單）。回報後 → Rick 驗收站：shinyipilot 實連 → merge 扳機。",
       "refs": {
         "global_spec": null,
         "topic_spec": "docs/codex-adapter-v107/spec.md",
@@ -30,7 +30,7 @@
       },
       "depends_on": [],
       "created_at": "2026-07-17 09:30",
-      "updated_at": "2026-07-17 22:40",
+      "updated_at": "2026-07-17 23:55",
       "branch": {
         "name": "codex-adapter-v107",
         "worktree_path": "/Users/rickwen/code/copilot-sdk-v107",

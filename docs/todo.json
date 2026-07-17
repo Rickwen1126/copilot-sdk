@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-18 01:35",
+  "updated_at": "2026-07-18 01:50",
   "items": [
     {
       "key": "codex-adapter-v107",
@@ -11,7 +11,7 @@
       "pack": null,
       "summary": "fork（merge-base 2026-04-21）升到官方 v1.0.7。嫁接面已實測：adapter=假扮 copilot CLI 的 standalone JSON-RPC server，對 SDK 僅 1 type import；唯一編譯斷點=options 換形 RuntimeConnection.forTcp。最大紅利=現行事件映射白名單極窄（codex reasoning/commandExecution/fileChange/todo/webSearch 全被 implicit-else 靜默吞），升級首刀=unmapped counter 顯式化（即覆蓋成數量測器）再逐類擴映射至 v1.0.7 擴充後 session-events。同時交付 tmux-adapter spike 模板（server 骨架抽共用、gateway 介面化）。",
       "current_state": "Phase 0-4 全部完成並經統籌逐包初驗（final head d4829b8c，12 commits，96/96 綠）。四條驗收：A1 相容（wire 全表+permission 新機制+forUri）✓機器面；A2 靜默歸零（unmapped+deliberate+extraction-miss 三層防護）✓；A3 覆蓋 100%（已觀測類，兩種真 turn 實測）✓；A4 metadata bag 往返✓、agentId 結論=無接觸點不實作（file:line 依據）、forInProcess 評估=不做（adapter 直接 new 即嵌入，FFI #1934 env 洩漏對常駐 hub 否決性）。7 項 shinyipilot 實連驗收清單已備（見 agent Phase 4 回報）。",
-      "next_action": "【部署真相修正 2026-07-18】shinyipilot 走 pin 檔（config/deploy/copilot-sdk-pin.json，現 pin f5c8771）且消費 python/copilot/codex_adapter——v107 branch 無 python 側，pin 過去會被 required_paths 擋下（保護性 fail）。下一包＝python 側 v1.0.7 同款升級＋nodejs parity 對拍 → 7 場景實連 → 改 pin 切部署。維運 SOP 已立 docs/spec-adapter.md。fork main 已 ff 至官方 main（a1334be1）。",
+      "next_action": "python 側升級包已發（P0 footprint 測繪→匯入→編譯綠；P1 wire/permission 斷裂面；P2 parity 缺口 checkpoint 制，>5 項停下等統籌排序）。完成後 v107 branch 具備 pin 資格 → Rick 驗收站（7 場景）→ 改 pin 切部署。Rick 冷讀 docs/spec-adapter.md 中。",
       "refs": {
         "global_spec": null,
         "topic_spec": "docs/codex-adapter-v107/spec.md",
@@ -31,7 +31,7 @@
       },
       "depends_on": [],
       "created_at": "2026-07-17 09:30",
-      "updated_at": "2026-07-18 01:35",
+      "updated_at": "2026-07-18 01:50",
       "branch": {
         "name": "codex-adapter-v107",
         "worktree_path": "/Users/rickwen/code/copilot-sdk-v107",

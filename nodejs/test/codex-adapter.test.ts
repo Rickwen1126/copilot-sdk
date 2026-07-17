@@ -1073,48 +1073,48 @@ describe("Codex adapter unmapped-event observability", () => {
 
         fakeCodex.emitNotification("item/completed", {
             threadId: "fake-thread-1",
-            item: { type: "reasoning", id: "reasoning-1", text: "thinking..." },
+            item: { type: "webSearch", id: "search-1", query: "adapter docs" },
         });
         fakeCodex.emitNotification("item/completed", {
             threadId: "fake-thread-1",
-            item: { type: "reasoning", id: "reasoning-2", text: "still thinking..." },
+            item: { type: "webSearch", id: "search-2", query: "more adapter docs" },
         });
         fakeCodex.emitNotification("item/started", {
             threadId: "fake-thread-1",
-            item: { type: "commandExecution", id: "cmd-1", command: "ls" },
+            item: { type: "todoList", id: "todo-1" },
         });
 
         const summary = adapter.unmappedEventsSummary();
-        expect(summary["item/completed:reasoning"]).toEqual(
+        expect(summary["item/completed:webSearch"]).toEqual(
             expect.objectContaining({
                 count: 2,
                 paramsKeys: ["threadId", "item"],
             })
         );
-        expect(summary["item/started:commandExecution"]).toEqual(
+        expect(summary["item/started:todoList"]).toEqual(
             expect.objectContaining({ count: 1 })
         );
 
         const unmappedLogs = transcripts(adapter).filter(
             (entry) => entry.direction === "adapter.unmapped"
         );
-        const reasoningLogs = unmappedLogs.filter(
+        const webSearchLogs = unmappedLogs.filter(
             (entry) =>
-                isRecord(entry.message) && entry.message.itemType === "reasoning"
+                isRecord(entry.message) && entry.message.itemType === "webSearch"
         );
-        expect(reasoningLogs).toHaveLength(2);
+        expect(webSearchLogs).toHaveLength(2);
         // First sighting carries payload top-level keys; repeats stay terse.
-        expect(reasoningLogs[0].message).toEqual(
+        expect(webSearchLogs[0].message).toEqual(
             expect.objectContaining({
                 kind: "notification",
                 method: "item/completed",
-                itemType: "reasoning",
+                itemType: "webSearch",
                 threadId: "fake-thread-1",
                 reason: "unmapped-item-type",
                 paramsKeys: ["threadId", "item"],
             })
         );
-        expect(reasoningLogs[1].message).not.toHaveProperty("paramsKeys");
+        expect(webSearchLogs[1].message).not.toHaveProperty("paramsKeys");
 
         // Mapped paths stay unaffected: agentMessage still emits and is not counted.
         fakeCodex.emitNotification("item/completed", {
@@ -1127,7 +1127,7 @@ describe("Codex adapter unmapped-event observability", () => {
         const status = (await client.getStatus()) as unknown as {
             unmappedEvents: UnmappedSummary;
         };
-        expect(status.unmappedEvents["item/completed:reasoning"].count).toBe(2);
+        expect(status.unmappedEvents["item/completed:webSearch"].count).toBe(2);
     });
 
     it("emits an unmapped summary on session destroy and counts unserved codex requests", async () => {
@@ -1173,6 +1173,325 @@ describe("Codex adapter unmapped-event observability", () => {
                 kind: "request",
                 method: "thread/compact/confirm",
                 threadId: "fake-thread-1",
+            })
+        );
+    });
+});
+
+describe("Codex adapter v1.0.7 event mapping expansion", () => {
+    type CollectedEvent = { type: string; data: Record<string, unknown> };
+
+    async function startMappedAdapter() {
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+
+        const events: CollectedEvent[] = [];
+        const session = await client.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+        });
+        session.on((event) => {
+            events.push({ type: event.type, data: event.data as Record<string, unknown> });
+        });
+        return { fakeCodex, adapter, client, session, events };
+    }
+
+    async function waitForEvent(
+        events: CollectedEvent[],
+        type: string,
+        count = 1,
+        timeoutMs = 2_000
+    ) {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+            const matching = events.filter((event) => event.type === type);
+            if (matching.length >= count) {
+                return matching;
+            }
+            await delay(10);
+        }
+        throw new Error(`Timed out waiting for ${count}x ${type}`);
+    }
+
+    it("streams agentMessage deltas as assistant.message_start/delta/message", async () => {
+        const { fakeCodex, events } = await startMappedAdapter();
+
+        fakeCodex.emitNotification("item/started", {
+            threadId: "fake-thread-1",
+            turnId: "turn-1",
+            item: { type: "agentMessage", id: "msg-1", text: "", phase: "commentary" },
+        });
+        fakeCodex.emitNotification("item/agentMessage/delta", {
+            threadId: "fake-thread-1",
+            turnId: "turn-1",
+            itemId: "msg-1",
+            delta: "Hel",
+        });
+        fakeCodex.emitNotification("item/agentMessage/delta", {
+            threadId: "fake-thread-1",
+            turnId: "turn-1",
+            itemId: "msg-1",
+            delta: "lo",
+        });
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            turnId: "turn-1",
+            item: { type: "agentMessage", id: "msg-1", text: "Hello", phase: "commentary" },
+        });
+
+        const [start] = await waitForEvent(events, "assistant.message_start");
+        expect(start.data).toEqual({ messageId: "msg-1", phase: "commentary" });
+
+        const deltas = await waitForEvent(events, "assistant.message_delta", 2);
+        expect(deltas.map((event) => event.data.deltaContent)).toEqual(["Hel", "lo"]);
+        expect(new Set(deltas.map((event) => event.data.messageId))).toEqual(new Set(["msg-1"]));
+
+        const [message] = await waitForEvent(events, "assistant.message");
+        expect(message.data).toEqual(
+            expect.objectContaining({ content: "Hello", messageId: "msg-1" })
+        );
+    });
+
+    it("maps completed reasoning items to assistant.reasoning", async () => {
+        const { fakeCodex, events, session } = await startMappedAdapter();
+
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            turnId: "turn-1",
+            item: {
+                type: "reasoning",
+                id: "rs-1",
+                summary: [{ type: "text", text: "planning the change" }],
+                content: [],
+            },
+        });
+
+        const [reasoning] = await waitForEvent(events, "assistant.reasoning");
+        expect(reasoning.data).toEqual({
+            content: "planning the change",
+            reasoningId: "rs-1",
+        });
+
+        // Non-ephemeral: replayable through getEvents.
+        const stored = await session.getEvents();
+        expect(stored.some((event) => event.type === "assistant.reasoning")).toBe(true);
+    });
+
+    it("maps turn/started to assistant.turn_start with the session model", async () => {
+        const { fakeCodex, events } = await startMappedAdapter();
+
+        fakeCodex.emitNotification("turn/started", {
+            threadId: "fake-thread-1",
+            turn: { id: "turn-42", status: "inProgress" },
+        });
+
+        const [turnStart] = await waitForEvent(events, "assistant.turn_start");
+        expect(turnStart.data).toEqual({ turnId: "turn-42", model: "gpt-test" });
+    });
+
+    it("maps commandExecution items to tool.execution_start/complete", async () => {
+        const { fakeCodex, events } = await startMappedAdapter();
+
+        fakeCodex.emitNotification("item/started", {
+            threadId: "fake-thread-1",
+            turnId: "turn-1",
+            item: {
+                type: "commandExecution",
+                id: "call-cmd-1",
+                command: "/bin/zsh -lc 'echo hi > out.txt'",
+                cwd: "/tmp/workspace",
+                status: "inProgress",
+            },
+        });
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            turnId: "turn-1",
+            item: {
+                type: "commandExecution",
+                id: "call-cmd-1",
+                command: "/bin/zsh -lc 'echo hi > out.txt'",
+                cwd: "/tmp/workspace",
+                status: "completed",
+                aggregatedOutput: "hi",
+                exitCode: 0,
+            },
+        });
+
+        const [start] = await waitForEvent(events, "tool.execution_start");
+        expect(start.data).toEqual(
+            expect.objectContaining({
+                toolCallId: "call-cmd-1",
+                toolName: "shell",
+                arguments: expect.objectContaining({
+                    command: "/bin/zsh -lc 'echo hi > out.txt'",
+                    cwd: "/tmp/workspace",
+                }),
+                shellToolInfo: { hasWriteFileRedirection: true, possiblePaths: [] },
+                turnId: "turn-1",
+            })
+        );
+
+        const [complete] = await waitForEvent(events, "tool.execution_complete");
+        expect(complete.data).toEqual(
+            expect.objectContaining({
+                toolCallId: "call-cmd-1",
+                success: true,
+                result: { content: "hi" },
+            })
+        );
+    });
+
+    it("maps fileChange items to tool.execution events plus workspace_file_changed", async () => {
+        const { fakeCodex, events } = await startMappedAdapter();
+
+        const changes = [
+            {
+                path: "/tmp/workspace/new-file.txt",
+                kind: { type: "add" },
+                diff: "new content\n",
+            },
+            {
+                path: "/tmp/workspace/existing.txt",
+                kind: { type: "update", move_path: null },
+                diff: "@@ -1 +1 @@\n-a\n+b\n",
+            },
+        ];
+        fakeCodex.emitNotification("item/started", {
+            threadId: "fake-thread-1",
+            turnId: "turn-1",
+            item: { type: "fileChange", id: "call-fc-1", changes, status: "inProgress" },
+        });
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            turnId: "turn-1",
+            item: { type: "fileChange", id: "call-fc-1", changes, status: "completed" },
+        });
+
+        const [start] = await waitForEvent(events, "tool.execution_start");
+        expect(start.data).toEqual(
+            expect.objectContaining({
+                toolCallId: "call-fc-1",
+                toolName: "apply_patch",
+                arguments: {
+                    paths: ["/tmp/workspace/new-file.txt", "/tmp/workspace/existing.txt"],
+                },
+            })
+        );
+
+        const [complete] = await waitForEvent(events, "tool.execution_complete");
+        expect(complete.data).toEqual(
+            expect.objectContaining({
+                toolCallId: "call-fc-1",
+                success: true,
+            })
+        );
+
+        const fileChanges = await waitForEvent(events, "session.workspace_file_changed", 2);
+        expect(fileChanges.map((event) => event.data)).toEqual([
+            { operation: "create", path: "/tmp/workspace/new-file.txt" },
+            { operation: "update", path: "/tmp/workspace/existing.txt" },
+        ]);
+    });
+
+    it("maps thread/tokenUsage/updated to assistant.usage", async () => {
+        const { fakeCodex, events } = await startMappedAdapter();
+
+        fakeCodex.emitNotification("thread/tokenUsage/updated", {
+            threadId: "fake-thread-1",
+            turnId: "turn-1",
+            tokenUsage: {
+                total: { totalTokens: 100, inputTokens: 80, outputTokens: 20 },
+                last: {
+                    totalTokens: 100,
+                    inputTokens: 80,
+                    cachedInputTokens: 30,
+                    outputTokens: 20,
+                    reasoningOutputTokens: 5,
+                },
+                modelContextWindow: 380000,
+            },
+        });
+
+        const [usage] = await waitForEvent(events, "assistant.usage");
+        expect(usage.data).toEqual({
+            model: "gpt-test",
+            inputTokens: 80,
+            outputTokens: 20,
+            cacheReadTokens: 30,
+            reasoningTokens: 5,
+        });
+    });
+
+    it("counts deliberately unmapped events separately without emitting", async () => {
+        const { fakeCodex, adapter, events, client } = await startMappedAdapter();
+        const baselineEventCount = events.length;
+
+        fakeCodex.emitNotification("thread/status/changed", {
+            threadId: "fake-thread-1",
+            status: { type: "active", activeFlags: [] },
+        });
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            item: { type: "userMessage", id: "um-1", content: [{ type: "text", text: "hi" }] },
+        });
+        fakeCodex.emitNotification("account/rateLimits/updated", {
+            rateLimits: {},
+        });
+
+        await delay(50);
+        expect(events.length).toBe(baselineEventCount);
+
+        const deliberate = adapter.deliberatelyUnmappedSummary();
+        expect(deliberate["thread/status/changed"]).toEqual(
+            expect.objectContaining({ count: 1 })
+        );
+        expect(deliberate["item/completed:userMessage"].reason).toMatch(/mapped-ack/);
+        expect(deliberate["account/rateLimits/updated"]).toEqual(
+            expect.objectContaining({ count: 1 })
+        );
+        expect(adapter.unmappedEventsSummary()["thread/status/changed"]).toBeUndefined();
+        expect(adapter.unmappedEventsSummary()["account/rateLimits/updated"]).toBeUndefined();
+
+        const status = (await client.getStatus()) as unknown as {
+            deliberatelyUnmapped: Record<string, { count: number; reason: string }>;
+        };
+        expect(status.deliberatelyUnmapped["thread/status/changed"].count).toBe(1);
+    });
+
+    it("responds method-not-found to unserved codex requests instead of hanging", async () => {
+        const { fakeCodex } = await startMappedAdapter();
+
+        fakeCodex.emitRequest({
+            id: "unserved-1",
+            method: "thread/compact/confirm",
+            params: { threadId: "fake-thread-1" },
+        });
+
+        const deadline = Date.now() + 2_000;
+        let response: { id: number | string; result?: unknown; error?: unknown } | undefined;
+        while (Date.now() < deadline && !response) {
+            response = fakeCodex.responses.find((entry) => entry.id === "unserved-1");
+            if (!response) {
+                await delay(10);
+            }
+        }
+        expect(response?.result).toBeUndefined();
+        expect(response?.error).toEqual(
+            expect.objectContaining({
+                code: -32601,
+                message: expect.stringContaining("thread/compact/confirm"),
             })
         );
     });

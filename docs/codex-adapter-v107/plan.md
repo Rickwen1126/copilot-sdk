@@ -13,8 +13,15 @@ Spec: `docs/codex-adapter-v107/spec.md`
 | Phase 3 映射（A3） | ✅ 完成 | delta/message_start/reasoning/turn_start/commandExecution/fileChange(+workspace_file_changed)/usage 全部映射；兩種真 codex turn 實測 unmapped=0（覆蓋 100%，deliberate 清單制排除）。未演練 item 類（webSearch/todoList/MCP）由 counter 兜底 |
 | Phase 4 新載體（A4） | ✅ 完成 | tool metadata bag 往返（store 持久化＋summary().sessions 出口＋restart-resume 測試）；agentId/parentAgentId 調查結論=adapter 無接觸點（見下）；forInProcess 評估=不做（`forinprocess-assessment.md`）；reasoning extraction-miss fail-loud 防護 |
 | Phase 5 tmux spike | ⬜ 未開始 | 不在本輪範圍（§6） |
+| **Python 側升級**（部署面） | ✅ 完成 | footprint 26 檔全處理；`RuntimeConnection.for_uri`/`get_events`/decision-class 遷移；permission 流 Phase 1.5 移植；-32601（client fallback 只認此碼）；write payload 補 v1.0.7 必填欄位（python typed parser 嚴格）；v2 拒起；metadata bag／unmapped counter／fileChange typed 事件補齊；**跨側 parity gate（live tsx 對拍）綠** |
 
-Follow-ups：shinyipilot 實連全流程（Rick 驗收站）；per-session 覆蓋分子分母；未演練 codex item 類的映射迭代；`turn/diff/updated` deliberate 分類可由統籌推翻改映射。
+Follow-ups：
+- shinyipilot 實連全流程（Rick 驗收站）＋ pin 切換 checklist（見升級回報）
+- per-session 覆蓋分子分母；未演練 codex item 類（webSearch/todoList/mcp 深度）映射迭代
+- `turn/diff/updated` deliberate 分類可由統籌推翻改映射
+- **nodejs 反向補課（統籌裁決 defer，歸屬下一 topic：tmux/hub 線）**：commandExecution outputDelta 流、mcpToolCall/dynamicToolCall typed 工具事件、codex.raw 轉發通道、semantic log（含 secret redaction）、session.model.getCurrent/switchTo——python 側已有、nodejs 側缺
+- python typed client 讀不到 `status.get.unmappedEvents`（`GetStatusResponse` 只留 version/protocolVersion）——wire 與 summary() 有；typed 曝光需上游 schema 或自訂查詢面
+- `assistant.usage.turn_id`：統籌實查 shinyipilot 只 log 不讀 turn_id → 不 port fork 手改 schema，官方 v1.0.7 schema 為準；typed 消費者以 turn_start/turn_end 做 turn 關聯
 
 agentId/parentAgentId 結論：v1.0.7 中兩欄位活在 (a) `llmInference.httpRequestStart` frames（僅當 consumer 配置 requestHandler、由**真 runtime** 發起模型呼叫時才存在——codex 的模型呼叫在 codex 內部，不經 SDK，adapter 永不發此 frame）與 (b) session event envelope 的 optional `agentId`（sub-agent 標注；codex app-server payload 實測無 agent 識別欄位，無來源資料可填；absent=root-agent 正是 schema 語意，現狀已正確）。故無最小實作可做，不硬做。
 

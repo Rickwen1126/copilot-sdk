@@ -1496,3 +1496,179 @@ describe("Codex adapter v1.0.7 event mapping expansion", () => {
         );
     });
 });
+
+describe("Codex adapter v1.0.7 new carriers", () => {
+    it("counts reasoning extraction misses loudly instead of shipping empty content", async () => {
+        const fakeCodex = new FakeCodexGateway();
+        const adapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+        });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+        const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+        const session = await client.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+        });
+        session.on((event) => {
+            events.push({ type: event.type, data: event.data as Record<string, unknown> });
+        });
+
+        // Known shape: {text} entries extract fine and do not count as a miss.
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            item: {
+                type: "reasoning",
+                id: "rs-ok",
+                summary: [{ type: "text", text: "readable" }],
+                content: [],
+            },
+        });
+        // Unknown shape: non-empty arrays but nothing extractable.
+        fakeCodex.emitNotification("item/completed", {
+            threadId: "fake-thread-1",
+            item: {
+                type: "reasoning",
+                id: "rs-miss",
+                summary: [{ encrypted_blob: "abc123" }],
+                content: [],
+            },
+        });
+
+        const deadline = Date.now() + 2_000;
+        while (
+            Date.now() < deadline &&
+            events.filter((event) => event.type === "assistant.reasoning").length < 2
+        ) {
+            await delay(10);
+        }
+
+        const summary = adapter.unmappedEventsSummary();
+        expect(summary["item/completed:reasoning"]).toEqual(
+            expect.objectContaining({
+                count: 1,
+                // First sighting logs the item's top-level shape for diagnosis.
+                paramsKeys: ["type", "id", "summary", "content"],
+            })
+        );
+        const missLog = (
+            adapter.summary() as {
+                transcripts: Array<{ direction: string; message: unknown }>;
+            }
+        ).transcripts.find(
+            (entry) =>
+                entry.direction === "adapter.unmapped" &&
+                isRecord(entry.message) &&
+                entry.message.reason === "extraction-miss"
+        );
+        expect(missLog?.message).toEqual(
+            expect.objectContaining({ itemType: "reasoning", reason: "extraction-miss" })
+        );
+
+        // Both events still delivered; the ok one carries its text.
+        const reasoningEvents = events.filter((event) => event.type === "assistant.reasoning");
+        expect(reasoningEvents.map((event) => event.data)).toEqual([
+            { content: "readable", reasoningId: "rs-ok" },
+            { content: "", reasoningId: "rs-miss" },
+        ]);
+    });
+
+    it("round-trips tool metadata bags through the session store across adapter restart", async () => {
+        const storePath = join(
+            mkdtempSync(join(tmpdir(), "codex-adapter-metadata-store-")),
+            "sessions.json"
+        );
+        const metadataBag = { "tekric:topic": "codex-adapter-v107", "tekric:window": "w1" };
+        const toolsWithMetadata = [
+            defineTool("lookup", {
+                description: "Lookup source data",
+                handler: ({ query }: { query: string }) => `lookup:${query}`,
+                metadata: metadataBag,
+            }),
+        ];
+
+        const firstCodex = new FakeCodexGateway();
+        const firstAdapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            runtimeSessionStorePath: storePath,
+        });
+        (firstAdapter as unknown as { codex: FakeCodexGateway }).codex = firstCodex;
+        await firstAdapter.start();
+        const firstClient = new CopilotClient(firstAdapter.clientOptions());
+        await firstClient.start();
+
+        const session = await firstClient.createSession({
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+            tools: toolsWithMetadata,
+        });
+        const sessionId = session.sessionId;
+
+        // Live outlet: summary() exposes the bag untouched.
+        const liveSummary = firstAdapter.summary() as {
+            sessions: Array<{ sessionId: string; tools: Array<Record<string, unknown>> }>;
+        };
+        expect(liveSummary.sessions).toContainEqual(
+            expect.objectContaining({
+                sessionId,
+                tools: [{ name: "lookup", metadata: metadataBag }],
+            })
+        );
+
+        await session.disconnect();
+        await firstClient.stop();
+        await firstAdapter.stop();
+
+        // Persistence: the store file carries the bag under toolMetadata.
+        const storeRaw = JSON.parse(readFileSync(storePath, "utf8")) as {
+            records: Array<Record<string, unknown>>;
+        };
+        expect(storeRaw.records).toContainEqual(
+            expect.objectContaining({
+                sdkSessionId: sessionId,
+                toolMetadata: { lookup: metadataBag },
+            })
+        );
+
+        // Restart-resume: metadata still present and unchanged (and excluded
+        // from the tool fingerprint, so the resume is accepted).
+        const secondCodex = new FakeCodexGateway();
+        const secondAdapter = new CodexCopilotAdapterServer({
+            model: "gpt-test",
+            protocolVersion: 3,
+            runtimeSessionStorePath: storePath,
+        });
+        (secondAdapter as unknown as { codex: FakeCodexGateway }).codex = secondCodex;
+        await secondAdapter.start();
+        onTestFinished(() => secondAdapter.stop());
+        const secondClient = new CopilotClient(secondAdapter.clientOptions());
+        await secondClient.start();
+        onTestFinished(async () => {
+            await secondClient.stop();
+        });
+
+        await secondClient.resumeSession(sessionId, {
+            model: "gpt-test",
+            onPermissionRequest: approveAll,
+            tools: toolsWithMetadata,
+        });
+
+        const resumedSummary = secondAdapter.summary() as {
+            sessions: Array<{ sessionId: string; tools: Array<Record<string, unknown>> }>;
+        };
+        expect(resumedSummary.sessions).toContainEqual(
+            expect.objectContaining({
+                sessionId,
+                tools: [{ name: "lookup", metadata: metadataBag }],
+            })
+        );
+    });
+});

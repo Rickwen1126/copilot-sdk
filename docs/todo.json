@@ -10,8 +10,8 @@
       "axis": "tech-monetize",
       "pack": null,
       "summary": "fork（merge-base 2026-04-21）升到官方 v1.0.7。嫁接面已實測：adapter=假扮 copilot CLI 的 standalone JSON-RPC server，對 SDK 僅 1 type import；唯一編譯斷點=options 換形 RuntimeConnection.forTcp。最大紅利=現行事件映射白名單極窄（codex reasoning/commandExecution/fileChange/todo/webSearch 全被 implicit-else 靜默吞），升級首刀=unmapped counter 顯式化（即覆蓋成數量測器）再逐類擴映射至 v1.0.7 擴充後 session-events。同時交付 tmux-adapter spike 模板（server 骨架抽共用、gateway 介面化）。",
-      "current_state": "調查完成（2026-07-17）：分歧/嫁接面/對質結果全記於 spec §2 與 tekric-os cockpit spec §8.7 M8。fork 定版保護完成：87 commits 已在 origin、spike docs 已 commit+push（2e3d36a）、嵌套 repo（shinyipilot-spike/code-trace）各自有 git 並入 local exclude。未開工。",
-      "next_action": "Phase 0：自官方 v1.0.7 起 branch codex-adapter-v107 → rebase experimental/ 87 commits（零衝突面）→ options 工廠改 RuntimeConnection.forTcp → build+既有測試綠。開工時將新 branch/worktree 回綁本 item。",
+      "current_state": "調查完成（2026-07-17）：分歧/嫁接面/對質結果全記於 spec §2 與 tekric-os cockpit spec §8.7 M8。fork 定版保護完成（2e3d36a）。Phase 0 已發包（2026-07-17 晚）：worktree ~/code/copilot-sdk-v107 自 v1.0.7 tag 起 branch，執行 agent 出生於樹內，Rick 拍板同步發包。",
+      "next_action": "等 Phase 0-1 回報（import experimental → RuntimeConnection.forTcp 單點修 → build+測試綠+wire 檢查表）→ Rick 驗收；shinyipilot 實連驗證留 Rick 在場執行。merge 回定版 branch = H 級，Rick 扣扳機。",
       "refs": {
         "global_spec": null,
         "topic_spec": "docs/codex-adapter-v107/spec.md",
@@ -32,12 +32,12 @@
       "created_at": "2026-07-17 09:30",
       "updated_at": "2026-07-17 09:30",
       "branch": {
-        "name": "shinyipilot-codex-production-line",
-        "worktree_path": "/Users/rickwen/code/copilot-sdk",
+        "name": "codex-adapter-v107",
+        "worktree_path": "/Users/rickwen/code/copilot-sdk-v107",
         "source_branch": "shinyipilot-codex-production-line",
         "source_worktree_path": "/Users/rickwen/code/copilot-sdk",
-        "source_committed_head": "2e3d36a",
-        "last_synced_source_head": "2e3d36a",
+        "source_committed_head": "3058231",
+        "last_synced_source_head": "3058231",
         "final_head": null
       }
     }

@@ -235,7 +235,7 @@ async function buildSnapshot() {
                 { prompt: "Reply through the fake Codex gateway." },
                 1_000
             );
-            const events = await session.getMessages();
+            const events = await session.getEvents();
             const threadStart = fake.requests.find((entry) => entry.method === "thread/start");
             const turnStart = fake.requests.find((entry) => entry.method === "turn/start");
 

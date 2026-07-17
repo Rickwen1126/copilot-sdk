@@ -1687,7 +1687,7 @@ async function recordRealCopilotProtocol() {
             onEvent: recordScenarioEvent(observedEvents, "client2"),
         });
         stepTrace.push("session2.resumed");
-        const history = await session2.getMessages();
+        const history = await session2.getEvents();
         stepTrace.push("session2.history_loaded");
         const resumedAssistantMessage = await session2.sendAndWait(
             { prompt: RESUME_PROMPT },
@@ -2019,7 +2019,7 @@ async function runAdapterValidation() {
             onEvent: recordScenarioEvent(observedEvents, "client2"),
         });
         stepTrace.push("session2.resumed");
-        const history = await session2.getMessages();
+        const history = await session2.getEvents();
         stepTrace.push("session2.history_loaded");
         const resumedAssistantMessage = await session2.sendAndWait(
             { prompt: RESUME_PROMPT },

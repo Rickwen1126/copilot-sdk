@@ -359,7 +359,7 @@ describe("Codex adapter experimental boundary", () => {
             })
         );
 
-        const events = await session.getMessages();
+        const events = await session.getEvents();
         expect(events.map((event) => event.type)).toEqual(
             expect.arrayContaining([
                 "session.start",

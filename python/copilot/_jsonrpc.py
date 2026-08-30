@@ -196,14 +196,19 @@ class JsonRpcClient:
         except asyncio.CancelledError:
             _log_request_timing(logging.DEBUG, request_start, method, request_id, "canceled")
             raise
-        except Exception:
+        except Exception as exc:
+            expected_legacy_connect_fallback = (
+                method == "connect"
+                and isinstance(exc, JsonRpcError)
+                and exc.code == -32601
+            )
             _log_request_timing(
-                logging.WARNING,
+                logging.DEBUG if expected_legacy_connect_fallback else logging.WARNING,
                 request_start,
                 method,
                 request_id,
                 "failed",
-                exc_info=True,
+                exc_info=not expected_legacy_connect_fallback,
             )
             raise
         else:

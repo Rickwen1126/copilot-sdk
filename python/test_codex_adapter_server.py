@@ -15,8 +15,8 @@ from copilot.codex_adapter.gateway import (
     CodexAppServerGatewayReaderError,
 )
 from copilot.codex_adapter.server import CodexAdapterOptions, CodexCopilotAdapterServer
-from copilot.generated.rpc import ModelSwitchToRequest
 from copilot.generated.rpc import (
+    ModelSwitchToRequest,
     PermissionDecisionApproveOnce,
     PermissionDecisionDeniedByRules,
     PermissionDecisionDeniedInteractivelyByUser,
@@ -194,6 +194,59 @@ async def test_python_sdk_can_ping_status_auth_models_and_send(adapter):
         assert ("turn.lifecycle", "completed") in semantic_events
     finally:
         await client.force_stop()
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_notifications_are_sdk_parseable_for_abort_resume_and_delete(
+    adapter, tmp_path
+):
+    server, _fake = adapter
+    client = CopilotClient(connection=RuntimeConnection.for_uri(server.cli_url()))
+    events = []
+    loop = asyncio.get_running_loop()
+    loop_exceptions = []
+    previous_exception_handler = loop.get_exception_handler()
+
+    def capture_loop_exception(_loop, context):
+        loop_exceptions.append(context)
+
+    loop.set_exception_handler(capture_loop_exception)
+    unsubscribe = None
+    try:
+        await client.start()
+        unsubscribe = client.on_lifecycle(events.append)
+
+        aborted = await client.create_session(
+            session_id="lifecycle-abort",
+            working_directory=str(tmp_path),
+            on_permission_request=PermissionHandler.approve_all,
+        )
+        await aborted.abort()
+
+        created = await client.create_session(
+            session_id="lifecycle-resume-delete",
+            working_directory=str(tmp_path),
+            on_permission_request=PermissionHandler.approve_all,
+        )
+        await created.disconnect()
+        resumed = await client.resume_session(
+            session_id=created.session_id,
+            working_directory=str(tmp_path),
+            on_permission_request=PermissionHandler.approve_all,
+        )
+        await resumed.disconnect()
+        await client.delete_session(created.session_id)
+        await asyncio.sleep(0)
+    finally:
+        if unsubscribe:
+            unsubscribe()
+        loop.set_exception_handler(previous_exception_handler)
+        await client.force_stop()
+
+    assert not loop_exceptions
+    lifecycle_session_ids = {event.session_id for event in events}
+    assert "lifecycle-abort" in lifecycle_session_ids
+    assert "lifecycle-resume-delete" in lifecycle_session_ids
 
 
 @pytest.mark.asyncio

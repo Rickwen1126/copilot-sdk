@@ -1338,9 +1338,30 @@ class CodexCopilotAdapterServer:
         self, event_type: str, session_id: str, metadata: dict[str, Any] | None = None
     ) -> None:
         session = self.sessions.get(session_id)
+        event_time = _now_iso()
+        lifecycle_metadata = dict(metadata or {})
+        start_time = session.created_at if session else event_time
+        modified_time = next(
+            (
+                lifecycle_metadata.get(key)
+                for key in ("modifiedTime", "resumeTime", "abortTime", "deleteTime")
+                if isinstance(lifecycle_metadata.get(key), str) and lifecycle_metadata.get(key)
+            ),
+            event_time,
+        )
+        if (
+            not isinstance(lifecycle_metadata.get("startTime"), str)
+            or not lifecycle_metadata["startTime"]
+        ):
+            lifecycle_metadata["startTime"] = start_time
+        if (
+            not isinstance(lifecycle_metadata.get("modifiedTime"), str)
+            or not lifecycle_metadata["modifiedTime"]
+        ):
+            lifecycle_metadata["modifiedTime"] = modified_time
         await self._notify_connections(
             "session.lifecycle",
-            {"type": event_type, "sessionId": session_id, "metadata": metadata},
+            {"type": event_type, "sessionId": session_id, "metadata": lifecycle_metadata},
             session.attached_connection_ids if session else None,
         )
 

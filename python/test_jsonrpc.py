@@ -5,15 +5,17 @@ Tests for the JSON-RPC client implementation, focusing on proper handling
 of large payloads and short reads from pipes.
 """
 
+import asyncio
 import io
 import json
+import logging
 import os
 import threading
 import time
 
 import pytest
 
-from copilot._jsonrpc import JsonRpcClient
+from copilot._jsonrpc import JsonRpcClient, JsonRpcError
 
 
 class MockProcess:
@@ -26,6 +28,28 @@ class MockProcess:
 
     def poll(self):
         return self.returncode
+
+
+@pytest.mark.asyncio
+async def test_legacy_connect_method_not_found_is_debug_logged_without_traceback(caplog):
+    client = JsonRpcClient(MockProcess())
+    client._loop = asyncio.get_running_loop()
+
+    async def fail_connect(_message):
+        raise JsonRpcError(-32601, "Method not found: connect")
+
+    client._send_message = fail_connect
+    with caplog.at_level(logging.DEBUG, logger="copilot._jsonrpc"):
+        with pytest.raises(JsonRpcError, match="Method not found: connect"):
+            await client.request("connect")
+
+    record = next(
+        record
+        for record in caplog.records
+        if record.message == "JsonRpcClient.request JSON-RPC request finished"
+    )
+    assert record.levelno == logging.DEBUG
+    assert not record.exc_info
 
 
 class ShortReadStream:

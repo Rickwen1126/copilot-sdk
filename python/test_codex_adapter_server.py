@@ -271,7 +271,13 @@ async def test_model_switch_keeps_session_and_updates_turn_start_reasoning(adapt
         )
         assert first_turn_start["threadId"] == thread_id
         assert first_turn_start["model"] == "gpt-5.4"
-        assert first_turn_start["reasoningEffort"] == "high"
+        assert first_turn_start["effort"] == "high"
+        assert "reasoningEffort" not in first_turn_start
+        thread_start = next(
+            params for method, params in fake.requests if method == "thread/start"
+        )
+        assert "reasoningEffort" not in thread_start
+        assert "effort" not in thread_start
 
         await session.rpc.model.switch_to(
             ModelSwitchToRequest(
@@ -298,7 +304,8 @@ async def test_model_switch_keeps_session_and_updates_turn_start_reasoning(adapt
         turn_starts = [params for method, params in fake.requests if method == "turn/start"]
         assert turn_starts[-1]["threadId"] == thread_id
         assert turn_starts[-1]["model"] == "gpt-4.1"
-        assert turn_starts[-1]["reasoningEffort"] == "none"
+        assert turn_starts[-1]["effort"] == "none"
+        assert "reasoningEffort" not in turn_starts[-1]
         assert server.summary()["sessions"][0]["threadId"] == thread_id
         assert server.summary()["sessions"][0]["reasoningEffort"] == "none"
         semantic_events = {
@@ -1367,7 +1374,8 @@ async def test_resume_after_restart_uses_persisted_runtime_mapping(tmp_path):
         turn_start = next(
             params for method, params in second_gateway.requests if method == "turn/start"
         )
-        assert turn_start["reasoningEffort"] == "high"
+        assert turn_start["effort"] == "high"
+        assert "reasoningEffort" not in turn_start
         assert second_server.summary()["sessions"][0]["reasoningEffort"] == "high"
     finally:
         await second_client.force_stop()

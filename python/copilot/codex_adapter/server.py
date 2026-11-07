@@ -889,8 +889,9 @@ class CodexCopilotAdapterServer:
             "experimentalRawEvents": self.options.experimental_raw_events,
             "persistExtendedHistory": False,
         }
-        if reasoning_effort is not None:
-            thread_params["reasoningEffort"] = reasoning_effort
+        # Codex app-server v2 ThreadStartParams has no effort field (checked against
+        # the codex-cli 0.161.0 schema); unknown keys are silently dropped there.
+        # The session effort is sent on every turn/start as `effort` instead.
         base_instructions = self._extract_base_instructions(params)
         if base_instructions:
             thread_params["baseInstructions"] = base_instructions
@@ -1203,7 +1204,9 @@ class CodexCopilotAdapterServer:
             ),
         }
         if session.reasoning_effort is not None:
-            turn_params["reasoningEffort"] = session.reasoning_effort
+            # Codex app-server v2 TurnStartParams names this `effort`; a
+            # `reasoningEffort` key is ignored and the model default is used.
+            turn_params["effort"] = session.reasoning_effort
         response = await self.codex.request("turn/start", turn_params)
         if response.get("error"):
             raise RuntimeError(response["error"].get("message", "turn/start failed"))

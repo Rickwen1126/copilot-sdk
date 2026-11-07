@@ -8,6 +8,8 @@ export type CodexRuntimeSessionRecord = {
     codexThreadId: string;
     cwd: string;
     model?: string;
+    /** Additive optional field (v1 payload): the session's reasoning effort, restored on resume. */
+    reasoningEffort?: string;
     toolFingerprint: string;
     /**
      * Opaque per-tool metadata bags (v1.0.7 `Tool.metadata`), keyed by tool
@@ -65,6 +67,7 @@ function parseRecord(value: unknown): CodexRuntimeSessionRecord | null {
         codexThreadId: value.codexThreadId,
         cwd: value.cwd,
         model: typeof value.model === "string" ? value.model : undefined,
+        ...(typeof value.reasoningEffort === "string" ? { reasoningEffort: value.reasoningEffort } : {}),
         toolFingerprint: value.toolFingerprint,
         toolMetadata: parseToolMetadata(value.toolMetadata),
         codexHomeIdentity:

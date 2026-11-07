@@ -1730,3 +1730,98 @@ describe("Codex adapter session.abort", () => {
         expect(secondAbort.error).toContain("Unknown session");
     });
 });
+
+describe("Codex adapter lianxu parity (images, effort, app-server exit)", () => {
+    class ExitableFakeCodex extends FakeCodexGateway {
+        private exitHandlers = new Set<(info: { code: number | null; signal: NodeJS.Signals | null }) => void>();
+        hangTurns = false;
+        onExit(handler: (info: { code: number | null; signal: NodeJS.Signals | null }) => void) {
+            this.exitHandlers.add(handler);
+            return () => this.exitHandlers.delete(handler);
+        }
+        crash() {
+            for (const h of this.exitHandlers) h({ code: 1, signal: null });
+        }
+        async request(method: string, params?: unknown): Promise<FakeCodexResponse> {
+            if (method === "turn/start" && this.hangTurns) {
+                this.requests.push({ method, params });
+                return { id: this.requests.length, result: { turn: { id: "hang-turn" } } };
+            }
+            return super.request(method, params);
+        }
+    }
+
+    async function setup(fakeCodex: FakeCodexGateway) {
+        const adapter = new CodexCopilotAdapterServer({ model: "gpt-test", protocolVersion: 3 });
+        (adapter as unknown as { codex: FakeCodexGateway }).codex = fakeCodex;
+        await adapter.start();
+        onTestFinished(() => adapter.stop());
+        const client = new CopilotClient(adapter.clientOptions());
+        await client.start();
+        onTestFinished(async () => {
+            await client.stop();
+        });
+        return client;
+    }
+
+    it("forwards image attachments as localImage / data-url image inputs (python 733c7832)", async () => {
+        const fakeCodex = new FakeCodexGateway();
+        const client = await setup(fakeCodex);
+        const session = await client.createSession({ model: "gpt-test", onPermissionRequest: approveAll });
+        await session.sendAndWait(
+            {
+                prompt: "Read the attached FAKE report.",
+                attachments: [
+                    { type: "file", path: "/work/run/inputs/image-1.png" },
+                    { type: "file", path: "/work/notes.txt", displayName: "FAKE notes" },
+                    { type: "blob", data: "QUJD", mimeType: "image/jpeg" },
+                ],
+            } as never,
+            1_000
+        );
+        const turnStart = fakeCodex.requests.find((entry) => entry.method === "turn/start");
+        expect((turnStart?.params as { input: unknown[] }).input).toEqual([
+            { type: "text", text: "Read the attached FAKE report.", text_elements: [] },
+            { type: "localImage", path: "/work/run/inputs/image-1.png", detail: "auto" },
+            { type: "text", text: "Attached file: FAKE notes (/work/notes.txt)", text_elements: [] },
+            { type: "image", url: "data:image/jpeg;base64,QUJD", detail: "auto" },
+        ]);
+    });
+
+    it("sends the session reasoning effort as turn/start `effort` (app-server v2 TurnStartParams) and omits it when unset", async () => {
+        const fakeCodex = new FakeCodexGateway();
+        const client = await setup(fakeCodex);
+        const withEffort = await client.createSession({
+            model: "gpt-test",
+            reasoningEffort: "high",
+            onPermissionRequest: approveAll,
+        } as never);
+        await withEffort.sendAndWait({ prompt: "FAKE one" }, 1_000);
+        const plain = await client.createSession({ model: "gpt-test", onPermissionRequest: approveAll });
+        await plain.sendAndWait({ prompt: "FAKE two" }, 1_000);
+        const turns = fakeCodex.requests.filter((entry) => entry.method === "turn/start");
+        expect(turns[0]?.params).toEqual(expect.objectContaining({ effort: "high" }));
+        expect(turns[0]?.params).not.toHaveProperty("reasoningEffort");
+        expect(turns[1]?.params).not.toHaveProperty("effort");
+    });
+
+    it("emits session.error to the in-flight turn as soon as the app-server exits (python fatal handler)", async () => {
+        const fakeCodex = new ExitableFakeCodex();
+        fakeCodex.hangTurns = true;
+        const client = await setup(fakeCodex);
+        const session = await client.createSession({ model: "gpt-test", onPermissionRequest: approveAll });
+        const idle = await client.createSession({ model: "gpt-test", onPermissionRequest: approveAll });
+        const idleErrors: unknown[] = [];
+        idle.on((event) => {
+            if (event.type === "session.error") idleErrors.push(event);
+        });
+        const started = Date.now();
+        const pending = session.sendAndWait({ prompt: "FAKE long turn" }, 30_000);
+        await delay(50);
+        fakeCodex.crash();
+        await expect(pending).rejects.toThrow(/codex app-server exited during the turn \(code=1/);
+        expect(Date.now() - started).toBeLessThan(5_000);
+        await delay(20);
+        expect(idleErrors).toEqual([]);
+    });
+});

@@ -632,3 +632,61 @@ export function mapCodexTokenUsage(
         reasoningTokens: num(last.reasoningOutputTokens),
     };
 }
+
+const IMAGE_EXTENSIONS: Record<string, string> = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+};
+
+function attachmentMimeType(path: string, attachment: Record<string, unknown>): string {
+    if (typeof attachment.mimeType === "string" && attachment.mimeType.trim()) {
+        return attachment.mimeType.trim();
+    }
+    const dot = path.lastIndexOf(".");
+    const ext = dot >= 0 ? path.slice(dot).toLowerCase() : "";
+    return IMAGE_EXTENSIONS[ext] ?? "application/octet-stream";
+}
+
+const isImageMimeType = (mimeType: unknown) =>
+    typeof mimeType === "string" && mimeType.toLowerCase().startsWith("image/");
+
+/**
+ * Ported from the python adapter (`_codex_inputs_from_attachments`, 733c7832):
+ * session.send attachments -> Codex app-server UserInput items.
+ *  - file + image mime -> { type: "localImage", path, detail: "auto" }
+ *  - file, not an image -> one text line "Attached file: <name> (<path>)"
+ *  - blob + image mime -> { type: "image", url: "data:<mime>;base64,<data>", detail: "auto" }
+ */
+export function codexInputsFromAttachments(attachments: unknown): Record<string, unknown>[] {
+    if (!Array.isArray(attachments)) {
+        return [];
+    }
+    const inputs: Record<string, unknown>[] = [];
+    for (const attachment of attachments) {
+        if (typeof attachment !== "object" || attachment === null || Array.isArray(attachment)) {
+            continue;
+        }
+        const a = attachment as Record<string, unknown>;
+        if (a.type === "blob") {
+            if (typeof a.data !== "string" || !isImageMimeType(a.mimeType)) {
+                continue;
+            }
+            inputs.push({ type: "image", url: `data:${a.mimeType as string};base64,${a.data}`, detail: "auto" });
+        } else if (a.type === "file") {
+            if (typeof a.path !== "string" || !a.path.trim()) {
+                continue;
+            }
+            if (isImageMimeType(attachmentMimeType(a.path, a))) {
+                inputs.push({ type: "localImage", path: a.path, detail: "auto" });
+            } else {
+                const label =
+                    typeof a.displayName === "string" && a.displayName ? a.displayName : a.path;
+                inputs.push({ type: "text", text: `Attached file: ${label} (${a.path})`, text_elements: [] });
+            }
+        }
+    }
+    return inputs;
+}

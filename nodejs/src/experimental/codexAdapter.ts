@@ -11,6 +11,7 @@ import {
 } from "vscode-jsonrpc/node.js";
 import { RuntimeConnection, type CopilotClientOptions } from "../types.js";
 import {
+    codexInputsFromAttachments,
     codexSandboxPolicy,
     codexThreadSandboxMode,
     dynamicToolsFromDescriptors,
@@ -79,6 +80,8 @@ type CodexRuntimeGateway = {
     respond(id: JsonRpcId, result?: unknown, error?: JsonRpcError): void;
     onNotification(handler: (notification: JsonRpcNotification) => void): () => void;
     onRequest(handler: (request: JsonRpcRequest) => void): () => void;
+    /** Optional so test doubles need not implement it. */
+    onExit?(handler: (info: { code: number | null; signal: NodeJS.Signals | null }) => void): () => void;
     summary(): unknown;
 };
 
@@ -111,6 +114,10 @@ type SessionState = {
     createdAt: string;
     cwd: string;
     model?: string;
+    /** Sent as turn/start `effort` (Codex app-server v2 TurnStartParams; thread/start has no effort field). */
+    reasoningEffort?: string;
+    /** A turn/start was accepted and no turn/completed has arrived yet. */
+    activeTurn?: boolean;
     tools: ToolDescriptor[];
     lastEventId: string | null;
     events: unknown[];
@@ -349,6 +356,7 @@ export class CodexCopilotAdapterServer {
     private transcript: CodexAdapterTranscriptEntry[] = [];
     private codexUnsubscribe: (() => void) | null = null;
     private codexRequestUnsubscribe: (() => void) | null = null;
+    private codexExitUnsubscribe: (() => void) | null = null;
     private nextConnectionId = 1;
     private codex: CodexRuntimeGateway;
     private sessionStore: CodexAdapterSessionStore;
@@ -422,6 +430,7 @@ export class CodexCopilotAdapterServer {
             });
             void this.handleCodexRequest(request);
         });
+        this.codexExitUnsubscribe = this.codex.onExit?.((info) => this.handleCodexExit(info)) ?? null;
         this.server.on("connection", (socket) => {
             this.bindSocket(socket);
         });
@@ -789,6 +798,7 @@ export class CodexCopilotAdapterServer {
             createdAt,
             cwd,
             model,
+            ...(reasoningEffort ? { reasoningEffort } : {}),
             tools,
             lastEventId: null,
             events: [],
@@ -879,6 +889,10 @@ export class CodexCopilotAdapterServer {
         session.cwd =
             typeof params.workingDirectory === "string" ? params.workingDirectory : session.cwd;
         session.model = typeof params.model === "string" ? params.model : session.model;
+        if ("reasoningEffort" in params) {
+            session.reasoningEffort =
+                typeof params.reasoningEffort === "string" ? params.reasoningEffort : undefined;
+        }
         session.resumeCount += 1;
         this.threadToSession.set(session.threadId, session.sessionId);
 
@@ -960,7 +974,7 @@ export class CodexCopilotAdapterServer {
 
         const sessionId = typeof params.sessionId === "string" ? params.sessionId : undefined;
         const prompt = typeof params.prompt === "string" ? params.prompt : undefined;
-        if (!sessionId || !prompt) {
+        if (!sessionId || prompt === undefined) {
             throw new Error("session.send requires sessionId and prompt");
         }
 
@@ -978,21 +992,48 @@ export class CodexCopilotAdapterServer {
             })
         );
 
+        session.activeTurn = true;
         const response = await this.codex.request("turn/start", {
             threadId: session.threadId,
-            input: [{ type: "text", text: prompt, text_elements: [] }],
+            input: [
+                { type: "text", text: prompt, text_elements: [] },
+                ...codexInputsFromAttachments(params.attachments),
+            ],
+            ...(session.reasoningEffort ? { effort: session.reasoningEffort } : {}),
             model: session.model ?? this.options.model,
             approvalPolicy: this.options.approvalPolicy,
             approvalsReviewer: this.options.approvalsReviewer,
             sandboxPolicy: codexSandboxPolicy(this.options.sandboxMode, this.options.networkAccess),
         });
         if (response.error) {
+            session.activeTurn = false;
             throw response.error;
         }
 
         return {
             messageId: userMessageId,
         };
+    }
+
+    /**
+     * Ported from the python adapter's fatal handler: when the app-server process
+     * exits, every session with a turn in flight gets a session.error right away
+     * instead of waiting for its own timeout.
+     */
+    private handleCodexExit(info: { code: number | null; signal: NodeJS.Signals | null }) {
+        for (const session of this.sessions.values()) {
+            if (!session.activeTurn) {
+                continue;
+            }
+            session.activeTurn = false;
+            this.emitSessionEvent(
+                session.sessionId,
+                createSessionEvent(session, "session.error", {
+                    errorType: "adapter",
+                    message: `codex app-server exited during the turn (code=${String(info.code)}, signal=${String(info.signal)})`,
+                })
+            );
+        }
     }
 
     /**
@@ -1123,6 +1164,7 @@ export class CodexCopilotAdapterServer {
             codexThreadId: session.threadId,
             cwd: session.cwd,
             model: session.model,
+            ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {}),
             toolFingerprint: toolFingerprintFromDescriptors(session.tools),
             toolMetadata: toolMetadataFromDescriptors(session.tools),
             codexHomeIdentity: this.codexHomeIdentity,
@@ -1142,6 +1184,8 @@ export class CodexCopilotAdapterServer {
             createdAt: record.createdAt,
             cwd: typeof params.workingDirectory === "string" ? params.workingDirectory : record.cwd,
             model: typeof params.model === "string" ? params.model : record.model,
+            reasoningEffort:
+                typeof params.reasoningEffort === "string" ? params.reasoningEffort : record.reasoningEffort,
             tools,
             lastEventId: null,
             events: [],
@@ -1537,6 +1581,7 @@ export class CodexCopilotAdapterServer {
                 })
             );
         } else if (notification.method === "turn/completed") {
+            session.activeTurn = false;
             const turn = isRecord(params.turn) ? params.turn : null;
             const status = typeof turn?.status === "string" ? turn.status : "completed";
             if (status === "completed") {
@@ -1912,6 +1957,8 @@ export class CodexCopilotAdapterServer {
         this.codexUnsubscribe = null;
         this.codexRequestUnsubscribe?.();
         this.codexRequestUnsubscribe = null;
+        this.codexExitUnsubscribe?.();
+        this.codexExitUnsubscribe = null;
         await new Promise<void>((resolve) => this.server.close(() => resolve()));
         await this.codex.stop();
     }

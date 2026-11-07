@@ -131,6 +131,7 @@ export class CodexAppServerGateway {
     private pending = new Map<JsonRpcId, PendingRequest>();
     private notificationHandlers = new Set<(notification: JsonRpcNotification) => void>();
     private requestHandlers = new Set<(request: JsonRpcRequest) => void>();
+    private exitHandlers = new Set<(info: { code: number | null; signal: NodeJS.Signals | null }) => void>();
     private transcript: CodexGatewayTranscriptEntry[] = [];
     private codexHome: string;
     private codexBin: string;
@@ -179,6 +180,9 @@ export class CodexAppServerGateway {
                 );
             }
             this.pending.clear();
+            for (const handler of this.exitHandlers) {
+                handler({ code, signal });
+            }
         });
 
         const stdout = readline.createInterface({ input: this.child.stdout });
@@ -309,6 +313,14 @@ export class CodexAppServerGateway {
     onRequest(handler: (request: JsonRpcRequest) => void): () => void {
         this.requestHandlers.add(handler);
         return () => this.requestHandlers.delete(handler);
+    }
+
+    /** Called whenever the app-server child process exits (crash, kill, or stop). */
+    onExit(
+        handler: (info: { code: number | null; signal: NodeJS.Signals | null }) => void
+    ): () => void {
+        this.exitHandlers.add(handler);
+        return () => this.exitHandlers.delete(handler);
     }
 
     async stop(): Promise<void> {

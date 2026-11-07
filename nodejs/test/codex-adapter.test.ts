@@ -1816,8 +1816,12 @@ describe("Codex adapter lianxu parity (images, effort, app-server exit)", () => 
             if (event.type === "session.error") idleErrors.push(event);
         });
         const started = Date.now();
-        const pending = session.sendAndWait({ prompt: "FAKE long turn" }, 30_000);
-        await delay(50);
+        const pending = session.sendAndWait({ prompt: "FAKE long turn" }, 10_000);
+        pending.catch(() => {});
+        for (let i = 0; i < 200 && !fakeCodex.requests.some((r) => r.method === "turn/start"); i++) {
+            await delay(10);
+        }
+        await delay(20);
         fakeCodex.crash();
         await expect(pending).rejects.toThrow(/codex app-server exited during the turn \(code=1/);
         expect(Date.now() - started).toBeLessThan(5_000);
